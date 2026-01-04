@@ -24,7 +24,7 @@ serve(async (req) => {
       if (error) {
         console.error('Google OAuth error:', error);
         // Redirect back to app with error
-        const errorRedirect = new URL('https://id-preview--7a75d720-624c-4a53-a51c-94b8713f1707.lovable.app/dashboard/integrations');
+        const errorRedirect = new URL('https://id-preview--7a75d720-624c-4a53-a51c-94b8713f1707.lovable.app/integrations');
         errorRedirect.searchParams.set('error', error);
         return Response.redirect(errorRedirect.toString(), 302);
       }
@@ -170,7 +170,7 @@ serve(async (req) => {
     const message = error instanceof Error ? error.message : 'Unknown error';
     
     // Redirect back to app with error
-    const errorRedirect = new URL('https://id-preview--7a75d720-624c-4a53-a51c-94b8713f1707.lovable.app/dashboard/integrations');
+    const errorRedirect = new URL('https://id-preview--7a75d720-624c-4a53-a51c-94b8713f1707.lovable.app/integrations');
     errorRedirect.searchParams.set('error', message);
     return Response.redirect(errorRedirect.toString(), 302);
   }
