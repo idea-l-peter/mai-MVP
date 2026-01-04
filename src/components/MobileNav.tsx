@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
 import maiLogo from "@/assets/mai-logo.png";
+import maiLogoWhite from "@/assets/mai-logo-white.png";
 
 const navItems = [
   { title: "Dashboard", icon: LayoutDashboard, url: "/dashboard" },
@@ -73,7 +74,7 @@ export function MobileNav() {
           <SheetHeader className="border-b border-primary-foreground/20 p-6">
             <SheetTitle className="text-left">
               <button onClick={() => handleNavigation("/dashboard")} className="focus:outline-none">
-                <img src={maiLogo} alt="mai" className="h-8 w-auto" />
+                <img src={maiLogoWhite} alt="mai" className="h-8 w-auto" />
               </button>
             </SheetTitle>
           </SheetHeader>
