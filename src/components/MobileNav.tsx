@@ -20,6 +20,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
+import maiLogo from "@/assets/mai-logo.png";
 
 const navItems = [
   { title: "Dashboard", icon: LayoutDashboard, url: "/dashboard" },
@@ -57,7 +58,9 @@ export function MobileNav() {
 
   return (
     <header className="sticky top-0 z-50 flex h-14 items-center justify-between border-b border-border bg-card px-4">
-      <span className="text-xl font-bold text-foreground">mai</span>
+      <button onClick={() => navigate("/dashboard")} className="focus:outline-none">
+        <img src={maiLogo} alt="mai" className="h-8 w-auto" />
+      </button>
       
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetTrigger asChild>
@@ -68,8 +71,10 @@ export function MobileNav() {
         </SheetTrigger>
         <SheetContent side="right" className="w-[280px] bg-primary p-0">
           <SheetHeader className="border-b border-primary-foreground/20 p-6">
-            <SheetTitle className="text-left text-2xl font-bold text-primary-foreground">
-              mai
+            <SheetTitle className="text-left">
+              <button onClick={() => handleNavigation("/dashboard")} className="focus:outline-none">
+                <img src={maiLogo} alt="mai" className="h-8 w-auto" />
+              </button>
             </SheetTitle>
           </SheetHeader>
           

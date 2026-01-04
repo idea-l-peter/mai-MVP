@@ -20,6 +20,7 @@ import {
   SidebarHeader,
 } from "@/components/ui/sidebar";
 import { useToast } from "@/hooks/use-toast";
+import maiLogo from "@/assets/mai-logo.png";
 
 const navItems = [
   { title: "Dashboard", icon: LayoutDashboard, url: "/dashboard" },
@@ -52,7 +53,9 @@ export function DashboardSidebar() {
   return (
     <Sidebar className="w-60 border-r-0">
       <SidebarHeader className="p-6">
-        <span className="text-2xl font-bold text-sidebar-foreground">mai</span>
+        <button onClick={() => navigate("/dashboard")} className="focus:outline-none">
+          <img src={maiLogo} alt="mai" className="h-8 w-auto" />
+        </button>
       </SidebarHeader>
 
       <SidebarContent>

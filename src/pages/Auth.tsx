@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-
+import maiLogo from "@/assets/mai-logo.png";
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
@@ -93,9 +93,9 @@ const Auth = () => {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-4 text-center">
-          {/* Logo placeholder */}
-          <div className="h-16 flex items-center justify-center">
-            <span className="text-3xl font-bold text-primary">mai</span>
+          {/* Logo */}
+          <div className="flex items-center justify-center">
+            <img src={maiLogo} alt="mai" className="h-[60px] w-auto" />
           </div>
           <div>
             <CardTitle className="text-2xl">
