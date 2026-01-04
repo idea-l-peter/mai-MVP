@@ -1,12 +1,14 @@
 import { IntegrationCard } from "./IntegrationCard";
-import { GoogleCalendarLogo, GmailLogo, MondayLogo, WhatsAppLogo } from "./icons";
+import { MondayLogo, WhatsAppLogo } from "./icons";
+import googleCalendarIcon from "@/assets/google-calendar-icon.svg";
+import gmailLogo from "@/assets/gmail-logo.png";
 
 const integrations = [
   {
     id: "google-calendar",
     title: "Google Calendar",
     description: "Sync your calendar to let mai schedule meetings",
-    icon: <GoogleCalendarLogo className="h-6 w-6" />,
+    icon: <img src={googleCalendarIcon} alt="Google Calendar" className="h-8 w-8" />,
     status: "not_connected" as const,
     showConnectButton: true,
   },
@@ -14,7 +16,7 @@ const integrations = [
     id: "gmail",
     title: "Gmail",
     description: "Allow mai to read and send emails on your behalf",
-    icon: <GmailLogo className="h-6 w-6" />,
+    icon: <img src={gmailLogo} alt="Gmail" className="h-8 w-auto" />,
     status: "not_connected" as const,
     showConnectButton: true,
   },
