@@ -27,7 +27,7 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
     setIsConnecting(true);
     
     // This is where the user will be redirected back after the server-side OAuth completes
-    const appRedirectUri = `${window.location.origin}/dashboard/integrations`;
+    const appRedirectUri = `${window.location.origin}/integrations`;
     
     try {
       const { data: { user } } = await supabase.auth.getUser();
