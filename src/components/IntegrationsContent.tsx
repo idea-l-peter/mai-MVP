@@ -1,12 +1,12 @@
-import { Calendar, Mail, CheckSquare, MessageCircle } from "lucide-react";
 import { IntegrationCard } from "./IntegrationCard";
+import { GoogleCalendarLogo, GmailLogo, MondayLogo, WhatsAppLogo } from "./icons";
 
 const integrations = [
   {
     id: "google-calendar",
     title: "Google Calendar",
     description: "Sync your calendar to let mai schedule meetings",
-    icon: Calendar,
+    icon: <GoogleCalendarLogo className="h-6 w-6" />,
     status: "not_connected" as const,
     showConnectButton: true,
   },
@@ -14,7 +14,7 @@ const integrations = [
     id: "gmail",
     title: "Gmail",
     description: "Allow mai to read and send emails on your behalf",
-    icon: Mail,
+    icon: <GmailLogo className="h-6 w-6" />,
     status: "not_connected" as const,
     showConnectButton: true,
   },
@@ -22,7 +22,7 @@ const integrations = [
     id: "monday",
     title: "Monday.com",
     description: "Sync tasks and projects with Monday.com",
-    icon: CheckSquare,
+    icon: <MondayLogo className="h-6 w-6" />,
     status: "not_connected" as const,
     showConnectButton: true,
   },
@@ -30,7 +30,7 @@ const integrations = [
     id: "whatsapp",
     title: "WhatsApp",
     description: "Your mai WhatsApp number for external communications",
-    icon: MessageCircle,
+    icon: <WhatsAppLogo className="h-6 w-6" />,
     status: "pending" as const,
     showConnectButton: false,
   },

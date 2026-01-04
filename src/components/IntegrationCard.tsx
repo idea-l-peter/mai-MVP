@@ -1,14 +1,14 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { LucideIcon } from "lucide-react";
+import { ReactNode } from "react";
 
 type IntegrationStatus = "connected" | "not_connected" | "pending";
 
 interface IntegrationCardProps {
   title: string;
   description: string;
-  icon: LucideIcon;
+  icon: ReactNode;
   status: IntegrationStatus;
   onConnect?: () => void;
   showConnectButton?: boolean;
@@ -17,7 +17,7 @@ interface IntegrationCardProps {
 export function IntegrationCard({
   title,
   description,
-  icon: Icon,
+  icon,
   status,
   onConnect,
   showConnectButton = true,
@@ -50,8 +50,8 @@ export function IntegrationCard({
       <CardHeader className="flex-1">
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-              <Icon className="h-5 w-5 text-primary" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+              {icon}
             </div>
             <div>
               <CardTitle className="text-lg">{title}</CardTitle>
