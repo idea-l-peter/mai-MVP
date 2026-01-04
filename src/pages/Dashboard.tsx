@@ -6,6 +6,7 @@ import { DashboardSidebar } from "@/components/DashboardSidebar";
 import { MobileNav } from "@/components/MobileNav";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { IntegrationsContent } from "@/components/IntegrationsContent";
 
 const Dashboard = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -82,6 +83,13 @@ const Dashboard = () => {
               <p className="text-muted-foreground text-sm md:text-base">
                 Logged in as: {user.email}
               </p>
+            )}
+            
+            {/* Page-specific content */}
+            {location.pathname === "/integrations" && (
+              <div className="mt-6">
+                <IntegrationsContent />
+              </div>
             )}
           </main>
         </SidebarInset>
