@@ -32,7 +32,7 @@ const integrations = [
     id: "whatsapp",
     title: "WhatsApp",
     description: "Your mai WhatsApp number for external communications",
-    icon: <WhatsAppLogo className="h-6 w-6" />,
+    icon: <WhatsAppLogo className="h-7 w-7" />,
     status: "pending" as const,
     showConnectButton: false,
   },
