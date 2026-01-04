@@ -1,7 +1,8 @@
 import { IntegrationCard } from "./IntegrationCard";
-import { MondayLogo, WhatsAppLogo } from "./icons";
+import { WhatsAppLogo } from "./icons";
 import googleCalendarIcon from "@/assets/google-calendar-icon.svg";
 import gmailLogo from "@/assets/gmail-logo.png";
+import mondayLogo from "@/assets/monday-logo.svg";
 
 const integrations = [
   {
@@ -24,7 +25,7 @@ const integrations = [
     id: "monday",
     title: "Monday.com",
     description: "Sync tasks and projects with Monday.com",
-    icon: <MondayLogo className="h-6 w-6" />,
+    icon: <img src={mondayLogo} alt="Monday.com" className="h-6 w-auto" />,
     status: "not_connected" as const,
     showConnectButton: true,
   },
