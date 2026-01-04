@@ -23,8 +23,8 @@ const integrations = [
   },
   {
     id: "monday",
-    title: "Monday.com",
-    description: "Sync tasks and projects with Monday.com",
+    title: "monday.com",
+    description: "Sync tasks and projects with monday.com",
     icon: <img src={mondayLogo} alt="Monday.com" className="h-auto w-6" />,
     status: "not_connected" as const,
     showConnectButton: true,
