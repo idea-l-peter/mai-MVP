@@ -1,14 +1,18 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 import { DashboardSidebar } from "@/components/DashboardSidebar";
+import { MobileNav } from "@/components/MobileNav";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const Dashboard = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const location = useLocation();
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -42,18 +46,43 @@ const Dashboard = () => {
     return null;
   }
 
+  // Get page title based on route
+  const getPageTitle = () => {
+    switch (location.pathname) {
+      case "/dashboard":
+        return "Welcome to mai";
+      case "/conversations":
+        return "Conversations";
+      case "/contacts":
+        return "Contacts";
+      case "/integrations":
+        return "Integrations";
+      case "/settings":
+        return "Settings";
+      default:
+        return "Welcome to mai";
+    }
+  };
+
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full">
-        <DashboardSidebar />
-        <SidebarInset className="bg-background">
-          <main className="flex-1 p-8">
-            <h1 className="text-3xl font-bold text-foreground mb-2">
-              Welcome to mai
+        {/* Desktop Sidebar */}
+        {!isMobile && <DashboardSidebar />}
+        
+        <SidebarInset className="bg-background flex-1">
+          {/* Mobile Header */}
+          {isMobile && <MobileNav />}
+          
+          <main className="flex-1 p-4 md:p-8">
+            <h1 className="text-2xl md:text-3xl font-bold text-foreground mb-2">
+              {getPageTitle()}
             </h1>
-            <p className="text-muted-foreground">
-              Logged in as: {user.email}
-            </p>
+            {location.pathname === "/dashboard" && (
+              <p className="text-muted-foreground text-sm md:text-base">
+                Logged in as: {user.email}
+              </p>
+            )}
           </main>
         </SidebarInset>
       </div>
