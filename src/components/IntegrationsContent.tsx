@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { IntegrationCard } from "./IntegrationCard";
 import { WhatsAppLogo } from "./icons";
 import { useGoogleIntegration } from "@/hooks/useGoogleIntegration";
+import { useToast } from "@/hooks/use-toast";
 import googleCalendarIcon from "@/assets/google-calendar-icon.svg";
 import gmailLogo from "@/assets/gmail-logo.png";
 import mondayLogo from "@/assets/monday-logo.svg";
@@ -78,12 +79,12 @@ export function IntegrationsContent() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [integrationStates, setIntegrationStates] = useState<Record<string, IntegrationState>>({});
   const [isLoading, setIsLoading] = useState(true);
+  const { toast } = useToast();
 
   const {
     isConnecting,
     isDisconnecting,
     initiateOAuth,
-    handleOAuthCallback,
     disconnect,
     checkConnection,
   } = useGoogleIntegration();
@@ -113,29 +114,33 @@ export function IntegrationsContent() {
     setIsLoading(false);
   }, [checkConnection]);
 
-  // Handle OAuth callback on mount
+  // Handle OAuth callback result on mount
   useEffect(() => {
-    const code = searchParams.get("code");
-    const state = searchParams.get("state");
-    const storedProvider = sessionStorage.getItem("oauth_provider");
+    const connected = searchParams.get("connected");
+    const email = searchParams.get("email");
+    const error = searchParams.get("error");
 
-    if (code && (state || storedProvider)) {
-      const provider = state || storedProvider;
-      sessionStorage.removeItem("oauth_provider");
-
-      // Clear URL params
-      setSearchParams({});
-
-      // Process the callback
-      handleOAuthCallback(code, provider!).then((success) => {
-        if (success) {
-          refreshIntegrations();
-        }
+    if (connected) {
+      // Server-side OAuth was successful
+      toast({
+        title: "Connected!",
+        description: `Successfully connected to ${connected}${email ? ` as ${email}` : ""}`,
       });
+      setSearchParams({});
+      refreshIntegrations();
+    } else if (error) {
+      // OAuth failed
+      toast({
+        title: "Connection failed",
+        description: error,
+        variant: "destructive",
+      });
+      setSearchParams({});
+      refreshIntegrations();
     } else {
       refreshIntegrations();
     }
-  }, [searchParams, setSearchParams, handleOAuthCallback, refreshIntegrations]);
+  }, [searchParams, setSearchParams, refreshIntegrations, toast]);
 
   const handleConnect = (integrationId: string) => {
     const config = INTEGRATION_CONFIGS.find((c) => c.id === integrationId);

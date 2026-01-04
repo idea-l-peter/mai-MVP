@@ -13,7 +13,6 @@ interface UseGoogleIntegrationReturn {
   isConnecting: boolean;
   isDisconnecting: boolean;
   initiateOAuth: (provider: string, scopes: string[]) => void;
-  handleOAuthCallback: (code: string, provider: string) => Promise<boolean>;
   disconnect: (provider: string) => Promise<boolean>;
   getValidToken: (provider: string) => Promise<string | null>;
   checkConnection: (provider: string) => Promise<Integration | null>;
@@ -25,38 +24,10 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
   const { toast } = useToast();
 
   const initiateOAuth = useCallback(async (provider: string, scopes: string[]) => {
-    const redirectUri = `${window.location.origin}/dashboard/integrations`;
-    
-    // Store provider in sessionStorage for callback handling
-    sessionStorage.setItem('oauth_provider', provider);
-    
-    try {
-      // Call edge function to get OAuth URL (keeps client ID server-side)
-      const { data, error } = await supabase.functions.invoke('google-oauth', {
-        body: {
-          redirect_uri: redirectUri,
-          scopes,
-          state: provider,
-        },
-      });
-
-      if (error) throw error;
-      if (data.error) throw new Error(data.error);
-
-      // Redirect to Google OAuth
-      window.location.href = data.oauth_url;
-    } catch (error) {
-      console.error('Failed to initiate OAuth:', error);
-      toast({
-        title: 'OAuth Error',
-        description: error instanceof Error ? error.message : 'Failed to start OAuth flow',
-        variant: 'destructive',
-      });
-    }
-  }, [toast]);
-
-  const handleOAuthCallback = useCallback(async (code: string, provider: string): Promise<boolean> => {
     setIsConnecting(true);
+    
+    // This is where the user will be redirected back after the server-side OAuth completes
+    const appRedirectUri = `${window.location.origin}/dashboard/integrations`;
     
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -64,36 +35,28 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
         throw new Error('User not authenticated');
       }
 
-      const redirectUri = `${window.location.origin}/dashboard/integrations`;
-      
-      const { data, error } = await supabase.functions.invoke('google-oauth-callback', {
+      // Call edge function to get OAuth URL
+      const { data, error } = await supabase.functions.invoke('google-oauth', {
         body: {
-          code,
-          redirect_uri: redirectUri,
+          scopes,
           user_id: user.id,
-          provider,
+          app_redirect_uri: appRedirectUri,
         },
       });
 
       if (error) throw error;
       if (data.error) throw new Error(data.error);
 
-      toast({
-        title: 'Connected!',
-        description: `Successfully connected to ${provider} as ${data.provider_email}`,
-      });
-
-      return true;
+      // Redirect to Google OAuth - the callback will happen at the edge function
+      window.location.href = data.oauth_url;
     } catch (error) {
-      console.error('OAuth callback error:', error);
+      console.error('Failed to initiate OAuth:', error);
+      setIsConnecting(false);
       toast({
-        title: 'Connection failed',
-        description: error instanceof Error ? error.message : 'Failed to connect',
+        title: 'OAuth Error',
+        description: error instanceof Error ? error.message : 'Failed to start OAuth flow',
         variant: 'destructive',
       });
-      return false;
-    } finally {
-      setIsConnecting(false);
     }
   }, [toast]);
 
@@ -195,7 +158,6 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
     isConnecting,
     isDisconnecting,
     initiateOAuth,
-    handleOAuthCallback,
     disconnect,
     getValidToken,
     checkConnection,
