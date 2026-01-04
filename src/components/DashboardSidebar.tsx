@@ -54,7 +54,9 @@ export function DashboardSidebar() {
     <Sidebar className="w-60 border-r-0">
       <SidebarHeader className="p-6">
         <button onClick={() => navigate("/dashboard")} className="focus:outline-none">
-          <img src={maiLogo} alt="mai" className="h-8 w-auto" />
+          <div className="h-10 w-10 rounded-full bg-white p-1 flex items-center justify-center">
+            <img src={maiLogo} alt="mai" className="h-full w-full object-contain" />
+          </div>
         </button>
       </SidebarHeader>
 
