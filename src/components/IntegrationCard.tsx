@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Loader2 } from "lucide-react";
 import { ReactNode } from "react";
 
 type IntegrationStatus = "connected" | "not_connected" | "pending";
@@ -11,7 +12,10 @@ interface IntegrationCardProps {
   icon: ReactNode;
   status: IntegrationStatus;
   onConnect?: () => void;
+  onDisconnect?: () => void;
   showConnectButton?: boolean;
+  connectedEmail?: string;
+  isLoading?: boolean;
 }
 
 export function IntegrationCard({
@@ -20,7 +24,10 @@ export function IntegrationCard({
   icon,
   status,
   onConnect,
+  onDisconnect,
   showConnectButton = true,
+  connectedEmail,
+  isLoading = false,
 }: IntegrationCardProps) {
   const getStatusBadge = () => {
     switch (status) {
@@ -55,6 +62,9 @@ export function IntegrationCard({
             </div>
             <div>
               <CardTitle className="text-lg">{title}</CardTitle>
+              {connectedEmail && status === "connected" && (
+                <p className="text-sm text-muted-foreground">{connectedEmail}</p>
+              )}
             </div>
           </div>
           {getStatusBadge()}
@@ -63,13 +73,32 @@ export function IntegrationCard({
       </CardHeader>
       <CardContent className="pt-0">
         {showConnectButton && status === "not_connected" && (
-          <Button onClick={onConnect} className="w-full">
-            Connect {title}
+          <Button onClick={onConnect} className="w-full" disabled={isLoading}>
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Connecting...
+              </>
+            ) : (
+              `Connect ${title}`
+            )}
           </Button>
         )}
         {showConnectButton && status === "connected" && (
-          <Button variant="outline" className="w-full">
-            Manage Connection
+          <Button 
+            variant="outline" 
+            className="w-full" 
+            onClick={onDisconnect}
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Disconnecting...
+              </>
+            ) : (
+              "Disconnect"
+            )}
           </Button>
         )}
       </CardContent>
