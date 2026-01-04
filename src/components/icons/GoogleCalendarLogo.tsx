@@ -1,13 +1,40 @@
 export function GoogleCalendarLogo({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
-      <path fill="#fff" d="M152.637 200H47.363C21.21 200 0 178.79 0 152.637V47.363C0 21.21 21.21 0 47.363 0h105.274C178.79 0 200 21.21 200 47.363v105.274C200 178.79 178.79 200 152.637 200z"/>
-      <path fill="#1a73e8" d="M152.637 0H121.25L95.179 26.071l26.071 26.071h31.387A21.257 21.257 0 0 1 173.893 73.4v31.386L200 130.857V47.363C200 21.21 178.79 0 152.637 0z"/>
-      <path fill="#ea4335" d="M200 130.857l-26.107-26.071-26.036 26.071V104.79l-26.071-26.071h-26.107L47.363 126.607v26.036c0 11.749 9.508 21.256 21.256 21.256h26.107l26.071 26.071 26.107-26.071h5.733c11.749 0 21.256-9.508 21.256-21.256v-21.786z"/>
-      <path fill="#fbbc04" d="M47.363 0C21.21 0 0 21.21 0 47.363v78.893l26.107 26.071 26.036-26.071v-26.107H26.107V73.4A21.257 21.257 0 0 1 47.363 52.143h26.071V26.071L47.363 0z"/>
-      <path fill="#34a853" d="M26.107 152.637v.036c0 11.749 9.508 21.256 21.256 21.256h.036l26.036-26.071-26.036-26.036-21.292 30.815z"/>
-      <path fill="#4285f4" d="M147.857 52.143H73.434v95.464h74.423V52.143z"/>
-      <path fill="#fff" d="M121.786 104.79H95.179v5.214h21.393c-.893 10.643-9.786 15.179-19.286 15.179-11.357 0-21.107-8.929-21.107-21.107 0-12 9.321-21.286 21.143-21.286 9.107 0 14.464 5.821 14.464 5.821l4.643-4.821s-7.393-7.536-19.393-7.536c-16.179 0-28.393 13.607-28.393 27.679 0 13.893 11.357 27.857 28.821 27.857 15.107 0 25.714-10.286 25.714-25.5 0-3.214-.714-5.5-.714-5.5h-1.678z"/>
+      {/* Background */}
+      <rect x="24" y="24" width="152" height="152" rx="8" fill="#fff"/>
+      
+      {/* Calendar frame */}
+      <path d="M176 40H24c-8.8 0-16 7.2-16 16v120c0 8.8 7.2 16 16 16h152c8.8 0 16-7.2 16-16V56c0-8.8-7.2-16-16-16z" fill="#fff" stroke="#4285F4" strokeWidth="0"/>
+      
+      {/* Top bar with hooks */}
+      <rect x="24" y="24" width="152" height="36" rx="4" fill="#4285F4"/>
+      
+      {/* Calendar hooks */}
+      <rect x="56" y="16" width="12" height="24" rx="4" fill="#1A73E8"/>
+      <rect x="132" y="16" width="12" height="24" rx="4" fill="#1A73E8"/>
+      
+      {/* Grid background */}
+      <rect x="24" y="60" width="152" height="116" fill="#fff"/>
+      
+      {/* Bottom left corner - Blue */}
+      <rect x="24" y="136" width="40" height="40" fill="#4285F4"/>
+      
+      {/* Bottom right corner - Green */}
+      <rect x="136" y="136" width="40" height="40" fill="#34A853"/>
+      
+      {/* Top right corner - Yellow */}
+      <rect x="136" y="60" width="40" height="40" fill="#FBBC04"/>
+      
+      {/* Top left corner - Red */}
+      <rect x="24" y="60" width="40" height="40" fill="#EA4335"/>
+      
+      {/* Center area - white */}
+      <rect x="64" y="60" width="72" height="116" fill="#fff"/>
+      <rect x="24" y="100" width="152" height="36" fill="#fff"/>
+      
+      {/* 31 text */}
+      <text x="100" y="145" textAnchor="middle" fontFamily="Google Sans, Roboto, Arial, sans-serif" fontSize="56" fontWeight="500" fill="#70757A">31</text>
     </svg>
   );
 }
