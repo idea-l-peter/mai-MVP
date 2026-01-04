@@ -5,6 +5,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -14,10 +16,14 @@ serve(async (req) => {
   try {
     console.log('Starting Google OAuth flow');
     
-    const { redirect_uri, scopes, state } = await req.json();
+    const { scopes, user_id, app_redirect_uri } = await req.json();
     
-    if (!redirect_uri) {
-      throw new Error('redirect_uri is required');
+    if (!user_id) {
+      throw new Error('user_id is required');
+    }
+
+    if (!app_redirect_uri) {
+      throw new Error('app_redirect_uri is required');
     }
 
     const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID');
@@ -27,23 +33,31 @@ serve(async (req) => {
       throw new Error('Google OAuth is not configured. Please set GOOGLE_CLIENT_ID secret.');
     }
 
+    // The redirect_uri for Google must be our callback edge function
+    const callbackUrl = `${SUPABASE_URL}/functions/v1/google-oauth-callback`;
+    
+    // Encode state with user_id, provider, and app redirect URI
+    const stateData = {
+      user_id,
+      provider: 'google',
+      app_redirect_uri,
+    };
+    const state = btoa(JSON.stringify(stateData));
+
     console.log('Building OAuth URL with client ID:', GOOGLE_CLIENT_ID.substring(0, 20) + '...');
-    console.log('Redirect URI:', redirect_uri);
+    console.log('Callback URL (redirect_uri):', callbackUrl);
+    console.log('App redirect URI:', app_redirect_uri);
     console.log('Scopes:', scopes);
-    console.log('State:', state);
 
     // Build Google OAuth URL
     const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
     authUrl.searchParams.set('client_id', GOOGLE_CLIENT_ID);
-    authUrl.searchParams.set('redirect_uri', redirect_uri);
+    authUrl.searchParams.set('redirect_uri', callbackUrl);
     authUrl.searchParams.set('response_type', 'code');
     authUrl.searchParams.set('scope', scopes?.join(' ') || 'openid email profile');
     authUrl.searchParams.set('access_type', 'offline');
     authUrl.searchParams.set('prompt', 'consent');
-    
-    if (state) {
-      authUrl.searchParams.set('state', state);
-    }
+    authUrl.searchParams.set('state', state);
 
     const oauthUrl = authUrl.toString();
     console.log('Generated OAuth URL successfully');
