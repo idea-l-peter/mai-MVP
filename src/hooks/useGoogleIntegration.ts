@@ -19,33 +19,41 @@ interface UseGoogleIntegrationReturn {
   checkConnection: (provider: string) => Promise<Integration | null>;
 }
 
-// Note: This needs to be replaced with your actual Google OAuth Client ID
-// Get this from Google Cloud Console > APIs & Services > Credentials
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
-
 export function useGoogleIntegration(): UseGoogleIntegrationReturn {
   const [isConnecting, setIsConnecting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const { toast } = useToast();
 
-  const initiateOAuth = useCallback((provider: string, scopes: string[]) => {
+  const initiateOAuth = useCallback(async (provider: string, scopes: string[]) => {
     const redirectUri = `${window.location.origin}/dashboard/integrations`;
-    const scopeString = scopes.join(' ');
     
     // Store provider in sessionStorage for callback handling
     sessionStorage.setItem('oauth_provider', provider);
     
-    const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
-    authUrl.searchParams.set('client_id', GOOGLE_CLIENT_ID);
-    authUrl.searchParams.set('redirect_uri', redirectUri);
-    authUrl.searchParams.set('response_type', 'code');
-    authUrl.searchParams.set('scope', scopeString);
-    authUrl.searchParams.set('access_type', 'offline');
-    authUrl.searchParams.set('prompt', 'consent');
-    authUrl.searchParams.set('state', provider);
-    
-    window.location.href = authUrl.toString();
-  }, []);
+    try {
+      // Call edge function to get OAuth URL (keeps client ID server-side)
+      const { data, error } = await supabase.functions.invoke('google-oauth', {
+        body: {
+          redirect_uri: redirectUri,
+          scopes,
+          state: provider,
+        },
+      });
+
+      if (error) throw error;
+      if (data.error) throw new Error(data.error);
+
+      // Redirect to Google OAuth
+      window.location.href = data.oauth_url;
+    } catch (error) {
+      console.error('Failed to initiate OAuth:', error);
+      toast({
+        title: 'OAuth Error',
+        description: error instanceof Error ? error.message : 'Failed to start OAuth flow',
+        variant: 'destructive',
+      });
+    }
+  }, [toast]);
 
   const handleOAuthCallback = useCallback(async (code: string, provider: string): Promise<boolean> => {
     setIsConnecting(true);
