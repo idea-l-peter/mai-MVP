@@ -14,13 +14,70 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      user_integrations: {
+        Row: {
+          access_token_secret_id: string | null
+          created_at: string
+          id: string
+          provider: string
+          provider_email: string | null
+          provider_user_id: string | null
+          refresh_token_secret_id: string | null
+          scopes: string[] | null
+          token_expires_at: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          access_token_secret_id?: string | null
+          created_at?: string
+          id?: string
+          provider: string
+          provider_email?: string | null
+          provider_user_id?: string | null
+          refresh_token_secret_id?: string | null
+          scopes?: string[] | null
+          token_expires_at?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          access_token_secret_id?: string | null
+          created_at?: string
+          id?: string
+          provider?: string
+          provider_email?: string | null
+          provider_user_id?: string | null
+          refresh_token_secret_id?: string | null
+          scopes?: string[] | null
+          token_expires_at?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      delete_integration_token: {
+        Args: { p_secret_id: string; p_user_id: string }
+        Returns: undefined
+      }
+      get_integration_token: {
+        Args: { p_secret_id: string; p_user_id: string }
+        Returns: string
+      }
+      store_integration_token: {
+        Args: {
+          p_provider: string
+          p_token_type: string
+          p_token_value: string
+          p_user_id: string
+        }
+        Returns: string
+      }
     }
     Enums: {
       [_ in never]: never
