@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      encrypted_integration_tokens: {
+        Row: {
+          created_at: string | null
+          encrypted_value: string
+          id: string
+          provider: string
+          token_type: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          encrypted_value: string
+          id?: string
+          provider: string
+          token_type: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          encrypted_value?: string
+          id?: string
+          provider?: string
+          token_type?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_integrations: {
         Row: {
           access_token_secret_id: string | null
