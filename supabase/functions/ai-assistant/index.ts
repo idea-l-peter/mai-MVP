@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { routeLLMRequest, TOOL_DEFINITIONS, type LLMMessage } from "../_shared/llm-router.ts";
-import { executeTool, type ToolCall, type ToolResult } from "../_shared/tools.ts";
+import { executeTool, type ToolResult } from "../_shared/tools.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -14,6 +14,25 @@ const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 // Maximum tool calls per request to prevent runaway costs
 const MAX_TOOL_CALLS = 5;
 
+function decodeJwtClaims(authHeader: string): { sub?: string; email?: string } | null {
+  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+
+  try {
+    const payload = parts[1]
+      .replace(/-/g, "+")
+      .replace(/_/g, "/")
+      .padEnd(Math.ceil(parts[1].length / 4) * 4, "=");
+
+    const json = atob(payload);
+    const data = JSON.parse(json);
+    return { sub: data.sub, email: data.email };
+  } catch {
+    return null;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -23,24 +42,48 @@ serve(async (req) => {
     // Get user from auth header
     const authHeader = req.headers.get("authorization");
     let userId: string | null = null;
+    let userEmail: string | null = null;
 
     console.log(`[AI Assistant] Auth header present: ${!!authHeader}`);
-
     if (authHeader) {
-      const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-        global: { headers: { authorization: authHeader } },
-      });
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-      
-      if (authError) {
-        console.error(`[AI Assistant] Auth error: ${authError.message}`);
-      }
-      
-      userId = user?.id || null;
-      console.log(`[AI Assistant] User ID: ${userId || "anonymous"}, email: ${user?.email || "none"}`);
-    } else {
-      console.log(`[AI Assistant] No auth header - user is anonymous`);
+      console.log(`[AI Assistant] Auth header starts with: ${authHeader.slice(0, 20)}...`);
     }
+
+    // Prefer Supabase auth verification when available
+    if (authHeader) {
+      try {
+        const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+          global: { headers: { authorization: authHeader } },
+        });
+        const {
+          data: { user },
+          error: authError,
+        } = await supabase.auth.getUser();
+
+        if (authError) {
+          console.error(`[AI Assistant] Auth error: ${authError.message}`);
+        } else {
+          userId = user?.id || null;
+          userEmail = user?.email || null;
+        }
+      } catch (e) {
+        console.error(
+          `[AI Assistant] Auth getUser threw: ${e instanceof Error ? e.message : String(e)}`
+        );
+      }
+
+      // Fallback: decode JWT payload (ai-assistant verify_jwt=true will validate the token)
+      if (!userId) {
+        const decoded = decodeJwtClaims(authHeader);
+        if (decoded?.sub) {
+          userId = decoded.sub;
+          userEmail = decoded.email || null;
+          console.log(`[AI Assistant] Decoded JWT fallback: sub=${userId}, email=${userEmail || "none"}`);
+        }
+      }
+    }
+
+    console.log(`[AI Assistant] User ID: ${userId || "anonymous"}, email: ${userEmail || "none"}`);
 
     const body = await req.json();
     const { messages: inputMessages, temperature, max_tokens, stream, provider } = body;

@@ -97,6 +97,9 @@ export function ConversationsContent() {
     }
 
     try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+
       const { data, error } = await supabase.functions.invoke("ai-assistant", {
         body: {
           messages: [
@@ -108,6 +111,7 @@ export function ConversationsContent() {
           max_tokens: 1024,
           stream: false,
         },
+        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
       });
 
       if (error) throw error;
