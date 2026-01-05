@@ -7,6 +7,7 @@ import { MobileNav } from "@/components/MobileNav";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { IntegrationsContent } from "@/components/IntegrationsContent";
+import { TestGoogleContent } from "@/components/TestGoogleContent";
 
 const Dashboard = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -60,6 +61,8 @@ const Dashboard = () => {
         return "Integrations";
       case "/settings":
         return "Settings";
+      case "/test-google":
+        return "Google API Test";
       default:
         return "Welcome to mai";
     }
@@ -89,6 +92,12 @@ const Dashboard = () => {
             {location.pathname === "/integrations" && (
               <div className="mt-6">
                 <IntegrationsContent />
+              </div>
+            )}
+            
+            {location.pathname === "/test-google" && (
+              <div className="mt-6">
+                <TestGoogleContent />
               </div>
             )}
           </main>

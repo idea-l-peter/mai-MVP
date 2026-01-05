@@ -6,8 +6,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Calendar, Mail, ArrowLeft } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Loader2, Calendar, Mail } from 'lucide-react';
 
 interface CalendarEvent {
   id: string;
@@ -26,7 +25,7 @@ interface GmailMessage {
   date: string;
 }
 
-export default function TestGoogle() {
+export function TestGoogleContent() {
   const { toast } = useToast();
   
   // Calendar state
@@ -64,7 +63,6 @@ export default function TestGoogle() {
     console.log('>>> getValidToken ENTERED for provider:', provider);
     
     try {
-      // Use getSession instead of getUser - more reliable and doesn't require network call
       console.log('>>> getValidToken: About to call supabase.auth.getSession()...');
       const sessionResult = await withTimeout(
         supabase.auth.getSession(),
@@ -154,7 +152,6 @@ export default function TestGoogle() {
 
       const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`;
       console.log('Step 3: About to fetch Google Calendar API:', url);
-      console.log('Step 3b: Authorization header set');
 
       const response = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` }
@@ -228,7 +225,7 @@ export default function TestGoogle() {
       const createdEvent = await response.json();
       toast({ title: 'Event created!', description: createdEvent.summary });
       setEventForm({ title: '', dateTime: '', duration: '60', description: '' });
-      listCalendarEvents(); // Refresh the list
+      listCalendarEvents();
     } catch (error) {
       console.error('Create event error:', error);
       toast({ 
@@ -250,7 +247,6 @@ export default function TestGoogle() {
       const token = await getValidToken('gmail');
       if (!token) return;
 
-      // First get message IDs
       const listResponse = await fetch(
         'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=10',
         { headers: { Authorization: `Bearer ${token}` } }
@@ -264,7 +260,6 @@ export default function TestGoogle() {
       const listData = await listResponse.json();
       const messageIds = listData.messages || [];
 
-      // Fetch details for each message
       const emailDetails: GmailMessage[] = [];
       for (const msg of messageIds.slice(0, 10)) {
         const msgResponse = await fetch(
@@ -314,7 +309,6 @@ export default function TestGoogle() {
       const token = await getValidToken('gmail');
       if (!token) return;
 
-      // Create RFC 2822 formatted email
       const emailLines = [
         `To: ${emailForm.to}`,
         `Subject: ${emailForm.subject}`,
@@ -324,7 +318,6 @@ export default function TestGoogle() {
       ];
       const email = emailLines.join('\r\n');
       
-      // Base64url encode the email
       const encodedEmail = btoa(unescape(encodeURIComponent(email)))
         .replace(/\+/g, '-')
         .replace(/\//g, '_')
@@ -368,169 +361,157 @@ export default function TestGoogle() {
   };
 
   return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="max-w-6xl mx-auto space-y-6">
-        <div className="flex items-center gap-4">
-          <Link to="/integrations">
-            <Button variant="ghost" size="icon">
-              <ArrowLeft className="h-4 w-4" />
+    <div className="space-y-6">
+      <p className="text-muted-foreground">Test Calendar and Gmail API functionality</p>
+
+      <div className="grid md:grid-cols-2 gap-6">
+        {/* Calendar Section */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Calendar className="h-5 w-5" />
+              Google Calendar
+            </CardTitle>
+            <CardDescription>Test Calendar API v3 operations</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Button 
+              onClick={listCalendarEvents} 
+              disabled={loadingCalendar}
+              className="w-full"
+            >
+              {loadingCalendar && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              List Events (Next 7 Days)
             </Button>
-          </Link>
-          <div>
-            <h1 className="text-3xl font-bold">Google API Test</h1>
-            <p className="text-muted-foreground">Test Calendar and Gmail API functionality</p>
-          </div>
-        </div>
 
-        <div className="grid md:grid-cols-2 gap-6">
-          {/* Calendar Section */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Calendar className="h-5 w-5" />
-                Google Calendar
-              </CardTitle>
-              <CardDescription>Test Calendar API v3 operations</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Button 
-                onClick={listCalendarEvents} 
-                disabled={loadingCalendar}
-                className="w-full"
-              >
-                {loadingCalendar && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                List Events (Next 7 Days)
+            {calendarEvents.length > 0 && (
+              <div className="border rounded-lg divide-y max-h-60 overflow-y-auto">
+                {calendarEvents.map((event) => (
+                  <div key={event.id} className="p-3">
+                    <p className="font-medium">{event.summary}</p>
+                    <p className="text-sm text-muted-foreground">{formatDateTime(event)}</p>
+                    {event.description && (
+                      <p className="text-sm text-muted-foreground truncate">{event.description}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <form onSubmit={createCalendarEvent} className="space-y-3 pt-4 border-t">
+              <h4 className="font-medium">Create Event</h4>
+              <div>
+                <Label htmlFor="title">Title</Label>
+                <Input
+                  id="title"
+                  value={eventForm.title}
+                  onChange={(e) => setEventForm(f => ({ ...f, title: e.target.value }))}
+                  placeholder="Event title"
+                />
+              </div>
+              <div>
+                <Label htmlFor="dateTime">Date & Time</Label>
+                <Input
+                  id="dateTime"
+                  type="datetime-local"
+                  value={eventForm.dateTime}
+                  onChange={(e) => setEventForm(f => ({ ...f, dateTime: e.target.value }))}
+                />
+              </div>
+              <div>
+                <Label htmlFor="duration">Duration (minutes)</Label>
+                <Input
+                  id="duration"
+                  type="number"
+                  value={eventForm.duration}
+                  onChange={(e) => setEventForm(f => ({ ...f, duration: e.target.value }))}
+                />
+              </div>
+              <div>
+                <Label htmlFor="description">Description</Label>
+                <Textarea
+                  id="description"
+                  value={eventForm.description}
+                  onChange={(e) => setEventForm(f => ({ ...f, description: e.target.value }))}
+                  placeholder="Optional description"
+                />
+              </div>
+              <Button type="submit" disabled={creatingEvent} className="w-full">
+                {creatingEvent && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Create Event
               </Button>
+            </form>
+          </CardContent>
+        </Card>
 
-              {calendarEvents.length > 0 && (
-                <div className="border rounded-lg divide-y max-h-60 overflow-y-auto">
-                  {calendarEvents.map((event) => (
-                    <div key={event.id} className="p-3">
-                      <p className="font-medium">{event.summary}</p>
-                      <p className="text-sm text-muted-foreground">{formatDateTime(event)}</p>
-                      {event.description && (
-                        <p className="text-sm text-muted-foreground truncate">{event.description}</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
+        {/* Gmail Section */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Mail className="h-5 w-5" />
+              Gmail
+            </CardTitle>
+            <CardDescription>Test Gmail API v1 operations</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Button 
+              onClick={listEmails} 
+              disabled={loadingEmails}
+              className="w-full"
+            >
+              {loadingEmails && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              List Recent Emails (10)
+            </Button>
 
-              <form onSubmit={createCalendarEvent} className="space-y-3 pt-4 border-t">
-                <h4 className="font-medium">Create Event</h4>
-                <div>
-                  <Label htmlFor="title">Title</Label>
-                  <Input
-                    id="title"
-                    value={eventForm.title}
-                    onChange={(e) => setEventForm(f => ({ ...f, title: e.target.value }))}
-                    placeholder="Event title"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="dateTime">Date & Time</Label>
-                  <Input
-                    id="dateTime"
-                    type="datetime-local"
-                    value={eventForm.dateTime}
-                    onChange={(e) => setEventForm(f => ({ ...f, dateTime: e.target.value }))}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="duration">Duration (minutes)</Label>
-                  <Input
-                    id="duration"
-                    type="number"
-                    value={eventForm.duration}
-                    onChange={(e) => setEventForm(f => ({ ...f, duration: e.target.value }))}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea
-                    id="description"
-                    value={eventForm.description}
-                    onChange={(e) => setEventForm(f => ({ ...f, description: e.target.value }))}
-                    placeholder="Optional description"
-                  />
-                </div>
-                <Button type="submit" disabled={creatingEvent} className="w-full">
-                  {creatingEvent && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Create Event
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
+            {emails.length > 0 && (
+              <div className="border rounded-lg divide-y max-h-60 overflow-y-auto">
+                {emails.map((email) => (
+                  <div key={email.id} className="p-3">
+                    <p className="font-medium truncate">{email.subject}</p>
+                    <p className="text-sm text-muted-foreground truncate">{email.from}</p>
+                    <p className="text-sm text-muted-foreground truncate">{email.snippet}</p>
+                  </div>
+                ))}
+              </div>
+            )}
 
-          {/* Gmail Section */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Mail className="h-5 w-5" />
-                Gmail
-              </CardTitle>
-              <CardDescription>Test Gmail API v1 operations</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Button 
-                onClick={listEmails} 
-                disabled={loadingEmails}
-                className="w-full"
-              >
-                {loadingEmails && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                List Recent Emails (10)
+            <form onSubmit={sendEmail} className="space-y-3 pt-4 border-t">
+              <h4 className="font-medium">Send Test Email</h4>
+              <div>
+                <Label htmlFor="to">To</Label>
+                <Input
+                  id="to"
+                  type="email"
+                  value={emailForm.to}
+                  onChange={(e) => setEmailForm(f => ({ ...f, to: e.target.value }))}
+                  placeholder="recipient@example.com"
+                />
+              </div>
+              <div>
+                <Label htmlFor="subject">Subject</Label>
+                <Input
+                  id="subject"
+                  value={emailForm.subject}
+                  onChange={(e) => setEmailForm(f => ({ ...f, subject: e.target.value }))}
+                  placeholder="Email subject"
+                />
+              </div>
+              <div>
+                <Label htmlFor="body">Body</Label>
+                <Textarea
+                  id="body"
+                  value={emailForm.body}
+                  onChange={(e) => setEmailForm(f => ({ ...f, body: e.target.value }))}
+                  placeholder="Email body"
+                />
+              </div>
+              <Button type="submit" disabled={sendingEmail} className="w-full">
+                {sendingEmail && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Send Email
               </Button>
-
-              {emails.length > 0 && (
-                <div className="border rounded-lg divide-y max-h-60 overflow-y-auto">
-                  {emails.map((email) => (
-                    <div key={email.id} className="p-3">
-                      <p className="font-medium truncate">{email.subject}</p>
-                      <p className="text-sm text-muted-foreground truncate">{email.from}</p>
-                      <p className="text-sm text-muted-foreground truncate">{email.snippet}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <form onSubmit={sendEmail} className="space-y-3 pt-4 border-t">
-                <h4 className="font-medium">Send Test Email</h4>
-                <div>
-                  <Label htmlFor="to">To</Label>
-                  <Input
-                    id="to"
-                    type="email"
-                    value={emailForm.to}
-                    onChange={(e) => setEmailForm(f => ({ ...f, to: e.target.value }))}
-                    placeholder="recipient@example.com"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="subject">Subject</Label>
-                  <Input
-                    id="subject"
-                    value={emailForm.subject}
-                    onChange={(e) => setEmailForm(f => ({ ...f, subject: e.target.value }))}
-                    placeholder="Email subject"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="body">Body</Label>
-                  <Textarea
-                    id="body"
-                    value={emailForm.body}
-                    onChange={(e) => setEmailForm(f => ({ ...f, body: e.target.value }))}
-                    placeholder="Email body"
-                  />
-                </div>
-                <Button type="submit" disabled={sendingEmail} className="w-full">
-                  {sendingEmail && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Send Email
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-        </div>
+            </form>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
