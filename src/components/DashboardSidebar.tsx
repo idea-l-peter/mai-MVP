@@ -10,6 +10,7 @@ import {
   LogOut,
   Zap,
   Calendar,
+  List,
   ChevronDown,
   ChevronRight,
   Wrench,
@@ -29,8 +30,6 @@ import {
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
 import maiLogoWhite from "@/assets/mai-logo-white.png";
-import googleCalendarIcon from "@/assets/google-calendar-icon.svg";
-import mondayLogo from "@/assets/monday-logo.svg";
 
 const navItems = [
   { title: "Dashboard", icon: LayoutDashboard, url: "/dashboard" },
@@ -40,26 +39,10 @@ const navItems = [
   { title: "Settings", icon: Settings, url: "/settings" },
 ];
 
-const GoogleIcon = ({ className }: { className?: string }) => (
-  <img
-    src={googleCalendarIcon}
-    alt="Google Calendar"
-    className={`${className} h-5 w-5 object-contain origin-center scale-[1.3]`}
-  />
-);
-
-const MondayIcon = ({ className }: { className?: string }) => (
-  <img
-    src={mondayLogo}
-    alt="monday.com"
-    className={`${className} h-5 w-5 object-contain origin-center scale-[1.55]`}
-  />
-);
-
 const devItems = [
   { title: "Test Chat", icon: Zap, url: "/test-chat" },
-  { title: "Test Google", icon: GoogleIcon, url: "/test-google" },
-  { title: "Test monday.com", icon: MondayIcon, url: "/test-monday" },
+  { title: "Test Google", icon: Calendar, url: "/test-google" },
+  { title: "Test monday.com", icon: List, url: "/test-monday" },
 ];
 
 export function DashboardSidebar() {
