@@ -181,8 +181,8 @@ export function ConversationsContent() {
 
 
   return (
-    <div className="flex flex-col h-[calc(100dvh-14rem)] md:h-[calc(100dvh-16rem)]">
-      <div className="flex-1 overflow-y-auto py-4 flex flex-col">
+    <div className="flex flex-col h-[calc(100dvh-12rem)] md:h-[calc(100dvh-14rem)] -mx-4 md:mx-0">
+      <div className="flex-1 overflow-y-auto py-4 flex flex-col px-4 md:px-0">
         <div className="max-w-3xl w-full mx-auto flex flex-col flex-1">
           <div className="flex-1 min-h-0" />
           
@@ -202,15 +202,15 @@ export function ConversationsContent() {
               {messages.map((msg) => (
                 <div
                   key={msg.id}
-                  className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                  className={`flex gap-2 md:gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                 >
                   {msg.role === "assistant" && (
-                    <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center">
-                      <img src={maiLogo} alt="mai" className="h-8 w-auto" />
+                    <div className="flex-shrink-0 w-7 h-7 md:w-8 md:h-8 flex items-center justify-center">
+                      <img src={maiLogo} alt="mai" className="h-7 md:h-8 w-auto" />
                     </div>
                   )}
                   <div
-                    className={`max-w-[80%] rounded-2xl px-4 py-2.5 ${
+                    className={`max-w-[85%] md:max-w-[80%] rounded-2xl px-3 py-2 md:px-4 md:py-2.5 ${
                       msg.role === "user"
                         ? "bg-primary text-primary-foreground rounded-br-md"
                         : "bg-muted rounded-bl-md"
@@ -230,11 +230,11 @@ export function ConversationsContent() {
           )}
 
           {isLoading && (
-            <div className="flex gap-3 justify-start mt-4">
-              <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center">
-                <img src={maiLogo} alt="mai" className="h-8 w-auto" />
+            <div className="flex gap-2 md:gap-3 justify-start mt-4">
+              <div className="flex-shrink-0 w-7 h-7 md:w-8 md:h-8 flex items-center justify-center">
+                <img src={maiLogo} alt="mai" className="h-7 md:h-8 w-auto" />
               </div>
-              <div className="bg-muted rounded-2xl rounded-bl-md px-4 py-3">
+              <div className="bg-muted rounded-2xl rounded-bl-md px-3 py-2.5 md:px-4 md:py-3">
                 <div className="flex gap-1">
                   <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce [animation-delay:-0.3s]" />
                   <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce [animation-delay:-0.15s]" />
@@ -248,7 +248,7 @@ export function ConversationsContent() {
         </div>
       </div>
 
-      <div className="flex-shrink-0 border-t bg-background pt-4">
+      <div className="flex-shrink-0 border-t bg-background pt-3 pb-2 px-4 md:px-0 md:pt-4 md:pb-0">
         <div className="max-w-3xl w-full mx-auto">
           <div className="flex gap-2 items-end">
             <Textarea
@@ -256,7 +256,7 @@ export function ConversationsContent() {
               value={input}
               onChange={handleTextareaChange}
               placeholder="Message mai..."
-              className="min-h-[44px] max-h-[120px] resize-none rounded-2xl py-3"
+              className="min-h-[44px] max-h-[120px] resize-none rounded-2xl py-3 flex-1"
               rows={1}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
