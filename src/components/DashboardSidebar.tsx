@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -9,6 +10,9 @@ import {
   LogOut,
   Zap,
   Calendar,
+  ChevronDown,
+  ChevronRight,
+  Wrench,
 } from "lucide-react";
 import {
   Sidebar,
@@ -22,8 +26,10 @@ import {
   SidebarFooter,
   SidebarHeader,
 } from "@/components/ui/sidebar";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
 import maiLogoWhite from "@/assets/mai-logo-white.png";
+import { MondayLogo } from "@/components/icons/MondayLogo";
 
 const navItems = [
   { title: "Dashboard", icon: LayoutDashboard, url: "/dashboard" },
@@ -36,12 +42,14 @@ const navItems = [
 const devItems = [
   { title: "Test Chat", icon: Zap, url: "/test-chat" },
   { title: "Test Google", icon: Calendar, url: "/test-google" },
+  { title: "Test Monday", icon: MondayLogo, url: "/test-monday" },
 ];
 
 export function DashboardSidebar() {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
+  const [devToolsOpen, setDevToolsOpen] = useState(false);
 
   const handleLogout = async () => {
     const { error } = await supabase.auth.signOut();
@@ -57,6 +65,7 @@ export function DashboardSidebar() {
   };
 
   const isActive = (url: string) => location.pathname === url;
+  const isDevToolActive = devItems.some(item => isActive(item.url));
 
   return (
     <Sidebar className="w-60 border-r-0">
@@ -86,26 +95,41 @@ export function DashboardSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
+        {/* Collapsible Developer Tools Section */}
         <SidebarGroup className="mt-auto">
-          <SidebarGroupLabel className="px-4 text-xs font-medium text-sidebar-foreground/60">
-            Developer Tools
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {devItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton
-                    onClick={() => navigate(item.url)}
-                    isActive={isActive(item.url)}
-                    className="w-full justify-start gap-3 px-4 py-3 text-sidebar-foreground hover:bg-sidebar-accent data-[active=true]:bg-sidebar-accent"
-                  >
-                    <item.icon className="h-5 w-5" />
-                    <span>{item.title}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
+          <Collapsible open={devToolsOpen || isDevToolActive} onOpenChange={setDevToolsOpen}>
+            <CollapsibleTrigger className="w-full">
+              <SidebarGroupLabel className="px-4 py-2 text-xs font-medium text-sidebar-foreground/60 hover:bg-sidebar-accent rounded-md cursor-pointer flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <Wrench className="h-4 w-4" />
+                  Developer Tools
+                </span>
+                {devToolsOpen || isDevToolActive ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+              </SidebarGroupLabel>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {devItems.map((item) => (
+                    <SidebarMenuItem key={item.title}>
+                      <SidebarMenuButton
+                        onClick={() => navigate(item.url)}
+                        isActive={isActive(item.url)}
+                        className="w-full justify-start gap-3 px-4 py-3 text-sidebar-foreground hover:bg-sidebar-accent data-[active=true]:bg-sidebar-accent"
+                      >
+                        <item.icon className="h-5 w-5" />
+                        <span>{item.title}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </CollapsibleContent>
+          </Collapsible>
         </SidebarGroup>
       </SidebarContent>
 

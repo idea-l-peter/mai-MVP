@@ -9,6 +9,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { IntegrationsContent } from "@/components/IntegrationsContent";
 import { TestGoogleContent } from "@/components/TestGoogleContent";
 import { TestChatContent } from "@/components/TestChatContent";
+import { TestMondayContent } from "@/components/TestMondayContent";
 
 const Dashboard = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -66,6 +67,8 @@ const Dashboard = () => {
         return "Google API Test";
       case "/test-chat":
         return "LLM Router Test";
+      case "/test-monday":
+        return "Monday.com API Test";
       default:
         return "Welcome to mai";
     }
@@ -107,6 +110,12 @@ const Dashboard = () => {
             {location.pathname === "/test-chat" && (
               <div className="mt-6">
                 <TestChatContent />
+              </div>
+            )}
+            
+            {location.pathname === "/test-monday" && (
+              <div className="mt-6">
+                <TestMondayContent />
               </div>
             )}
           </main>
