@@ -41,9 +41,6 @@ const navItems = [
   { title: "Settings", icon: Settings, url: "/settings" },
 ];
 
-const adminItems = [
-  { title: "Admin", icon: Shield, url: "/admin" },
-];
 
 const devItems = [
   { title: "Test Chat", icon: Zap, url: "/test-chat" },
@@ -89,19 +86,10 @@ export function DashboardSidebar() {
               {navItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
-                    onClick={() => navigate(item.url)}
-                    isActive={isActive(item.url)}
-                    className="w-full justify-start gap-3 px-4 py-3 text-sidebar-foreground hover:bg-sidebar-accent data-[active=true]:bg-sidebar-accent"
-                  >
-                    <item.icon className="h-5 w-5" />
-                    <span>{item.title}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-              {isAdmin && adminItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton
-                    onClick={() => navigate(item.url)}
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      navigate(item.url);
+                    }}
                     isActive={isActive(item.url)}
                     className="w-full justify-start gap-3 px-4 py-3 text-sidebar-foreground hover:bg-sidebar-accent data-[active=true]:bg-sidebar-accent"
                   >
@@ -154,9 +142,27 @@ export function DashboardSidebar() {
 
       <SidebarFooter className="p-4">
         <SidebarMenu>
+          {isAdmin && (
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  navigate("/admin");
+                }}
+                isActive={isActive("/admin")}
+                className="w-full justify-start gap-3 px-4 py-3 text-sidebar-foreground hover:bg-sidebar-accent data-[active=true]:bg-sidebar-accent"
+              >
+                <Shield className="h-5 w-5" />
+                <span>Admin</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          )}
           <SidebarMenuItem>
             <SidebarMenuButton
-              onClick={handleLogout}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                handleLogout();
+              }}
               className="w-full justify-start gap-3 px-4 py-3 text-sidebar-foreground hover:bg-sidebar-accent"
             >
               <LogOut className="h-5 w-5" />
