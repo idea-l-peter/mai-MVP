@@ -29,7 +29,7 @@ import {
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
 import maiLogoWhite from "@/assets/mai-logo-white.png";
-import { GoogleCalendarLogo } from "@/components/icons/GoogleCalendarLogo";
+import googleCalendarIcon from "@/assets/google-calendar-icon.svg";
 import mondayLogo from "@/assets/monday-logo.svg";
 
 const navItems = [
@@ -40,13 +40,17 @@ const navItems = [
   { title: "Settings", icon: Settings, url: "/settings" },
 ];
 
+const GoogleIcon = ({ className }: { className?: string }) => (
+  <img src={googleCalendarIcon} alt="Google" className={className} />
+);
+
 const MondayIcon = ({ className }: { className?: string }) => (
   <img src={mondayLogo} alt="monday.com" className={className} />
 );
 
 const devItems = [
   { title: "Test Chat", icon: Zap, url: "/test-chat" },
-  { title: "Test Google", icon: GoogleCalendarLogo, url: "/test-google" },
+  { title: "Test Google", icon: GoogleIcon, url: "/test-google" },
   { title: "Test monday.com", icon: MondayIcon, url: "/test-monday" },
 ];
 
