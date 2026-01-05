@@ -73,15 +73,8 @@ export function IntegrationCard({
       </CardHeader>
       <CardContent className="pt-0">
         {showConnectButton && status === "not_connected" && (
-          <Button onClick={onConnect} className="w-full" disabled={isLoading}>
-            {isLoading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Connecting...
-              </>
-            ) : (
-              `Connect ${title}`
-            )}
+          <Button onClick={onConnect} className="w-full">
+            {`Connect ${title}`}
           </Button>
         )}
         {showConnectButton && status === "connected" && (
