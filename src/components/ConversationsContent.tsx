@@ -101,10 +101,12 @@ export function ConversationsContent() {
 
   return (
     <div className="flex flex-col h-[calc(100dvh-8rem)] md:h-[calc(100dvh-10rem)] max-w-3xl mx-auto w-full">
-      {/* Messages area */}
-      <div className="flex-1 overflow-y-auto px-2 py-4 space-y-4">
+      <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col">
+        {/* Spacer pushes messages to bottom when few messages */}
+        <div className="flex-1 min-h-0" />
+        
         {messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full text-center px-4">
+          <div className="flex flex-col items-center justify-center py-12 text-center">
             <div className="w-16 h-16 rounded-full bg-primary shadow-lg flex items-center justify-center mb-4">
               <img src={maiLogoWhite} alt="mai" className="w-10 h-10" />
             </div>
@@ -114,29 +116,31 @@ export function ConversationsContent() {
           </div>
         )}
 
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-          >
-            {/* Mai avatar for assistant messages */}
-            {msg.role === "assistant" && (
-              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary shadow-md ring-1 ring-primary/20 flex items-center justify-center">
-                <img src={maiLogoWhite} alt="mai" className="w-5 h-5" />
+        {messages.length > 0 && (
+          <div className="space-y-4">
+            {messages.map((msg) => (
+              <div
+                key={msg.id}
+                className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+              >
+                {msg.role === "assistant" && (
+                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary shadow-md ring-1 ring-primary/20 flex items-center justify-center">
+                    <img src={maiLogoWhite} alt="mai" className="w-5 h-5" />
+                  </div>
+                )}
+                <div
+                  className={`max-w-[80%] rounded-2xl px-4 py-2.5 ${
+                    msg.role === "user"
+                      ? "bg-primary text-primary-foreground rounded-br-md"
+                      : "bg-muted rounded-bl-md"
+                  }`}
+                >
+                  <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</p>
+                </div>
               </div>
-            )}
-
-            <div
-              className={`max-w-[80%] rounded-2xl px-4 py-2.5 ${
-                msg.role === "user"
-                  ? "bg-primary text-primary-foreground rounded-br-md"
-                  : "bg-muted rounded-bl-md"
-              }`}
-            >
-              <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</p>
-            </div>
+            ))}
           </div>
-        ))}
+        )}
 
         {/* Typing indicator */}
         {isLoading && (
