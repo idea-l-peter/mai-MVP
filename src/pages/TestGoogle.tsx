@@ -51,24 +51,35 @@ export default function TestGoogle() {
   });
 
   const getValidToken = async (provider: string): Promise<string | null> => {
+    console.log('>>> getValidToken ENTERED for provider:', provider);
+    
     try {
+      console.log('>>> getValidToken: About to call supabase.auth.getUser()...');
       const { data: { user } } = await supabase.auth.getUser();
-      console.log('Current user:', user?.id);
+      console.log('>>> getValidToken: getUser() returned, user:', user?.id || 'NO USER');
+      
       if (!user) {
+        console.log('>>> getValidToken: No user, showing toast and returning null');
         toast({ title: 'Not authenticated', variant: 'destructive' });
         return null;
       }
 
-      console.log(`Calling get-valid-token for provider: ${provider}`);
+      console.log('>>> getValidToken: About to invoke edge function get-valid-token...');
+      const startTime = Date.now();
       const { data, error } = await supabase.functions.invoke('get-valid-token', {
         body: { user_id: user.id, provider }
       });
+      console.log('>>> getValidToken: Edge function returned in', Date.now() - startTime, 'ms');
+      console.log('>>> getValidToken: Response data:', JSON.stringify(data));
+      console.log('>>> getValidToken: Response error:', error);
 
-      console.log('get-valid-token response:', { data, error });
-
-      if (error) throw error;
+      if (error) {
+        console.log('>>> getValidToken: Error from edge function, throwing');
+        throw error;
+      }
+      
       if (!data?.connected) {
-        console.log('Not connected - data:', data);
+        console.log('>>> getValidToken: Not connected, data:', data);
         toast({ 
           title: `${provider} not connected`, 
           description: data?.error || 'Please connect from the Integrations page',
@@ -77,10 +88,10 @@ export default function TestGoogle() {
         return null;
       }
 
-      console.log('Got valid token, length:', data.access_token?.length);
+      console.log('>>> getValidToken: SUCCESS, token length:', data.access_token?.length);
       return data.access_token;
     } catch (error) {
-      console.error('Get token error:', error);
+      console.error('>>> getValidToken CATCH ERROR:', error);
       toast({ title: 'Failed to get token', variant: 'destructive' });
       return null;
     }
