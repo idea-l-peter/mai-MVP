@@ -84,7 +84,6 @@ export function IntegrationsContent() {
   const { toast } = useToast();
 
   const {
-    isConnecting: isGoogleConnecting,
     isDisconnecting: isGoogleDisconnecting,
     initiateOAuth: initiateGoogleOAuth,
     disconnect: disconnectGoogle,
@@ -92,7 +91,6 @@ export function IntegrationsContent() {
   } = useGoogleIntegration();
 
   const {
-    isConnecting: isMondayConnecting,
     isDisconnecting: isMondayDisconnecting,
     initiateOAuth: initiateMondayOAuth,
     disconnect: disconnectMonday,
@@ -220,7 +218,7 @@ export function IntegrationsContent() {
           status={getStatus(integration.id)}
           showConnectButton={integration.showConnectButton}
           connectedEmail={getProviderEmail(integration.id)}
-          isLoading={isLoading || isGoogleConnecting || isGoogleDisconnecting || isMondayConnecting || isMondayDisconnecting}
+          isLoading={isLoading || isGoogleDisconnecting || isMondayDisconnecting}
           onConnect={() => handleConnect(integration.id)}
           onDisconnect={() => handleDisconnect(integration.id)}
         />

@@ -19,23 +19,32 @@ interface UseGoogleIntegrationReturn {
 }
 
 export function useGoogleIntegration(): UseGoogleIntegrationReturn {
-  const [isConnecting, setIsConnecting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const { toast } = useToast();
 
-  // Reset loading states on mount (after OAuth redirect returns)
+  const OAUTH_STORAGE_KEY = 'oauth_in_progress_provider';
+
+  // Clear any stale OAuth-in-progress flag when the page loads (OAuth returns via full redirect)
   useEffect(() => {
-    setIsConnecting(false);
-    setIsDisconnecting(false);
+    try {
+      sessionStorage.removeItem(OAUTH_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
   }, []);
 
   const initiateOAuth = useCallback(async (provider: string, scopes: string[]) => {
-    setIsConnecting(true);
-    
     // This is where the user will be redirected back after the server-side OAuth completes
     const appRedirectUri = `${window.location.origin}/integrations`;
-    
+
     try {
+      // Mark OAuth as in-progress (best-effort) so we can avoid stuck UI after redirects
+      try {
+        sessionStorage.setItem(OAUTH_STORAGE_KEY, provider);
+      } catch {
+        // ignore
+      }
+
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         throw new Error('User not authenticated');
@@ -58,7 +67,12 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
       window.location.href = data.oauth_url;
     } catch (error) {
       console.error('Failed to initiate OAuth:', error);
-      setIsConnecting(false);
+      // Clear in-progress flag on error
+      try {
+        sessionStorage.removeItem(OAUTH_STORAGE_KEY);
+      } catch {
+        // ignore
+      }
       toast({
         title: 'OAuth Error',
         description: error instanceof Error ? error.message : 'Failed to start OAuth flow',
@@ -162,7 +176,7 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
   }, []);
 
   return {
-    isConnecting,
+    isConnecting: false,
     isDisconnecting,
     initiateOAuth,
     disconnect,

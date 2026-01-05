@@ -3,19 +3,29 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
 export function useMondayIntegration() {
-  const [isConnecting, setIsConnecting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const { toast } = useToast();
 
-  // Reset loading states on mount (after OAuth redirect returns)
+  const OAUTH_STORAGE_KEY = 'oauth_in_progress_provider';
+
+  // Clear any stale OAuth-in-progress flag when the page loads (OAuth returns via full redirect)
   useEffect(() => {
-    setIsConnecting(false);
-    setIsDisconnecting(false);
+    try {
+      sessionStorage.removeItem(OAUTH_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
   }, []);
 
   const initiateOAuth = async () => {
-    setIsConnecting(true);
     try {
+      // Mark OAuth as in-progress (best-effort)
+      try {
+        sessionStorage.setItem(OAUTH_STORAGE_KEY, 'monday');
+      } catch {
+        // ignore
+      }
+
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         throw new Error("You must be logged in to connect Monday.com");
@@ -39,12 +49,17 @@ export function useMondayIntegration() {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to start OAuth";
+      // Clear in-progress flag on error
+      try {
+        sessionStorage.removeItem(OAUTH_STORAGE_KEY);
+      } catch {
+        // ignore
+      }
       toast({
         title: "Connection failed",
         description: message,
         variant: "destructive",
       });
-      setIsConnecting(false);
     }
   };
 
@@ -100,7 +115,7 @@ export function useMondayIntegration() {
   };
 
   return {
-    isConnecting,
+    isConnecting: false,
     isDisconnecting,
     initiateOAuth,
     disconnect,
