@@ -8,14 +8,21 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import maiLogo from "@/assets/mai-logo.png";
 
-// Configure allowed email domains here (e.g., ["yourcompany.com", "partner.com"])
-const ALLOWED_EMAIL_DOMAINS = ["yourcompany.com"];
-
-const isEmailDomainAllowed = (email: string): boolean => {
-  const domain = email.split("@")[1]?.toLowerCase();
-  return ALLOWED_EMAIL_DOMAINS.some(
-    (allowed) => domain === allowed.toLowerCase()
-  );
+// Check domain against database via edge function
+const checkDomainAllowed = async (email: string): Promise<boolean> => {
+  try {
+    const { data, error } = await supabase.functions.invoke("check-domain-allowed", {
+      body: { email },
+    });
+    if (error) {
+      console.error("Error checking domain:", error);
+      return false;
+    }
+    return data?.allowed === true;
+  } catch (err) {
+    console.error("Error calling check-domain-allowed:", err);
+    return false;
+  }
 };
 
 const getAuthRedirectOrigin = () => {
@@ -75,8 +82,9 @@ const Auth = () => {
         toast({ title: "Welcome back!", description: "You've successfully signed in." });
       } else {
         // Check email domain restriction for signups
-        if (!isEmailDomainAllowed(email)) {
-          throw new Error(`Signups are restricted to ${ALLOWED_EMAIL_DOMAINS.join(", ")} email addresses.`);
+        const isAllowed = await checkDomainAllowed(email);
+        if (!isAllowed) {
+          throw new Error("Signups are restricted to approved email domains. Contact your administrator for access.");
         }
         
         const { error } = await supabase.auth.signUp({

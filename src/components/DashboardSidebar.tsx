@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useAdminCheck } from "@/hooks/useAdminCheck";
 import {
   LayoutDashboard,
   MessageSquare,
@@ -14,6 +15,7 @@ import {
   ChevronDown,
   ChevronRight,
   Wrench,
+  Shield,
 } from "lucide-react";
 import {
   Sidebar,
@@ -39,6 +41,10 @@ const navItems = [
   { title: "Settings", icon: Settings, url: "/settings" },
 ];
 
+const adminItems = [
+  { title: "Admin", icon: Shield, url: "/admin" },
+];
+
 const devItems = [
   { title: "Test Chat", icon: Zap, url: "/test-chat" },
   { title: "Test Google", icon: Calendar, url: "/test-google" },
@@ -49,6 +55,7 @@ export function DashboardSidebar() {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
+  const { isAdmin } = useAdminCheck();
   const [devToolsOpen, setDevToolsOpen] = useState(false);
   const isDevToolActive = devItems.some(item => location.pathname === item.url);
 
@@ -80,6 +87,18 @@ export function DashboardSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {navItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton
+                    onClick={() => navigate(item.url)}
+                    isActive={isActive(item.url)}
+                    className="w-full justify-start gap-3 px-4 py-3 text-sidebar-foreground hover:bg-sidebar-accent data-[active=true]:bg-sidebar-accent"
+                  >
+                    <item.icon className="h-5 w-5" />
+                    <span>{item.title}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+              {isAdmin && adminItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
                     onClick={() => navigate(item.url)}

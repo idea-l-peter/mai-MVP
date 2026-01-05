@@ -23,3 +23,9 @@ verify_jwt = false
 
 [functions.ai-assistant]
 verify_jwt = false
+
+[functions.check-domain-allowed]
+verify_jwt = false
+
+[functions.get-user-by-email]
+verify_jwt = false
