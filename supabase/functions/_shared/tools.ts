@@ -33,13 +33,17 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       parameters: {
         type: "object",
         properties: {
-          days_ahead: {
-            type: "number",
-            description: "Number of days ahead to look for events. Default is 1 (today and tomorrow).",
+          time_min: {
+            type: "string",
+            description: "Start time in ISO 8601 format. Defaults to now if not specified.",
+          },
+          time_max: {
+            type: "string",
+            description: "End time in ISO 8601 format. Defaults to 7 days from now if not specified.",
           },
           max_results: {
             type: "number",
-            description: "Maximum number of events to return. Default is 10.",
+            description: "Maximum number of events to return. Defaults to 10.",
           },
         },
         required: [],
@@ -163,21 +167,30 @@ async function getValidToken(userId: string, provider: string): Promise<string |
 
 // ============= Tool Implementations =============
 
+interface CalendarEventAttendee {
+  email: string;
+  displayName?: string;
+  responseStatus?: string;
+}
+
 interface CalendarEvent {
   summary: string;
   start: string;
   end: string;
   location?: string;
+  attendees?: CalendarEventAttendee[];
 }
 
 async function getCalendarEvents(
   userId: string,
-  args: { days_ahead?: number; max_results?: number }
+  args: { time_min?: string; time_max?: string; max_results?: number }
 ): Promise<{ success: boolean; events?: CalendarEvent[]; error?: string }> {
-  const daysAhead = args.days_ahead || 1;
+  const now = new Date();
+  const timeMin = args.time_min || now.toISOString();
+  const timeMax = args.time_max || new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
   const maxResults = args.max_results || 10;
 
-  console.log(`[Tools] get_calendar_events: days_ahead=${daysAhead}, max_results=${maxResults}`);
+  console.log(`[Tools] get_calendar_events: timeMin=${timeMin}, timeMax=${timeMax}, maxResults=${maxResults}`);
 
   const accessToken = await getValidToken(userId, "google");
   if (!accessToken) {
@@ -185,10 +198,6 @@ async function getCalendarEvents(
   }
 
   try {
-    const now = new Date();
-    const timeMin = now.toISOString();
-    const timeMax = new Date(now.getTime() + daysAhead * 24 * 60 * 60 * 1000).toISOString();
-
     const url = new URL("https://www.googleapis.com/calendar/v3/calendars/primary/events");
     url.searchParams.set("timeMin", timeMin);
     url.searchParams.set("timeMax", timeMax);
@@ -212,11 +221,17 @@ async function getCalendarEvents(
       start?: { dateTime?: string; date?: string };
       end?: { dateTime?: string; date?: string };
       location?: string;
+      attendees?: Array<{ email?: string; displayName?: string; responseStatus?: string }>;
     }) => ({
       summary: item.summary || "Untitled event",
       start: item.start?.dateTime || item.start?.date || "",
       end: item.end?.dateTime || item.end?.date || "",
       location: item.location,
+      attendees: item.attendees?.map(a => ({
+        email: a.email || "",
+        displayName: a.displayName,
+        responseStatus: a.responseStatus,
+      })),
     }));
 
     console.log(`[Tools] Found ${events.length} calendar events`);
