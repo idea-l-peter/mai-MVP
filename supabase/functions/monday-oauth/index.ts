@@ -15,9 +15,13 @@ serve(async (req) => {
   }
 
   try {
-    console.log('Starting Monday.com OAuth flow');
+    console.log('monday-oauth function invoked');
+    console.log('Request method:', req.method);
     
-    const { user_id, app_redirect_uri } = await req.json();
+    const body = await req.json();
+    console.log('Request body received:', JSON.stringify(body));
+    
+    const { user_id, app_redirect_uri } = body;
     
     if (!user_id) {
       throw new Error('user_id is required');
