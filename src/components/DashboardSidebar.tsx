@@ -41,11 +41,11 @@ const navItems = [
 ];
 
 const GoogleIcon = ({ className }: { className?: string }) => (
-  <img src={googleCalendarIcon} alt="Google" className={`${className} max-h-4`} />
+  <img src={googleCalendarIcon} alt="Google" className={`${className} h-5 w-5 object-contain`} />
 );
 
 const MondayIcon = ({ className }: { className?: string }) => (
-  <img src={mondayLogo} alt="monday.com" className={`${className} max-h-4`} />
+  <img src={mondayLogo} alt="monday.com" className={`${className} h-5 w-5 object-contain`} />
 );
 
 const devItems = [
