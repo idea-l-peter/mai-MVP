@@ -102,54 +102,58 @@ export function IntegrationsContent() {
   // Check connection status for all integrations
   const refreshIntegrations = useCallback(async () => {
     setIsLoading(true);
-    const states: Record<string, IntegrationState> = {};
+    try {
+      const states: Record<string, IntegrationState> = {};
 
-    for (const config of INTEGRATION_CONFIGS) {
-      if (config.provider === "monday") {
-        const integration = await checkMondayConnection();
-        if (integration?.connected) {
-          states[config.id] = {
-            status: "connected",
-            providerEmail: integration.provider_email || undefined,
-          };
+      for (const config of INTEGRATION_CONFIGS) {
+        if (config.provider === "monday") {
+          const integration = await checkMondayConnection();
+          if (integration?.connected) {
+            states[config.id] = {
+              status: "connected",
+              providerEmail: integration.provider_email || undefined,
+            };
+          } else {
+            states[config.id] = { status: "not_connected" };
+          }
+        } else if (config.provider) {
+          const integration = await checkGoogleConnection(config.provider);
+          if (integration?.connected) {
+            states[config.id] = {
+              status: "connected",
+              providerEmail: integration.provider_email || undefined,
+            };
+          } else {
+            states[config.id] = { status: "not_connected" };
+          }
         } else {
-          states[config.id] = { status: "not_connected" };
+          states[config.id] = { status: config.defaultStatus };
         }
-      } else if (config.provider) {
-        const integration = await checkGoogleConnection(config.provider);
-        if (integration?.connected) {
-          states[config.id] = {
-            status: "connected",
-            providerEmail: integration.provider_email || undefined,
-          };
-        } else {
-          states[config.id] = { status: "not_connected" };
-        }
-      } else {
-        states[config.id] = { status: config.defaultStatus };
       }
-    }
 
-    setIntegrationStates(states);
-    setIsLoading(false);
+      setIntegrationStates(states);
+    } finally {
+      setIsLoading(false);
+    }
   }, [checkGoogleConnection, checkMondayConnection]);
 
-  // Handle OAuth callback result on mount
+  // Handle OAuth callback result on mount / URL param changes
   useEffect(() => {
     const connected = searchParams.get("connected");
     const email = searchParams.get("email");
     const error = searchParams.get("error");
 
     if (connected) {
-      // Server-side OAuth was successful
       toast({
         title: "Connected!",
         description: `Successfully connected to ${connected}${email ? ` as ${email}` : ""}`,
       });
       setSearchParams({});
       refreshIntegrations();
-    } else if (error) {
-      // OAuth failed
+      return;
+    }
+
+    if (error) {
       toast({
         title: "Connection failed",
         description: error,
@@ -157,10 +161,11 @@ export function IntegrationsContent() {
       });
       setSearchParams({});
       refreshIntegrations();
-    } else {
-      refreshIntegrations();
+      return;
     }
-  }, [searchParams, setSearchParams, refreshIntegrations, toast]);
+
+    refreshIntegrations();
+  }, [searchParams.toString(), setSearchParams, refreshIntegrations, toast]);
 
   const handleConnect = (integrationId: string) => {
     const config = INTEGRATION_CONFIGS.find((c) => c.id === integrationId);
