@@ -92,9 +92,61 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "get_emails",
+      description: "Get emails from the user's Gmail inbox. Use this when the user asks about their emails, inbox, or messages.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "Gmail search query (e.g., 'is:unread', 'from:john@example.com', 'subject:invoice'). Defaults to recent emails if not specified.",
+          },
+          max_results: {
+            type: "number",
+            description: "Maximum number of emails to return. Defaults to 10.",
+          },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "send_email",
+      description: "Send an email from the user's Gmail account. Use this when the user wants to compose, send, or email someone.",
+      parameters: {
+        type: "object",
+        properties: {
+          to: {
+            type: "string",
+            description: "Recipient email address",
+          },
+          subject: {
+            type: "string",
+            description: "Email subject line",
+          },
+          body: {
+            type: "string",
+            description: "Email body content (plain text)",
+          },
+          cc: {
+            type: "string",
+            description: "CC recipients (comma-separated)",
+          },
+          bcc: {
+            type: "string",
+            description: "BCC recipients (comma-separated)",
+          },
+        },
+        required: ["to", "subject", "body"],
+      },
+    },
+  },
   // Future tools will be added here:
-  // - send_email
-  // - get_emails
   // - get_monday_boards
   // - create_monday_item
 ];
@@ -390,6 +442,180 @@ async function createCalendarEvent(
   }
 }
 
+// ============= Gmail Tool Implementations =============
+
+interface EmailSummary {
+  id: string;
+  from: string;
+  to: string;
+  subject: string;
+  date: string;
+  snippet: string;
+}
+
+interface GetEmailsResult {
+  success: boolean;
+  emails?: EmailSummary[];
+  error?: string;
+}
+
+async function getEmails(
+  userId: string,
+  args: { query?: string; max_results?: number }
+): Promise<GetEmailsResult> {
+  const query = args.query || "";
+  const maxResults = args.max_results || 10;
+
+  console.log(`[Tools] get_emails: query="${query}", maxResults=${maxResults}`);
+
+  const accessToken = await getValidToken(userId, "google");
+  if (!accessToken) {
+    return { success: false, error: "Gmail is not connected or token expired" };
+  }
+
+  try {
+    // Step 1: Get list of message IDs
+    const listUrl = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
+    if (query) {
+      listUrl.searchParams.set("q", query);
+    }
+    listUrl.searchParams.set("maxResults", String(maxResults));
+
+    const listResponse = await fetch(listUrl.toString(), {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!listResponse.ok) {
+      const errorText = await listResponse.text();
+      console.error(`[Tools] Gmail list error: ${listResponse.status} - ${errorText}`);
+      return { success: false, error: "Failed to fetch emails" };
+    }
+
+    const listData = await listResponse.json();
+    const messageIds: string[] = (listData.messages || []).map((m: { id: string }) => m.id);
+
+    if (messageIds.length === 0) {
+      return { success: true, emails: [] };
+    }
+
+    // Step 2: Fetch metadata for each message
+    const emails: EmailSummary[] = [];
+
+    for (const messageId of messageIds) {
+      const msgUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject&metadataHeaders=Date`;
+
+      const msgResponse = await fetch(msgUrl, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      if (!msgResponse.ok) {
+        console.error(`[Tools] Failed to fetch message ${messageId}`);
+        continue;
+      }
+
+      const msgData = await msgResponse.json();
+      const headers = msgData.payload?.headers || [];
+
+      const getHeader = (name: string): string => {
+        const h = headers.find((h: { name: string; value: string }) => 
+          h.name.toLowerCase() === name.toLowerCase()
+        );
+        return h?.value || "";
+      };
+
+      emails.push({
+        id: msgData.id,
+        from: getHeader("From"),
+        to: getHeader("To"),
+        subject: getHeader("Subject"),
+        date: getHeader("Date"),
+        snippet: msgData.snippet || "",
+      });
+    }
+
+    console.log(`[Tools] Found ${emails.length} emails`);
+    return { success: true, emails };
+  } catch (error) {
+    console.error(`[Tools] Gmail fetch error:`, error);
+    return { success: false, error: "Failed to access Gmail" };
+  }
+}
+
+interface SendEmailArgs {
+  to: string;
+  subject: string;
+  body: string;
+  cc?: string;
+  bcc?: string;
+}
+
+interface SendEmailResult {
+  success: boolean;
+  messageId?: string;
+  error?: string;
+}
+
+async function sendEmail(
+  userId: string,
+  args: SendEmailArgs
+): Promise<SendEmailResult> {
+  console.log(`[Tools] send_email: to="${args.to}", subject="${args.subject}"`);
+
+  const accessToken = await getValidToken(userId, "google");
+  if (!accessToken) {
+    return { success: false, error: "Gmail is not connected or token expired" };
+  }
+
+  try {
+    // Construct RFC 2822 formatted email
+    let emailContent = `To: ${args.to}\r\n`;
+    if (args.cc) {
+      emailContent += `Cc: ${args.cc}\r\n`;
+    }
+    if (args.bcc) {
+      emailContent += `Bcc: ${args.bcc}\r\n`;
+    }
+    emailContent += `Subject: ${args.subject}\r\n`;
+    emailContent += `Content-Type: text/plain; charset=utf-8\r\n`;
+    emailContent += `\r\n`;
+    emailContent += args.body;
+
+    // Base64url encode the email
+    const encoder = new TextEncoder();
+    const emailBytes = encoder.encode(emailContent);
+    const base64Email = btoa(String.fromCharCode(...emailBytes))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+
+    const response = await fetch(
+      "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ raw: base64Email }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[Tools] Gmail send error: ${response.status} - ${errorText}`);
+      return { success: false, error: `Failed to send email: ${response.status}` };
+    }
+
+    const data = await response.json();
+    console.log(`[Tools] Sent email: ${data.id}`);
+
+    return { success: true, messageId: data.id };
+  } catch (error) {
+    console.error(`[Tools] Gmail send error:`, error);
+    return { success: false, error: "Failed to send email" };
+  }
+}
+
 // ============= Tool Execution Router =============
 
 export async function executeTool(
@@ -414,9 +640,15 @@ export async function executeTool(
         result = await createCalendarEvent(userId, args);
         break;
       
+      case "get_emails":
+        result = await getEmails(userId, args);
+        break;
+      
+      case "send_email":
+        result = await sendEmail(userId, args);
+        break;
+      
       // Future tool implementations:
-      // case "send_email":
-      // case "get_emails":
       // case "get_monday_boards":
       // case "create_monday_item":
       
