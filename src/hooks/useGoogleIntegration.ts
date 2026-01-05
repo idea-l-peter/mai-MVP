@@ -41,6 +41,7 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
           scopes,
           user_id: user.id,
           app_redirect_uri: appRedirectUri,
+          provider,
         },
       });
 
