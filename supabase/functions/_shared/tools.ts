@@ -83,6 +83,10 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
             items: { type: "string" },
             description: "List of attendee email addresses",
           },
+          add_video_call: {
+            type: "boolean",
+            description: "If true, adds a Google Meet video call link to the event",
+          },
         },
         required: ["summary", "start_time", "end_time"],
       },
@@ -287,6 +291,7 @@ interface CreateCalendarEventArgs {
   description?: string;
   location?: string;
   attendees?: string[];
+  add_video_call?: boolean;
 }
 
 interface CreatedEventResult {
@@ -297,6 +302,7 @@ interface CreatedEventResult {
     start: string;
     end: string;
     htmlLink: string;
+    meetLink?: string;
   };
   error?: string;
 }
@@ -329,17 +335,29 @@ async function createCalendarEvent(
       eventBody.attendees = args.attendees.map((email) => ({ email }));
     }
 
-    const response = await fetch(
-      "https://www.googleapis.com/calendar/v3/calendars/primary/events",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
+    // Add Google Meet video call if requested
+    if (args.add_video_call) {
+      eventBody.conferenceData = {
+        createRequest: {
+          requestId: crypto.randomUUID(),
+          conferenceSolutionKey: { type: "hangoutsMeet" },
         },
-        body: JSON.stringify(eventBody),
-      }
-    );
+      };
+    }
+
+    // Use conferenceDataVersion=1 if adding video call
+    const apiUrl = args.add_video_call
+      ? "https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1"
+      : "https://www.googleapis.com/calendar/v3/calendars/primary/events";
+
+    const response = await fetch(apiUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(eventBody),
+    });
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -350,6 +368,11 @@ async function createCalendarEvent(
     const data = await response.json();
     console.log(`[Tools] Created calendar event: ${data.id}`);
 
+    // Extract Google Meet link if present
+    const meetLink = data.conferenceData?.entryPoints?.find(
+      (ep: { entryPointType: string; uri: string }) => ep.entryPointType === "video"
+    )?.uri;
+
     return {
       success: true,
       event: {
@@ -358,6 +381,7 @@ async function createCalendarEvent(
         start: data.start?.dateTime || data.start?.date || "",
         end: data.end?.dateTime || data.end?.date || "",
         htmlLink: data.htmlLink,
+        meetLink,
       },
     };
   } catch (error) {
