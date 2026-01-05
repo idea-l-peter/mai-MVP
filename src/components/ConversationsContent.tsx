@@ -98,7 +98,9 @@ export function ConversationsContent() {
       <div className="flex-1 overflow-y-auto px-2 py-4 space-y-4">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center px-4">
-            <img src={maiLogoWhite} alt="mai" className="w-16 h-16 mb-4 opacity-50" />
+            <div className="w-16 h-16 rounded-full bg-primary shadow-lg flex items-center justify-center mb-4">
+              <img src={maiLogoWhite} alt="mai" className="w-10 h-10" />
+            </div>
             <p className="text-muted-foreground text-lg">
               Hi, I'm mai. How can I help you today?
             </p>
@@ -112,7 +114,7 @@ export function ConversationsContent() {
           >
             {/* Mai avatar for assistant messages */}
             {msg.role === "assistant" && (
-              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary flex items-center justify-center">
+              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary shadow-md ring-1 ring-primary/20 flex items-center justify-center">
                 <img src={maiLogoWhite} alt="mai" className="w-5 h-5" />
               </div>
             )}
@@ -132,7 +134,7 @@ export function ConversationsContent() {
         {/* Typing indicator */}
         {isLoading && (
           <div className="flex gap-3 justify-start">
-            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary flex items-center justify-center">
+            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary shadow-md ring-1 ring-primary/20 flex items-center justify-center">
               <img src={maiLogoWhite} alt="mai" className="w-5 h-5" />
             </div>
             <div className="bg-muted rounded-2xl rounded-bl-md px-4 py-3">
