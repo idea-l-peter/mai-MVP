@@ -51,9 +51,8 @@ const PROVIDER_CONFIGS: Record<Provider, ProviderConfig> = {
   },
   gemini: {
     name: "gemini",
-    // Use v1beta for broader model availability (e.g. gemini-1.5-flash).
     baseUrl: "https://generativelanguage.googleapis.com/v1beta",
-    model: "gemini-1.5-flash",
+    model: "gemini-2.5-flash",
     timeout: 15000,
     apiKeyEnv: "GEMINI_API_KEY",
     supportsTemperature: true,
