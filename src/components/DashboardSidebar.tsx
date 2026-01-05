@@ -45,7 +45,7 @@ const GoogleIcon = ({ className }: { className?: string }) => (
 );
 
 const MondayIcon = ({ className }: { className?: string }) => (
-  <img src={mondayLogo} alt="monday.com" className={className} />
+  <img src={mondayLogo} alt="monday.com" className={`${className} max-h-4`} />
 );
 
 const devItems = [
