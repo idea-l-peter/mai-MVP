@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Send } from "lucide-react";
 import ReactMarkdown from "react-markdown";
-import maiLogoWhite from "@/assets/mai-logo-white.png";
+import maiLogo from "@/assets/mai-logo.png";
 
 interface Message {
   id: string;
@@ -112,8 +112,8 @@ export function ConversationsContent() {
         
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center py-12 text-center">
-            <div className="w-16 h-16 rounded-full bg-primary shadow-lg flex items-center justify-center mb-4 overflow-hidden">
-              <img src={maiLogoWhite} alt="mai" className="w-10 h-10 object-contain" />
+            <div className="flex items-center justify-center mb-4">
+              <img src={maiLogo} alt="mai" className="h-16 w-auto" />
             </div>
             <p className="text-muted-foreground text-lg">
               What do you need?
@@ -129,8 +129,8 @@ export function ConversationsContent() {
                 className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
               >
                 {msg.role === "assistant" && (
-                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary shadow-md ring-1 ring-primary/20 flex items-center justify-center">
-                    <img src={maiLogoWhite} alt="mai" className="w-5 h-5" />
+                  <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center">
+                    <img src={maiLogo} alt="mai" className="h-8 w-auto" />
                   </div>
                 )}
                 <div
@@ -155,8 +155,8 @@ export function ConversationsContent() {
 
         {isLoading && (
           <div className="flex gap-3 justify-start mt-4">
-            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary shadow-md ring-1 ring-primary/20 flex items-center justify-center">
-              <img src={maiLogoWhite} alt="mai" className="w-5 h-5" />
+            <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center">
+              <img src={maiLogo} alt="mai" className="h-8 w-auto" />
             </div>
             <div className="bg-muted rounded-2xl rounded-bl-md px-4 py-3">
               <div className="flex gap-1">
