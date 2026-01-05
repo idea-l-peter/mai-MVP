@@ -28,6 +28,7 @@ import {
   SidebarMenuItem,
   SidebarFooter,
   SidebarHeader,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
@@ -53,8 +54,17 @@ export function DashboardSidebar() {
   const location = useLocation();
   const { toast } = useToast();
   const { isAdmin } = useAdminCheck();
+  const { setOpenMobile, isMobile } = useSidebar();
   const [devToolsOpen, setDevToolsOpen] = useState(false);
   const isDevToolActive = devItems.some(item => location.pathname === item.url);
+
+  // Navigation handler that closes mobile sidebar after navigation
+  const handleNavigation = (url: string) => {
+    navigate(url);
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+  };
 
   const handleLogout = async () => {
     const { error } = await supabase.auth.signOut();
@@ -86,10 +96,7 @@ export function DashboardSidebar() {
               {navItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
-                    onPointerDown={(e) => {
-                      e.preventDefault();
-                      navigate(item.url);
-                    }}
+                    onClick={() => handleNavigation(item.url)}
                     isActive={isActive(item.url)}
                     className="w-full justify-start gap-3 px-4 py-3 text-sidebar-foreground hover:bg-sidebar-accent data-[active=true]:bg-sidebar-accent"
                   >
@@ -124,7 +131,7 @@ export function DashboardSidebar() {
                   {devItems.map((item) => (
                     <SidebarMenuItem key={item.title}>
                       <SidebarMenuButton
-                        onClick={() => navigate(item.url)}
+                        onClick={() => handleNavigation(item.url)}
                         isActive={isActive(item.url)}
                         className="w-full justify-start gap-3 px-4 py-3 text-sidebar-foreground hover:bg-sidebar-accent data-[active=true]:bg-sidebar-accent"
                       >
@@ -145,10 +152,7 @@ export function DashboardSidebar() {
           {isAdmin && (
             <SidebarMenuItem>
               <SidebarMenuButton
-                onPointerDown={(e) => {
-                  e.preventDefault();
-                  navigate("/admin");
-                }}
+                onClick={() => handleNavigation("/admin")}
                 isActive={isActive("/admin")}
                 className="w-full justify-start gap-3 px-4 py-3 text-sidebar-foreground hover:bg-sidebar-accent data-[active=true]:bg-sidebar-accent"
               >
@@ -159,10 +163,7 @@ export function DashboardSidebar() {
           )}
           <SidebarMenuItem>
             <SidebarMenuButton
-              onPointerDown={(e) => {
-                e.preventDefault();
-                handleLogout();
-              }}
+              onClick={handleLogout}
               className="w-full justify-start gap-3 px-4 py-3 text-sidebar-foreground hover:bg-sidebar-accent"
             >
               <LogOut className="h-5 w-5" />
