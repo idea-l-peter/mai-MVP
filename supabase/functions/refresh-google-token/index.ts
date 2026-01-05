@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { encrypt, decrypt } from "../_shared/encryption.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -42,23 +43,24 @@ serve(async (req) => {
       throw new Error('Integration not found');
     }
 
-    if (!integration.refresh_token_secret_id) {
+    // Get encrypted refresh token
+    const { data: refreshTokenRow, error: refreshTokenError } = await supabase
+      .from('encrypted_integration_tokens')
+      .select('encrypted_value')
+      .eq('user_id', user_id)
+      .eq('provider', provider)
+      .eq('token_type', 'refresh_token')
+      .maybeSingle();
+
+    if (refreshTokenError || !refreshTokenRow) {
+      console.error('Error getting refresh token:', refreshTokenError);
       throw new Error('No refresh token available for this integration');
     }
 
-    // Get refresh token from vault
-    const { data: refreshToken, error: refreshTokenError } = await supabase
-      .rpc('get_integration_token', {
-        p_user_id: user_id,
-        p_secret_id: integration.refresh_token_secret_id,
-      });
+    // Decrypt refresh token
+    const refreshToken = await decrypt(refreshTokenRow.encrypted_value);
 
-    if (refreshTokenError || !refreshToken) {
-      console.error('Error getting refresh token:', refreshTokenError);
-      throw new Error('Failed to retrieve refresh token');
-    }
-
-    console.log('Retrieved refresh token from vault, requesting new access token...');
+    console.log('Retrieved and decrypted refresh token, requesting new access token...');
 
     // Request new access token from Google
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
@@ -84,46 +86,43 @@ serve(async (req) => {
     const { access_token, expires_in, refresh_token: new_refresh_token } = tokenData;
     const token_expires_at = new Date(Date.now() + (expires_in * 1000)).toISOString();
 
-    // Store new access token in vault
-    const { data: newAccessTokenSecretId, error: storeAccessError } = await supabase
-      .rpc('store_integration_token', {
-        p_user_id: user_id,
-        p_provider: provider,
-        p_token_type: 'access_token',
-        p_token_value: access_token,
-      });
+    // Encrypt and store new access token
+    const encryptedAccessToken = await encrypt(access_token);
+    const { error: storeAccessError } = await supabase
+      .from('encrypted_integration_tokens')
+      .upsert({
+        user_id,
+        provider,
+        token_type: 'access_token',
+        encrypted_value: encryptedAccessToken,
+      }, { onConflict: 'user_id,provider,token_type' });
 
     if (storeAccessError) {
       console.error('Error storing new access token:', storeAccessError);
       throw new Error('Failed to store new access token');
     }
 
-    // If Google returned a new refresh token, store it too
-    let newRefreshTokenSecretId = integration.refresh_token_secret_id;
+    // If Google returned a new refresh token, encrypt and store it
     if (new_refresh_token) {
-      const { data, error: storeRefreshError } = await supabase
-        .rpc('store_integration_token', {
-          p_user_id: user_id,
-          p_provider: provider,
-          p_token_type: 'refresh_token',
-          p_token_value: new_refresh_token,
-        });
+      const encryptedRefreshToken = await encrypt(new_refresh_token);
+      const { error: storeRefreshError } = await supabase
+        .from('encrypted_integration_tokens')
+        .upsert({
+          user_id,
+          provider,
+          token_type: 'refresh_token',
+          encrypted_value: encryptedRefreshToken,
+        }, { onConflict: 'user_id,provider,token_type' });
 
       if (storeRefreshError) {
         console.error('Error storing new refresh token:', storeRefreshError);
-      } else {
-        newRefreshTokenSecretId = data;
       }
     }
 
-    // Update integration record
+    // Update integration record with new expiration
     const { error: updateError } = await supabase
       .from('user_integrations')
-      .update({
-        access_token_secret_id: newAccessTokenSecretId,
-        refresh_token_secret_id: newRefreshTokenSecretId,
-        token_expires_at,
-      })
+      .update({ token_expires_at })
       .eq('user_id', user_id)
       .eq('provider', provider);
 
