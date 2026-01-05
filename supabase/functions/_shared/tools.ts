@@ -117,7 +117,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     type: "function",
     function: {
       name: "send_email",
-      description: "Send an email from the user's Gmail account. Use this when the user wants to compose, send, or email someone.",
+      description: "Send an email from the user's Gmail account. Use this when the user wants to compose, send, or email someone. The email will include the user's Gmail signature automatically.",
       parameters: {
         type: "object",
         properties: {
@@ -140,6 +140,11 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
           bcc: {
             type: "string",
             description: "BCC recipients (comma-separated)",
+          },
+          attachments: {
+            type: "array",
+            items: { type: "string" },
+            description: "File paths or URLs to attach (not yet implemented)",
           },
         },
         required: ["to", "subject", "body"],
@@ -547,12 +552,43 @@ interface SendEmailArgs {
   body: string;
   cc?: string;
   bcc?: string;
+  attachments?: string[];
 }
 
 interface SendEmailResult {
   success: boolean;
   messageId?: string;
   error?: string;
+  invalidEmails?: string[];
+}
+
+// Email validation regex
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Clean and validate email addresses
+function cleanEmailAddress(email: string): { cleaned: string; valid: boolean } {
+  // Remove all spaces
+  const cleaned = email.replace(/\s+/g, "").trim();
+  const valid = EMAIL_REGEX.test(cleaned);
+  return { cleaned, valid };
+}
+
+// Clean a comma-separated list of emails
+function cleanEmailList(emails: string): { cleaned: string; invalid: string[] } {
+  const parts = emails.split(",").map((e) => e.trim()).filter(Boolean);
+  const cleanedParts: string[] = [];
+  const invalid: string[] = [];
+
+  for (const part of parts) {
+    const { cleaned, valid } = cleanEmailAddress(part);
+    if (valid) {
+      cleanedParts.push(cleaned);
+    } else {
+      invalid.push(part);
+    }
+  }
+
+  return { cleaned: cleanedParts.join(", "), invalid };
 }
 
 async function sendEmail(
@@ -561,6 +597,41 @@ async function sendEmail(
 ): Promise<SendEmailResult> {
   console.log(`[Tools] send_email: to="${args.to}", subject="${args.subject}"`);
 
+  // Clean and validate email addresses
+  const toResult = cleanEmailAddress(args.to);
+  if (!toResult.valid) {
+    return { 
+      success: false, 
+      error: `Invalid email address: "${args.to}". Please provide a valid email address.`,
+      invalidEmails: [args.to]
+    };
+  }
+  const cleanedTo = toResult.cleaned;
+
+  let cleanedCc = "";
+  let cleanedBcc = "";
+  const allInvalidEmails: string[] = [];
+
+  if (args.cc) {
+    const ccResult = cleanEmailList(args.cc);
+    cleanedCc = ccResult.cleaned;
+    allInvalidEmails.push(...ccResult.invalid);
+  }
+
+  if (args.bcc) {
+    const bccResult = cleanEmailList(args.bcc);
+    cleanedBcc = bccResult.cleaned;
+    allInvalidEmails.push(...bccResult.invalid);
+  }
+
+  if (allInvalidEmails.length > 0) {
+    return {
+      success: false,
+      error: `Invalid email addresses found: ${allInvalidEmails.join(", ")}. Please correct them.`,
+      invalidEmails: allInvalidEmails
+    };
+  }
+
   const accessToken = await getValidToken(userId, "gmail");
   if (!accessToken) {
     return { success: false, error: "Gmail is not connected or token expired" };
@@ -568,12 +639,12 @@ async function sendEmail(
 
   try {
     // Construct RFC 2822 formatted email
-    let emailContent = `To: ${args.to}\r\n`;
-    if (args.cc) {
-      emailContent += `Cc: ${args.cc}\r\n`;
+    let emailContent = `To: ${cleanedTo}\r\n`;
+    if (cleanedCc) {
+      emailContent += `Cc: ${cleanedCc}\r\n`;
     }
-    if (args.bcc) {
-      emailContent += `Bcc: ${args.bcc}\r\n`;
+    if (cleanedBcc) {
+      emailContent += `Bcc: ${cleanedBcc}\r\n`;
     }
     emailContent += `Subject: ${args.subject}\r\n`;
     emailContent += `Content-Type: text/plain; charset=utf-8\r\n`;
@@ -588,28 +659,52 @@ async function sendEmail(
       .replace(/\//g, "_")
       .replace(/=+$/, "");
 
-    const response = await fetch(
-      "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+    // Step 1: Create a draft (this allows Gmail to add signature)
+    const draftResponse = await fetch(
+      "https://gmail.googleapis.com/gmail/v1/users/me/drafts",
       {
         method: "POST",
         headers: {
           Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ raw: base64Email }),
+        body: JSON.stringify({ message: { raw: base64Email } }),
       }
     );
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[Tools] Gmail send error: ${response.status} - ${errorText}`);
-      return { success: false, error: `Failed to send email: ${response.status}` };
+    if (!draftResponse.ok) {
+      const errorText = await draftResponse.text();
+      console.error(`[Tools] Gmail draft error: ${draftResponse.status} - ${errorText}`);
+      return { success: false, error: `Failed to create draft: ${draftResponse.status}` };
     }
 
-    const data = await response.json();
-    console.log(`[Tools] Sent email: ${data.id}`);
+    const draftData = await draftResponse.json();
+    const draftId = draftData.id;
+    console.log(`[Tools] Created draft: ${draftId}`);
 
-    return { success: true, messageId: data.id };
+    // Step 2: Send the draft (Gmail appends signature automatically)
+    const sendResponse = await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/drafts/send`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ id: draftId }),
+      }
+    );
+
+    if (!sendResponse.ok) {
+      const errorText = await sendResponse.text();
+      console.error(`[Tools] Gmail send error: ${sendResponse.status} - ${errorText}`);
+      return { success: false, error: `Failed to send email: ${sendResponse.status}` };
+    }
+
+    const sendData = await sendResponse.json();
+    console.log(`[Tools] Sent email: ${sendData.id}`);
+
+    return { success: true, messageId: sendData.id };
   } catch (error) {
     console.error(`[Tools] Gmail send error:`, error);
     return { success: false, error: "Failed to send email" };
