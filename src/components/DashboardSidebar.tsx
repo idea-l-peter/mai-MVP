@@ -41,7 +41,7 @@ const navItems = [
 ];
 
 const GoogleIcon = ({ className }: { className?: string }) => (
-  <img src={googleCalendarIcon} alt="Google" className={className} />
+  <img src={googleCalendarIcon} alt="Google" className={`${className} max-h-4`} />
 );
 
 const MondayIcon = ({ className }: { className?: string }) => (
