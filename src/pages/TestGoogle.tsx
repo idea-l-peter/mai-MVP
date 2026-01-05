@@ -53,25 +53,31 @@ export default function TestGoogle() {
   const getValidToken = async (provider: string): Promise<string | null> => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
+      console.log('Current user:', user?.id);
       if (!user) {
         toast({ title: 'Not authenticated', variant: 'destructive' });
         return null;
       }
 
+      console.log(`Calling get-valid-token for provider: ${provider}`);
       const { data, error } = await supabase.functions.invoke('get-valid-token', {
         body: { user_id: user.id, provider }
       });
 
+      console.log('get-valid-token response:', { data, error });
+
       if (error) throw error;
-      if (!data.connected) {
+      if (!data?.connected) {
+        console.log('Not connected - data:', data);
         toast({ 
           title: `${provider} not connected`, 
-          description: 'Please connect from the Integrations page',
+          description: data?.error || 'Please connect from the Integrations page',
           variant: 'destructive' 
         });
         return null;
       }
 
+      console.log('Got valid token, length:', data.access_token?.length);
       return data.access_token;
     } catch (error) {
       console.error('Get token error:', error);
