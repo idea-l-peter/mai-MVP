@@ -47,7 +47,7 @@ const Admin = () => {
         description: "You don't have permission to access this page.",
         variant: "destructive",
       });
-      navigate("/dashboard");
+      navigate("/conversations");
     }
   }, [isAdmin, adminLoading, navigate, toast]);
 
