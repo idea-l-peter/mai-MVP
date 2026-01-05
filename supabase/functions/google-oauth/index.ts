@@ -55,10 +55,25 @@ serve(async (req) => {
 
     // Build Google OAuth URL
     const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+
+    // Ensure required scopes are always requested for certain providers
+    const requestedScopes: string[] = Array.isArray(scopes) ? scopes : [];
+    const requiredScopesByProvider: Record<string, string[]> = {
+      gmail: [
+        'https://www.googleapis.com/auth/gmail.readonly',
+        'https://www.googleapis.com/auth/gmail.send',
+        'https://www.googleapis.com/auth/gmail.compose',
+      ],
+    };
+
+    const requiredScopes = requiredScopesByProvider[provider] || [];
+    const baseScopes = requestedScopes.length ? requestedScopes : ['openid', 'email', 'profile'];
+    const finalScopes = Array.from(new Set([...baseScopes, ...requiredScopes]));
+
     authUrl.searchParams.set('client_id', GOOGLE_CLIENT_ID);
     authUrl.searchParams.set('redirect_uri', callbackUrl);
     authUrl.searchParams.set('response_type', 'code');
-    authUrl.searchParams.set('scope', scopes?.join(' ') || 'openid email profile');
+    authUrl.searchParams.set('scope', finalScopes.join(' '));
     authUrl.searchParams.set('access_type', 'offline');
     authUrl.searchParams.set('prompt', 'consent');
     authUrl.searchParams.set('state', state);
