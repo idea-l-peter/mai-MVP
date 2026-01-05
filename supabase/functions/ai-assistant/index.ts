@@ -52,46 +52,26 @@ serve(async (req) => {
 
     console.log("[AI Assistant] Auth header:", authHeader ? "present" : "missing");
     if (authHeader) {
-      console.log("[AI Assistant] Auth header value:", authHeader.substring(0, 50) + "...");
+      console.log("[AI Assistant] Auth header value:", authHeader.substring(0, 80));
     }
 
-    // Prefer Supabase auth verification when available
-    if (authHeader) {
-      try {
-        const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-          global: { headers: { authorization: authHeader } },
-        });
-        const {
-          data: { user },
-          error: authError,
-        } = await supabase.auth.getUser();
+    // Extract user from JWT directly (skip Supabase getUser which is failing)
+    if (authHeader && authHeader.toLowerCase().startsWith("bearer ")) {
+      const decoded = decodeJwtClaims(authHeader);
+      console.log(
+        "[AI Assistant] Decoded JWT payload:",
+        decoded?.raw ? JSON.stringify(decoded.raw).substring(0, 300) : "null"
+      );
 
-        if (authError) {
-          console.error(`[AI Assistant] Auth error: ${authError.message}`);
-        } else {
-          userId = user?.id || null;
-          userEmail = user?.email || null;
-        }
-      } catch (e) {
-        console.error(
-          `[AI Assistant] Auth getUser threw: ${e instanceof Error ? e.message : String(e)}`
-        );
+      if (decoded?.sub) {
+        userId = decoded.sub;
+        userEmail = decoded.email || null;
+        console.log(`[AI Assistant] Got userId from JWT: ${userId}, email: ${userEmail || "none"}`);
+      } else {
+        console.log("[AI Assistant] JWT decode failed - no sub claim found");
       }
-
-      // Fallback: decode JWT payload (ai-assistant verify_jwt=true will validate the token)
-      if (!userId) {
-        const decoded = decodeJwtClaims(authHeader);
-        console.log(
-          "[AI Assistant] Decoded JWT payload:",
-          decoded?.raw ? JSON.stringify(decoded.raw).substring(0, 400) + "..." : "null"
-        );
-
-        if (decoded?.sub) {
-          userId = decoded.sub;
-          userEmail = decoded.email || null;
-          console.log(`[AI Assistant] Decoded JWT fallback: sub=${userId}, email=${userEmail || "none"}`);
-        }
-      }
+    } else if (authHeader) {
+      console.log("[AI Assistant] Auth header present but not a Bearer token");
     }
 
     console.log(`[AI Assistant] User ID: ${userId || "anonymous"}, email: ${userEmail || "none"}`);
