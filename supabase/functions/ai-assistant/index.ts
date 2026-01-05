@@ -14,7 +14,7 @@ serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { messages, temperature, max_tokens, stream } = body as LLMRequest & { stream?: boolean };
+    const { messages, temperature, max_tokens, stream, provider } = body as LLMRequest & { stream?: boolean };
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return new Response(
@@ -23,11 +23,11 @@ serve(async (req) => {
       );
     }
 
-    console.log(`[AI Assistant] Received request with ${messages.length} messages, stream=${stream}`);
+    console.log(`[AI Assistant] Received request with ${messages.length} messages, stream=${stream}, provider=${provider || 'default'}`);
 
     // Non-streaming response
     if (!stream) {
-      const result = await routeLLMRequest({ messages, temperature, max_tokens });
+      const result = await routeLLMRequest({ messages, temperature, max_tokens, provider });
 
       if (result.error) {
         console.error(`[AI Assistant] LLM routing failed: ${result.error}`);
@@ -58,6 +58,7 @@ serve(async (req) => {
             messages,
             temperature,
             max_tokens,
+            provider,
           })) {
             if (done) {
               // Send final metadata

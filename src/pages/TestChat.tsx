@@ -44,13 +44,14 @@ export default function TestChat() {
       const { data, error } = await supabase.functions.invoke("ai-assistant", {
         body: {
           messages: [
-            { role: "system", content: `You are a helpful AI assistant. Current provider preference: ${selectedProvider}. Keep responses concise.` },
+            { role: "system", content: "You are a helpful AI assistant. Keep responses concise." },
             ...messages.map((m) => ({ role: m.role, content: m.content })),
             { role: "user", content: userMessage.content },
           ],
           temperature: 0.7,
           max_tokens: 1024,
           stream: false,
+          provider: selectedProvider,
         },
       });
 
