@@ -11,6 +11,7 @@ import { TestGoogleContent } from "@/components/TestGoogleContent";
 import { TestChatContent } from "@/components/TestChatContent";
 import { TestMondayContent } from "@/components/TestMondayContent";
 import { ConversationsContent } from "@/components/ConversationsContent";
+import Admin from "@/pages/Admin";
 const Dashboard = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -63,6 +64,8 @@ const Dashboard = () => {
         return "Integrations";
       case "/settings":
         return "Settings";
+      case "/admin":
+        return "Admin";
       case "/test-google":
         return "Google API Test";
       case "/test-chat":
@@ -91,34 +94,40 @@ const Dashboard = () => {
             <ConversationsContent />
           ) : (
             <main className="flex-1 p-4 md:p-8">
-              <h1 className="text-2xl md:text-3xl font-bold text-foreground mb-2">
-                {getPageTitle()}
-              </h1>
-              {location.pathname === "/dashboard" && (
-                <p className="text-muted-foreground text-sm md:text-base">
-                  Logged in as: {user.email}
-                </p>
+              {location.pathname !== "/admin" && (
+                <>
+                  <h1 className="text-2xl md:text-3xl font-bold text-foreground mb-2">
+                    {getPageTitle()}
+                  </h1>
+                  {location.pathname === "/dashboard" && (
+                    <p className="text-muted-foreground text-sm md:text-base">
+                      Logged in as: {user.email}
+                    </p>
+                  )}
+                </>
               )}
-              
+
               {/* Page-specific content */}
+              {location.pathname === "/admin" && <Admin />}
+
               {location.pathname === "/integrations" && (
                 <div className="mt-6">
                   <IntegrationsContent />
                 </div>
               )}
-              
+
               {location.pathname === "/test-google" && (
                 <div className="mt-6">
                   <TestGoogleContent />
                 </div>
               )}
-              
+
               {location.pathname === "/test-chat" && (
                 <div className="mt-6">
                   <TestChatContent />
                 </div>
               )}
-              
+
               {location.pathname === "/test-monday" && (
                 <div className="mt-6">
                   <TestMondayContent />
