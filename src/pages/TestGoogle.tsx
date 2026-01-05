@@ -88,12 +88,19 @@ export default function TestGoogle() {
 
   // ========== Calendar Functions ==========
   const listCalendarEvents = async () => {
+    console.log('=== listCalendarEvents START ===');
     setLoadingCalendar(true);
     setCalendarEvents([]);
     
     try {
+      console.log('Step 1: Getting valid token for google_calendar...');
       const token = await getValidToken('google_calendar');
-      if (!token) return;
+      console.log('Step 2: Token result:', token ? `Got token (${token.length} chars)` : 'NO TOKEN');
+      
+      if (!token) {
+        console.log('Step 2b: No token, returning early');
+        return;
+      }
 
       const now = new Date();
       const weekLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
@@ -106,29 +113,35 @@ export default function TestGoogle() {
         orderBy: 'startTime'
       });
 
-      const response = await fetch(
-        `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`,
-        {
-          headers: { Authorization: `Bearer ${token}` }
-        }
-      );
+      const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`;
+      console.log('Step 3: About to fetch Google Calendar API:', url);
+      console.log('Step 3b: Authorization header set');
+
+      const response = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      console.log('Step 4: Google API response status:', response.status, response.statusText);
 
       if (!response.ok) {
         const errorData = await response.json();
+        console.log('Step 4b: Error response body:', errorData);
         throw new Error(errorData.error?.message || 'Failed to fetch events');
       }
 
       const data = await response.json();
+      console.log('Step 5: Success! Events count:', data.items?.length || 0);
       setCalendarEvents(data.items || []);
       toast({ title: `Found ${data.items?.length || 0} events` });
     } catch (error) {
-      console.error('List events error:', error);
+      console.error('=== listCalendarEvents ERROR ===', error);
       toast({ 
         title: 'Failed to list events', 
         description: error instanceof Error ? error.message : 'Unknown error',
         variant: 'destructive' 
       });
     } finally {
+      console.log('=== listCalendarEvents END ===');
       setLoadingCalendar(false);
     }
   };
