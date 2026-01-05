@@ -50,7 +50,7 @@ const PROVIDER_CONFIGS: Record<Provider, ProviderConfig> = {
   groq: {
     name: "groq",
     baseUrl: "https://api.groq.com/openai/v1",
-    model: "llama-3.3-70b-versatile",
+    model: "llama-3.1-70b-versatile",
     timeout: 15000,
     apiKeyEnv: "GROQ_API_KEY",
     supportsTemperature: true,
