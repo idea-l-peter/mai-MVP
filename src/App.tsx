@@ -6,7 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import NotFound from "./pages/NotFound";
-import TestChat from "./pages/TestChat";
+
 
 const queryClient = new QueryClient();
 
@@ -24,6 +24,7 @@ const App = () => (
           <Route path="/contacts" element={<Dashboard />} />
           <Route path="/integrations" element={<Dashboard />} />
           <Route path="/settings" element={<Dashboard />} />
+          <Route path="/test-chat" element={<Dashboard />} />
           <Route path="/test-google" element={<Dashboard />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
