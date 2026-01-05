@@ -137,13 +137,14 @@ export function ConversationsContent() {
 
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
       console.error("Chat error:", err);
       setMessages((prev) => [
         ...prev,
         {
           id: crypto.randomUUID(),
           role: "assistant",
-          content: "Hit a snag. Give it another shot.",
+          content: `Hit a snag. ${message}`,
           timestamp: new Date(),
         },
       ]);
