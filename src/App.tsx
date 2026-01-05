@@ -7,6 +7,7 @@ import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import NotFound from "./pages/NotFound";
 import TestChat from "./pages/TestChat";
+import TestGoogle from "./pages/TestGoogle";
 
 const queryClient = new QueryClient();
 
@@ -25,6 +26,7 @@ const App = () => (
           <Route path="/integrations" element={<Dashboard />} />
           <Route path="/settings" element={<Dashboard />} />
           <Route path="/test-chat" element={<TestChat />} />
+          <Route path="/test-google" element={<TestGoogle />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

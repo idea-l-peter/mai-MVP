@@ -1,0 +1,479 @@
+import { useState } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
+import { useToast } from '@/hooks/use-toast';
+import { Loader2, Calendar, Mail, ArrowLeft } from 'lucide-react';
+import { Link } from 'react-router-dom';
+
+interface CalendarEvent {
+  id: string;
+  summary: string;
+  start: { dateTime?: string; date?: string };
+  end: { dateTime?: string; date?: string };
+  description?: string;
+}
+
+interface GmailMessage {
+  id: string;
+  threadId: string;
+  snippet: string;
+  subject: string;
+  from: string;
+  date: string;
+}
+
+export default function TestGoogle() {
+  const { toast } = useToast();
+  
+  // Calendar state
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [loadingCalendar, setLoadingCalendar] = useState(false);
+  const [creatingEvent, setCreatingEvent] = useState(false);
+  const [eventForm, setEventForm] = useState({
+    title: '',
+    dateTime: '',
+    duration: '60',
+    description: ''
+  });
+  
+  // Gmail state
+  const [emails, setEmails] = useState<GmailMessage[]>([]);
+  const [loadingEmails, setLoadingEmails] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [emailForm, setEmailForm] = useState({
+    to: '',
+    subject: '',
+    body: ''
+  });
+
+  const getValidToken = async (provider: string): Promise<string | null> => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast({ title: 'Not authenticated', variant: 'destructive' });
+        return null;
+      }
+
+      const { data, error } = await supabase.functions.invoke('get-valid-token', {
+        body: { user_id: user.id, provider }
+      });
+
+      if (error) throw error;
+      if (!data.connected) {
+        toast({ 
+          title: `${provider} not connected`, 
+          description: 'Please connect from the Integrations page',
+          variant: 'destructive' 
+        });
+        return null;
+      }
+
+      return data.access_token;
+    } catch (error) {
+      console.error('Get token error:', error);
+      toast({ title: 'Failed to get token', variant: 'destructive' });
+      return null;
+    }
+  };
+
+  // ========== Calendar Functions ==========
+  const listCalendarEvents = async () => {
+    setLoadingCalendar(true);
+    setCalendarEvents([]);
+    
+    try {
+      const token = await getValidToken('google_calendar');
+      if (!token) return;
+
+      const now = new Date();
+      const weekLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+      
+      const params = new URLSearchParams({
+        timeMin: now.toISOString(),
+        timeMax: weekLater.toISOString(),
+        maxResults: '20',
+        singleEvents: 'true',
+        orderBy: 'startTime'
+      });
+
+      const response = await fetch(
+        `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`,
+        {
+          headers: { Authorization: `Bearer ${token}` }
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || 'Failed to fetch events');
+      }
+
+      const data = await response.json();
+      setCalendarEvents(data.items || []);
+      toast({ title: `Found ${data.items?.length || 0} events` });
+    } catch (error) {
+      console.error('List events error:', error);
+      toast({ 
+        title: 'Failed to list events', 
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive' 
+      });
+    } finally {
+      setLoadingCalendar(false);
+    }
+  };
+
+  const createCalendarEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!eventForm.title || !eventForm.dateTime) {
+      toast({ title: 'Title and date/time are required', variant: 'destructive' });
+      return;
+    }
+
+    setCreatingEvent(true);
+    
+    try {
+      const token = await getValidToken('google_calendar');
+      if (!token) return;
+
+      const startDate = new Date(eventForm.dateTime);
+      const endDate = new Date(startDate.getTime() + parseInt(eventForm.duration) * 60 * 1000);
+
+      const event = {
+        summary: eventForm.title,
+        description: eventForm.description,
+        start: { dateTime: startDate.toISOString() },
+        end: { dateTime: endDate.toISOString() }
+      };
+
+      const response = await fetch(
+        'https://www.googleapis.com/calendar/v3/calendars/primary/events',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(event)
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || 'Failed to create event');
+      }
+
+      const createdEvent = await response.json();
+      toast({ title: 'Event created!', description: createdEvent.summary });
+      setEventForm({ title: '', dateTime: '', duration: '60', description: '' });
+      listCalendarEvents(); // Refresh the list
+    } catch (error) {
+      console.error('Create event error:', error);
+      toast({ 
+        title: 'Failed to create event', 
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive' 
+      });
+    } finally {
+      setCreatingEvent(false);
+    }
+  };
+
+  // ========== Gmail Functions ==========
+  const listEmails = async () => {
+    setLoadingEmails(true);
+    setEmails([]);
+    
+    try {
+      const token = await getValidToken('gmail');
+      if (!token) return;
+
+      // First get message IDs
+      const listResponse = await fetch(
+        'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=10',
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      if (!listResponse.ok) {
+        const errorData = await listResponse.json();
+        throw new Error(errorData.error?.message || 'Failed to list emails');
+      }
+
+      const listData = await listResponse.json();
+      const messageIds = listData.messages || [];
+
+      // Fetch details for each message
+      const emailDetails: GmailMessage[] = [];
+      for (const msg of messageIds.slice(0, 10)) {
+        const msgResponse = await fetch(
+          `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+
+        if (msgResponse.ok) {
+          const msgData = await msgResponse.json();
+          const headers = msgData.payload?.headers || [];
+          
+          emailDetails.push({
+            id: msgData.id,
+            threadId: msgData.threadId,
+            snippet: msgData.snippet || '',
+            subject: headers.find((h: any) => h.name === 'Subject')?.value || '(No subject)',
+            from: headers.find((h: any) => h.name === 'From')?.value || 'Unknown',
+            date: headers.find((h: any) => h.name === 'Date')?.value || ''
+          });
+        }
+      }
+
+      setEmails(emailDetails);
+      toast({ title: `Found ${emailDetails.length} emails` });
+    } catch (error) {
+      console.error('List emails error:', error);
+      toast({ 
+        title: 'Failed to list emails', 
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive' 
+      });
+    } finally {
+      setLoadingEmails(false);
+    }
+  };
+
+  const sendEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!emailForm.to || !emailForm.subject) {
+      toast({ title: 'To and Subject are required', variant: 'destructive' });
+      return;
+    }
+
+    setSendingEmail(true);
+    
+    try {
+      const token = await getValidToken('gmail');
+      if (!token) return;
+
+      // Create RFC 2822 formatted email
+      const emailLines = [
+        `To: ${emailForm.to}`,
+        `Subject: ${emailForm.subject}`,
+        'Content-Type: text/plain; charset=utf-8',
+        '',
+        emailForm.body
+      ];
+      const email = emailLines.join('\r\n');
+      
+      // Base64url encode the email
+      const encodedEmail = btoa(unescape(encodeURIComponent(email)))
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+
+      const response = await fetch(
+        'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ raw: encodedEmail })
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || 'Failed to send email');
+      }
+
+      toast({ title: 'Email sent!', description: `To: ${emailForm.to}` });
+      setEmailForm({ to: '', subject: '', body: '' });
+    } catch (error) {
+      console.error('Send email error:', error);
+      toast({ 
+        title: 'Failed to send email', 
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive' 
+      });
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
+  const formatDateTime = (event: CalendarEvent) => {
+    const dateStr = event.start.dateTime || event.start.date;
+    if (!dateStr) return 'No date';
+    return new Date(dateStr).toLocaleString();
+  };
+
+  return (
+    <div className="min-h-screen bg-background p-6">
+      <div className="max-w-6xl mx-auto space-y-6">
+        <div className="flex items-center gap-4">
+          <Link to="/integrations">
+            <Button variant="ghost" size="icon">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          </Link>
+          <div>
+            <h1 className="text-3xl font-bold">Google API Test</h1>
+            <p className="text-muted-foreground">Test Calendar and Gmail API functionality</p>
+          </div>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-6">
+          {/* Calendar Section */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Calendar className="h-5 w-5" />
+                Google Calendar
+              </CardTitle>
+              <CardDescription>Test Calendar API v3 operations</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Button 
+                onClick={listCalendarEvents} 
+                disabled={loadingCalendar}
+                className="w-full"
+              >
+                {loadingCalendar && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                List Events (Next 7 Days)
+              </Button>
+
+              {calendarEvents.length > 0 && (
+                <div className="border rounded-lg divide-y max-h-60 overflow-y-auto">
+                  {calendarEvents.map((event) => (
+                    <div key={event.id} className="p-3">
+                      <p className="font-medium">{event.summary}</p>
+                      <p className="text-sm text-muted-foreground">{formatDateTime(event)}</p>
+                      {event.description && (
+                        <p className="text-sm text-muted-foreground truncate">{event.description}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <form onSubmit={createCalendarEvent} className="space-y-3 pt-4 border-t">
+                <h4 className="font-medium">Create Event</h4>
+                <div>
+                  <Label htmlFor="title">Title</Label>
+                  <Input
+                    id="title"
+                    value={eventForm.title}
+                    onChange={(e) => setEventForm(f => ({ ...f, title: e.target.value }))}
+                    placeholder="Event title"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="dateTime">Date & Time</Label>
+                  <Input
+                    id="dateTime"
+                    type="datetime-local"
+                    value={eventForm.dateTime}
+                    onChange={(e) => setEventForm(f => ({ ...f, dateTime: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="duration">Duration (minutes)</Label>
+                  <Input
+                    id="duration"
+                    type="number"
+                    value={eventForm.duration}
+                    onChange={(e) => setEventForm(f => ({ ...f, duration: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea
+                    id="description"
+                    value={eventForm.description}
+                    onChange={(e) => setEventForm(f => ({ ...f, description: e.target.value }))}
+                    placeholder="Optional description"
+                  />
+                </div>
+                <Button type="submit" disabled={creatingEvent} className="w-full">
+                  {creatingEvent && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Create Event
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+
+          {/* Gmail Section */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Mail className="h-5 w-5" />
+                Gmail
+              </CardTitle>
+              <CardDescription>Test Gmail API v1 operations</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Button 
+                onClick={listEmails} 
+                disabled={loadingEmails}
+                className="w-full"
+              >
+                {loadingEmails && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                List Recent Emails (10)
+              </Button>
+
+              {emails.length > 0 && (
+                <div className="border rounded-lg divide-y max-h-60 overflow-y-auto">
+                  {emails.map((email) => (
+                    <div key={email.id} className="p-3">
+                      <p className="font-medium truncate">{email.subject}</p>
+                      <p className="text-sm text-muted-foreground truncate">{email.from}</p>
+                      <p className="text-sm text-muted-foreground truncate">{email.snippet}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <form onSubmit={sendEmail} className="space-y-3 pt-4 border-t">
+                <h4 className="font-medium">Send Test Email</h4>
+                <div>
+                  <Label htmlFor="to">To</Label>
+                  <Input
+                    id="to"
+                    type="email"
+                    value={emailForm.to}
+                    onChange={(e) => setEmailForm(f => ({ ...f, to: e.target.value }))}
+                    placeholder="recipient@example.com"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="subject">Subject</Label>
+                  <Input
+                    id="subject"
+                    value={emailForm.subject}
+                    onChange={(e) => setEmailForm(f => ({ ...f, subject: e.target.value }))}
+                    placeholder="Email subject"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="body">Body</Label>
+                  <Textarea
+                    id="body"
+                    value={emailForm.body}
+                    onChange={(e) => setEmailForm(f => ({ ...f, body: e.target.value }))}
+                    placeholder="Email body"
+                  />
+                </div>
+                <Button type="submit" disabled={sendingEmail} className="w-full">
+                  {sendingEmail && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Send Email
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
