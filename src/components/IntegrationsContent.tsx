@@ -84,6 +84,17 @@ export function IntegrationsContent() {
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
   const { toast } = useToast();
 
+  const DISCONNECT_STORAGE_KEY = "disconnect_in_progress_provider";
+
+  // Clear any stale disconnect-in-progress flag on page load (best-effort)
+  useEffect(() => {
+    try {
+      sessionStorage.removeItem(DISCONNECT_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+  }, []);
+
   const {
     initiateOAuth: initiateGoogleOAuth,
     disconnect: disconnectGoogle,
@@ -179,6 +190,13 @@ export function IntegrationsContent() {
     const config = INTEGRATION_CONFIGS.find((c) => c.id === integrationId);
     if (!config?.provider) return;
 
+    // Mark disconnect as in-progress (best-effort) so a full refresh can't leave UI stuck
+    try {
+      sessionStorage.setItem(DISCONNECT_STORAGE_KEY, config.provider);
+    } catch {
+      // ignore
+    }
+
     setDisconnectingId(integrationId);
 
     // Fail-safe: never let the UI get stuck if the disconnect promise hangs
@@ -202,6 +220,11 @@ export function IntegrationsContent() {
     } finally {
       window.clearTimeout(failSafe);
       setDisconnectingId(null);
+      try {
+        sessionStorage.removeItem(DISCONNECT_STORAGE_KEY);
+      } catch {
+        // ignore
+      }
     }
   };
 
