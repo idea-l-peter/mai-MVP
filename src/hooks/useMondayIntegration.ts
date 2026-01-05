@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -6,6 +6,12 @@ export function useMondayIntegration() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const { toast } = useToast();
+
+  // Reset loading states on mount (after OAuth redirect returns)
+  useEffect(() => {
+    setIsConnecting(false);
+    setIsDisconnecting(false);
+  }, []);
 
   const initiateOAuth = async () => {
     setIsConnecting(true);
