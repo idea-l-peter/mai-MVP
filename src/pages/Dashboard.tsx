@@ -8,6 +8,7 @@ import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { IntegrationsContent } from "@/components/IntegrationsContent";
 import { TestGoogleContent } from "@/components/TestGoogleContent";
+import { TestChatContent } from "@/components/TestChatContent";
 
 const Dashboard = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -63,6 +64,8 @@ const Dashboard = () => {
         return "Settings";
       case "/test-google":
         return "Google API Test";
+      case "/test-chat":
+        return "LLM Router Test";
       default:
         return "Welcome to mai";
     }
@@ -98,6 +101,12 @@ const Dashboard = () => {
             {location.pathname === "/test-google" && (
               <div className="mt-6">
                 <TestGoogleContent />
+              </div>
+            )}
+            
+            {location.pathname === "/test-chat" && (
+              <div className="mt-6">
+                <TestChatContent />
               </div>
             )}
           </main>
