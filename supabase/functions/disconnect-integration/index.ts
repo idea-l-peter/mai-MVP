@@ -27,40 +27,16 @@ serve(async (req) => {
       auth: { persistSession: false }
     });
 
-    // Get the integration record first
-    const { data: integration, error: fetchError } = await supabase
-      .from('user_integrations')
-      .select('access_token_secret_id, refresh_token_secret_id')
+    // Delete encrypted tokens
+    const { error: deleteTokensError } = await supabase
+      .from('encrypted_integration_tokens')
+      .delete()
       .eq('user_id', user_id)
-      .eq('provider', provider)
-      .maybeSingle();
+      .eq('provider', provider);
 
-    if (fetchError) {
-      console.error('Error fetching integration:', fetchError);
-      throw new Error('Failed to fetch integration');
-    }
-
-    if (!integration) {
-      console.log('Integration not found, nothing to disconnect');
-      return new Response(
-        JSON.stringify({ success: true, message: 'Integration not found' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Delete tokens from vault
-    if (integration.access_token_secret_id) {
-      await supabase.rpc('delete_integration_token', {
-        p_user_id: user_id,
-        p_secret_id: integration.access_token_secret_id,
-      });
-    }
-
-    if (integration.refresh_token_secret_id) {
-      await supabase.rpc('delete_integration_token', {
-        p_user_id: user_id,
-        p_secret_id: integration.refresh_token_secret_id,
-      });
+    if (deleteTokensError) {
+      console.error('Error deleting tokens:', deleteTokensError);
+      // Continue anyway, tokens might not exist
     }
 
     // Delete the integration record

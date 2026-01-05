@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { encrypt } from "../_shared/encryption.ts";
 
 const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID')!;
 const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET')!;
@@ -23,7 +24,6 @@ serve(async (req) => {
 
       if (error) {
         console.error('Google OAuth error:', error);
-        // Redirect back to app with error
         const errorRedirect = new URL('https://id-preview--7a75d720-624c-4a53-a51c-94b8713f1707.lovable.app/integrations');
         errorRedirect.searchParams.set('error', error);
         return Response.redirect(errorRedirect.toString(), 302);
@@ -90,51 +90,57 @@ serve(async (req) => {
       
       console.log(`Got user info for: ${userInfo.email}`);
 
-      // Create service role client to store tokens in vault
+      // Create service role client
       const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
         auth: { persistSession: false }
       });
 
-      // Store access token in vault
-      const { data: accessTokenSecretId, error: accessTokenError } = await supabase
-        .rpc('store_integration_token', {
-          p_user_id: user_id,
-          p_provider: provider,
-          p_token_type: 'access_token',
-          p_token_value: access_token,
-        });
+      // Encrypt tokens using application-level encryption
+      console.log('Encrypting tokens...');
+      const encryptedAccessToken = await encrypt(access_token);
+      const encryptedRefreshToken = refresh_token ? await encrypt(refresh_token) : null;
+
+      // Store encrypted tokens
+      console.log('Storing encrypted tokens...');
+      
+      // Upsert access token
+      const { error: accessTokenError } = await supabase
+        .from('encrypted_integration_tokens')
+        .upsert({
+          user_id,
+          provider,
+          token_type: 'access_token',
+          encrypted_value: encryptedAccessToken,
+        }, { onConflict: 'user_id,provider,token_type' });
 
       if (accessTokenError) {
         console.error('Error storing access token:', accessTokenError);
         throw new Error('Failed to store access token');
       }
 
-      // Store refresh token in vault (if provided)
-      let refreshTokenSecretId = null;
-      if (refresh_token) {
-        const { data, error: refreshTokenError } = await supabase
-          .rpc('store_integration_token', {
-            p_user_id: user_id,
-            p_provider: provider,
-            p_token_type: 'refresh_token',
-            p_token_value: refresh_token,
-          });
+      // Upsert refresh token if provided
+      if (encryptedRefreshToken) {
+        const { error: refreshTokenError } = await supabase
+          .from('encrypted_integration_tokens')
+          .upsert({
+            user_id,
+            provider,
+            token_type: 'refresh_token',
+            encrypted_value: encryptedRefreshToken,
+          }, { onConflict: 'user_id,provider,token_type' });
 
         if (refreshTokenError) {
           console.error('Error storing refresh token:', refreshTokenError);
           throw new Error('Failed to store refresh token');
         }
-        refreshTokenSecretId = data;
       }
 
-      // Upsert integration record
+      // Upsert integration record (metadata only, no secret IDs)
       const { error: upsertError } = await supabase
         .from('user_integrations')
         .upsert({
           user_id,
           provider,
-          access_token_secret_id: accessTokenSecretId,
-          refresh_token_secret_id: refreshTokenSecretId,
           token_expires_at,
           scopes: scope ? scope.split(' ') : [],
           provider_user_id: userInfo.id,
