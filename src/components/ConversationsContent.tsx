@@ -12,7 +12,14 @@ interface Message {
   timestamp: Date;
 }
 
-const MAI_SYSTEM_PROMPT = `You are mai, a professional AI assistant. Be warm but concise - get to the point while remaining friendly. Use clear, actionable language. When you don't know something, say so directly.`;
+const MAI_SYSTEM_PROMPT = `You are mai, a professional AI assistant for productivity and communication.
+
+Your capabilities:
+- Google Calendar: Read and create calendar events
+- Gmail: Read and send emails
+- monday.com: Read boards/items and create new items
+
+Be warm but extremely concise. Keep responses brief and to the point - avoid long lists or explanations unless specifically asked. Use clear, actionable language. When asked about your capabilities, confidently state what you can do.`;
 
 export function ConversationsContent() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -93,7 +100,7 @@ export function ConversationsContent() {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100dvh-8rem)] md:h-[calc(100dvh-10rem)]">
+    <div className="flex flex-col h-[calc(100dvh-8rem)] md:h-[calc(100dvh-10rem)] max-w-3xl mx-auto w-full">
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto px-2 py-4 space-y-4">
         {messages.length === 0 && (
