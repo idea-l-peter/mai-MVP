@@ -43,8 +43,8 @@ const navItems = [
 const GoogleIcon = ({ className }: { className?: string }) => (
   <img
     src={googleCalendarIcon}
-    alt="Google"
-    className={`${className} h-5 w-5 object-contain origin-center scale-[1.15]`}
+    alt="Google Calendar"
+    className={`${className} h-5 w-5 object-contain origin-center scale-[1.3]`}
   />
 );
 
@@ -52,7 +52,7 @@ const MondayIcon = ({ className }: { className?: string }) => (
   <img
     src={mondayLogo}
     alt="monday.com"
-    className={`${className} h-5 w-5 object-contain origin-center scale-[1.15]`}
+    className={`${className} h-5 w-5 object-contain origin-center scale-[1.55]`}
   />
 );
 
