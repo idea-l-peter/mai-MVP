@@ -77,9 +77,6 @@ const Dashboard = () => {
     }
   };
 
-  // Conversations page has a different layout (no header/padding for full-screen chat)
-  const isConversationsPage = location.pathname === "/conversations";
-
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full">
@@ -90,51 +87,26 @@ const Dashboard = () => {
           {/* Mobile Header */}
           {isMobile && <MobileNav />}
           
-          {isConversationsPage ? (
-            <ConversationsContent />
-          ) : (
-            <main className="flex-1 p-4 md:p-8">
-              {location.pathname !== "/admin" && (
-                <>
-                  <h1 className="text-2xl md:text-3xl font-bold text-foreground mb-2">
-                    {getPageTitle()}
-                  </h1>
-                  {location.pathname === "/dashboard" && (
-                    <p className="text-muted-foreground text-sm md:text-base">
-                      Logged in as: {user.email}
-                    </p>
-                  )}
-                </>
-              )}
+          <main className="flex-1 p-4 md:p-8">
+            <h1 className="text-2xl md:text-3xl font-bold text-foreground mb-2">
+              {getPageTitle()}
+            </h1>
+            {location.pathname === "/dashboard" && (
+              <p className="text-muted-foreground text-sm md:text-base">
+                Logged in as: {user.email}
+              </p>
+            )}
 
-              {/* Page-specific content */}
+            {/* Page-specific content */}
+            <div className="mt-6">
+              {location.pathname === "/conversations" && <ConversationsContent />}
               {location.pathname === "/admin" && <Admin />}
-
-              {location.pathname === "/integrations" && (
-                <div className="mt-6">
-                  <IntegrationsContent />
-                </div>
-              )}
-
-              {location.pathname === "/test-google" && (
-                <div className="mt-6">
-                  <TestGoogleContent />
-                </div>
-              )}
-
-              {location.pathname === "/test-chat" && (
-                <div className="mt-6">
-                  <TestChatContent />
-                </div>
-              )}
-
-              {location.pathname === "/test-monday" && (
-                <div className="mt-6">
-                  <TestMondayContent />
-                </div>
-              )}
-            </main>
-          )}
+              {location.pathname === "/integrations" && <IntegrationsContent />}
+              {location.pathname === "/test-google" && <TestGoogleContent />}
+              {location.pathname === "/test-chat" && <TestChatContent />}
+              {location.pathname === "/test-monday" && <TestMondayContent />}
+            </div>
+          </main>
         </SidebarInset>
       </div>
     </SidebarProvider>

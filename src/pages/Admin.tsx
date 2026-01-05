@@ -219,7 +219,7 @@ const Admin = () => {
 
   if (adminLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center py-12">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
@@ -230,11 +230,7 @@ const Admin = () => {
   }
 
   return (
-    <div className="container mx-auto py-8 px-4 max-w-5xl space-y-8">
-      <div className="flex items-center gap-3">
-        <Shield className="h-8 w-8 text-primary" />
-        <h1 className="text-3xl font-bold">Admin Panel</h1>
-      </div>
+    <div className="space-y-8">
 
       {/* Allowed Domains Section */}
       <Card>
