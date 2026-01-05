@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, LayoutGrid, Plus, List } from 'lucide-react';
-import { MondayLogo } from '@/components/icons/MondayLogo';
+import mondayLogo from '@/assets/monday-logo.svg';
 
 interface MondayBoard {
   id: string;
@@ -269,7 +269,7 @@ export function TestMondayContent() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <MondayLogo className="h-5 w-5" />
+              <img src={mondayLogo} alt="monday.com" className="h-5 w-5" />
               List Boards
             </CardTitle>
             <CardDescription>Fetch all boards you have access to</CardDescription>

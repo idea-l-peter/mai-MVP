@@ -29,8 +29,8 @@ import {
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
 import maiLogoWhite from "@/assets/mai-logo-white.png";
-import { MondayLogo } from "@/components/icons/MondayLogo";
 import { GoogleCalendarLogo } from "@/components/icons/GoogleCalendarLogo";
+import mondayLogo from "@/assets/monday-logo.svg";
 
 const navItems = [
   { title: "Dashboard", icon: LayoutDashboard, url: "/dashboard" },
@@ -40,10 +40,14 @@ const navItems = [
   { title: "Settings", icon: Settings, url: "/settings" },
 ];
 
+const MondayIcon = ({ className }: { className?: string }) => (
+  <img src={mondayLogo} alt="monday.com" className={className} />
+);
+
 const devItems = [
   { title: "Test Chat", icon: Zap, url: "/test-chat" },
   { title: "Test Google", icon: GoogleCalendarLogo, url: "/test-google" },
-  { title: "Test monday.com", icon: MondayLogo, url: "/test-monday" },
+  { title: "Test monday.com", icon: MondayIcon, url: "/test-monday" },
 ];
 
 export function DashboardSidebar() {
