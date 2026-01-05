@@ -324,7 +324,7 @@ export function TestMondayContent() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <MondayLogo className="h-5 w-5" />
+              <List className="h-5 w-5" />
               List Items
             </CardTitle>
             <CardDescription>Select a board and list its items</CardDescription>
@@ -382,7 +382,7 @@ export function TestMondayContent() {
         <Card className="md:col-span-2">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <MondayLogo className="h-5 w-5" />
+              <Plus className="h-5 w-5" />
               Create Item
             </CardTitle>
             <CardDescription>Create a new item on a board</CardDescription>
