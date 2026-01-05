@@ -591,6 +591,43 @@ function cleanEmailList(emails: string): { cleaned: string; invalid: string[] } 
   return { cleaned: cleanedParts.join(", "), invalid };
 }
 
+// Fetch user's Gmail signature from sendAs settings
+async function fetchGmailSignature(accessToken: string): Promise<{ signature: string; isHtml: boolean } | null> {
+  try {
+    const response = await fetch(
+      "https://gmail.googleapis.com/gmail/v1/users/me/settings/sendAs",
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }
+    );
+
+    if (!response.ok) {
+      console.log(`[Tools] Could not fetch sendAs settings: ${response.status}`);
+      return null;
+    }
+
+    const data = await response.json();
+    const sendAsAddresses = data.sendAs || [];
+    
+    // Find the primary/default send-as address
+    const primary = sendAsAddresses.find(
+      (sa: { isPrimary?: boolean; isDefault?: boolean }) => sa.isPrimary || sa.isDefault
+    ) || sendAsAddresses[0];
+
+    if (!primary || !primary.signature) {
+      console.log("[Tools] No signature found in sendAs settings");
+      return null;
+    }
+
+    // Gmail signatures are HTML
+    console.log("[Tools] Found Gmail signature");
+    return { signature: primary.signature, isHtml: true };
+  } catch (error) {
+    console.error("[Tools] Error fetching signature:", error);
+    return null;
+  }
+}
+
 async function sendEmail(
   userId: string,
   args: SendEmailArgs
@@ -638,6 +675,25 @@ async function sendEmail(
   }
 
   try {
+    // Fetch user's Gmail signature
+    const signatureData = await fetchGmailSignature(accessToken);
+    
+    let emailBody = args.body;
+    let contentType = "text/plain; charset=utf-8";
+
+    if (signatureData && signatureData.signature) {
+      if (signatureData.isHtml) {
+        // Convert plain text body to HTML and append HTML signature
+        const htmlBody = args.body.replace(/\n/g, "<br>");
+        emailBody = `${htmlBody}<br><br>--<br>${signatureData.signature}`;
+        contentType = "text/html; charset=utf-8";
+      } else {
+        // Plain text signature
+        emailBody = `${args.body}\n\n--\n${signatureData.signature}`;
+      }
+      console.log("[Tools] Appended signature to email");
+    }
+
     // Construct RFC 2822 formatted email
     let emailContent = `To: ${cleanedTo}\r\n`;
     if (cleanedCc) {
@@ -647,9 +703,9 @@ async function sendEmail(
       emailContent += `Bcc: ${cleanedBcc}\r\n`;
     }
     emailContent += `Subject: ${args.subject}\r\n`;
-    emailContent += `Content-Type: text/plain; charset=utf-8\r\n`;
+    emailContent += `Content-Type: ${contentType}\r\n`;
     emailContent += `\r\n`;
-    emailContent += args.body;
+    emailContent += emailBody;
 
     // Base64url encode the email
     const encoder = new TextEncoder();
@@ -659,52 +715,29 @@ async function sendEmail(
       .replace(/\//g, "_")
       .replace(/=+$/, "");
 
-    // Step 1: Create a draft (this allows Gmail to add signature)
-    const draftResponse = await fetch(
-      "https://gmail.googleapis.com/gmail/v1/users/me/drafts",
+    // Send the email directly
+    const response = await fetch(
+      "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
       {
         method: "POST",
         headers: {
           Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ message: { raw: base64Email } }),
+        body: JSON.stringify({ raw: base64Email }),
       }
     );
 
-    if (!draftResponse.ok) {
-      const errorText = await draftResponse.text();
-      console.error(`[Tools] Gmail draft error: ${draftResponse.status} - ${errorText}`);
-      return { success: false, error: `Failed to create draft: ${draftResponse.status}` };
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[Tools] Gmail send error: ${response.status} - ${errorText}`);
+      return { success: false, error: `Failed to send email: ${response.status}` };
     }
 
-    const draftData = await draftResponse.json();
-    const draftId = draftData.id;
-    console.log(`[Tools] Created draft: ${draftId}`);
+    const data = await response.json();
+    console.log(`[Tools] Sent email: ${data.id}`);
 
-    // Step 2: Send the draft (Gmail appends signature automatically)
-    const sendResponse = await fetch(
-      `https://gmail.googleapis.com/gmail/v1/users/me/drafts/send`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ id: draftId }),
-      }
-    );
-
-    if (!sendResponse.ok) {
-      const errorText = await sendResponse.text();
-      console.error(`[Tools] Gmail send error: ${sendResponse.status} - ${errorText}`);
-      return { success: false, error: `Failed to send email: ${sendResponse.status}` };
-    }
-
-    const sendData = await sendResponse.json();
-    console.log(`[Tools] Sent email: ${sendData.id}`);
-
-    return { success: true, messageId: sendData.id };
+    return { success: true, messageId: data.id };
   } catch (error) {
     console.error(`[Tools] Gmail send error:`, error);
     return { success: false, error: "Failed to send email" };
