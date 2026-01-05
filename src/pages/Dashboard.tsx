@@ -83,11 +83,11 @@ const Dashboard = () => {
         {/* Desktop Sidebar */}
         {!isMobile && <DashboardSidebar />}
         
-        <SidebarInset className="bg-background flex-1">
+        <SidebarInset className="bg-background flex-1 min-w-0">
           {/* Mobile Header */}
           {isMobile && <MobileNav />}
           
-          <main className="flex-1 p-4 md:p-8">
+          <main className="flex-1 px-4 py-4 md:px-8 md:py-8 overflow-x-hidden">
             <h1 className="text-2xl md:text-3xl font-bold text-foreground mb-2">
               {getPageTitle()}
             </h1>
@@ -98,7 +98,7 @@ const Dashboard = () => {
             )}
 
             {/* Page-specific content */}
-            <div className="mt-6">
+            <div className="mt-4 md:mt-6">
               {location.pathname === "/conversations" && <ConversationsContent />}
               {location.pathname === "/admin" && <Admin />}
               {location.pathname === "/integrations" && <IntegrationsContent />}
