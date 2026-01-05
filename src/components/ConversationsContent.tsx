@@ -183,93 +183,97 @@ export function ConversationsContent() {
   return (
     <div className="flex flex-col h-[calc(100dvh-14rem)] md:h-[calc(100dvh-16rem)]">
       <div className="flex-1 overflow-y-auto py-4 flex flex-col">
-        <div className="flex-1 min-h-0" />
-        
-        {messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <div className="flex items-center justify-center mb-4">
-              <img src={maiLogo} alt="mai" className="h-16 w-auto" />
+        <div className="max-w-3xl w-full mx-auto flex flex-col flex-1">
+          <div className="flex-1 min-h-0" />
+          
+          {messages.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <div className="flex items-center justify-center mb-4">
+                <img src={maiLogo} alt="mai" className="h-16 w-auto" />
+              </div>
+              <p className="text-muted-foreground text-lg">
+                What do you need?
+              </p>
             </div>
-            <p className="text-muted-foreground text-lg">
-              What do you need?
-            </p>
-          </div>
-        )}
+          )}
 
-        {messages.length > 0 && (
-          <div className="space-y-4">
-            {messages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-              >
-                {msg.role === "assistant" && (
-                  <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center">
-                    <img src={maiLogo} alt="mai" className="h-8 w-auto" />
-                  </div>
-                )}
+          {messages.length > 0 && (
+            <div className="space-y-4">
+              {messages.map((msg) => (
                 <div
-                  className={`max-w-[80%] rounded-2xl px-4 py-2.5 ${
-                    msg.role === "user"
-                      ? "bg-primary text-primary-foreground rounded-br-md"
-                      : "bg-muted rounded-bl-md"
-                  }`}
+                  key={msg.id}
+                  className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                 >
-                  {msg.role === "assistant" ? (
-                    <div className="prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed [&>p]:my-1 [&>ul]:my-1 [&>ol]:my-1 [&>p:first-child]:mt-0 [&>p:last-child]:mb-0">
-                      <ReactMarkdown>{msg.content}</ReactMarkdown>
+                  {msg.role === "assistant" && (
+                    <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center">
+                      <img src={maiLogo} alt="mai" className="h-8 w-auto" />
                     </div>
-                  ) : (
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</p>
                   )}
+                  <div
+                    className={`max-w-[80%] rounded-2xl px-4 py-2.5 ${
+                      msg.role === "user"
+                        ? "bg-primary text-primary-foreground rounded-br-md"
+                        : "bg-muted rounded-bl-md"
+                    }`}
+                  >
+                    {msg.role === "assistant" ? (
+                      <div className="prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed [&>p]:my-1 [&>ul]:my-1 [&>ol]:my-1 [&>p:first-child]:mt-0 [&>p:last-child]:mb-0">
+                        <ReactMarkdown>{msg.content}</ReactMarkdown>
+                      </div>
+                    ) : (
+                      <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {isLoading && (
+            <div className="flex gap-3 justify-start mt-4">
+              <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center">
+                <img src={maiLogo} alt="mai" className="h-8 w-auto" />
+              </div>
+              <div className="bg-muted rounded-2xl rounded-bl-md px-4 py-3">
+                <div className="flex gap-1">
+                  <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce [animation-delay:-0.3s]" />
+                  <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce [animation-delay:-0.15s]" />
+                  <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" />
                 </div>
               </div>
-            ))}
-          </div>
-        )}
-
-        {isLoading && (
-          <div className="flex gap-3 justify-start mt-4">
-            <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center">
-              <img src={maiLogo} alt="mai" className="h-8 w-auto" />
             </div>
-            <div className="bg-muted rounded-2xl rounded-bl-md px-4 py-3">
-              <div className="flex gap-1">
-                <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce [animation-delay:-0.3s]" />
-                <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce [animation-delay:-0.15s]" />
-                <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" />
-              </div>
-            </div>
-          </div>
-        )}
+          )}
 
-        <div ref={messagesEndRef} />
+          <div ref={messagesEndRef} />
+        </div>
       </div>
 
       <div className="flex-shrink-0 border-t bg-background pt-4">
-        <div className="flex gap-2 items-end">
-          <Textarea
-            ref={textareaRef}
-            value={input}
-            onChange={handleTextareaChange}
-            placeholder="Message mai..."
-            className="min-h-[44px] max-h-[120px] resize-none rounded-2xl py-3"
-            rows={1}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
-              }
-            }}
-          />
-          <Button
-            onClick={sendMessage}
-            disabled={isLoading || !input.trim()}
-            size="icon"
-            className="h-11 w-11 rounded-full flex-shrink-0"
-          >
-            <Send className="h-5 w-5" />
-          </Button>
+        <div className="max-w-3xl w-full mx-auto">
+          <div className="flex gap-2 items-end">
+            <Textarea
+              ref={textareaRef}
+              value={input}
+              onChange={handleTextareaChange}
+              placeholder="Message mai..."
+              className="min-h-[44px] max-h-[120px] resize-none rounded-2xl py-3"
+              rows={1}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  sendMessage();
+                }
+              }}
+            />
+            <Button
+              onClick={sendMessage}
+              disabled={isLoading || !input.trim()}
+              size="icon"
+              className="h-11 w-11 rounded-full flex-shrink-0"
+            >
+              <Send className="h-5 w-5" />
+            </Button>
+          </div>
         </div>
       </div>
     </div>
