@@ -120,6 +120,37 @@ async function callOpenAICompatible(
   }
 }
 
+async function listGeminiModels(apiKey: string): Promise<void> {
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
+    console.log(`[LLM Router] Fetching available Gemini models...`);
+    
+    const response = await fetch(url);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[LLM Router] ListModels error: ${response.status} - ${errorText}`);
+      return;
+    }
+    
+    const data = await response.json();
+    const models = data.models || [];
+    
+    console.log(`[LLM Router] Available Gemini models (${models.length} total):`);
+    for (const model of models) {
+      const methods = model.supportedGenerationMethods?.join(", ") || "none";
+      console.log(`  - ${model.name} | methods: ${methods}`);
+    }
+    
+    // Find models that support generateContent
+    const generateContentModels = models.filter((m: { supportedGenerationMethods?: string[] }) => 
+      m.supportedGenerationMethods?.includes("generateContent")
+    );
+    console.log(`[LLM Router] Models supporting generateContent: ${generateContentModels.map((m: { name: string }) => m.name).join(", ")}`);
+  } catch (error) {
+    console.error(`[LLM Router] ListModels failed:`, error);
+  }
+}
+
 async function callGemini(
   config: ProviderConfig,
   request: LLMRequest,
@@ -129,6 +160,9 @@ async function callGemini(
   const timeoutId = setTimeout(() => controller.abort(), config.timeout);
 
   console.log(`[LLM Router] Gemini API key present: ${!!apiKey}, length: ${apiKey?.length || 0}`);
+  
+  // Run diagnostic to list available models
+  await listGeminiModels(apiKey);
 
   try {
     // Convert OpenAI format to Gemini format
