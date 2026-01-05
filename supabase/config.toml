@@ -14,3 +14,9 @@ verify_jwt = false
 
 [functions.disconnect-integration]
 verify_jwt = false
+
+[functions.monday-oauth]
+verify_jwt = false
+
+[functions.monday-oauth-callback]
+verify_jwt = false
