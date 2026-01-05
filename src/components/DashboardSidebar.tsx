@@ -7,12 +7,15 @@ import {
   Plug,
   Settings,
   LogOut,
+  Zap,
+  Calendar,
 } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -28,6 +31,11 @@ const navItems = [
   { title: "Contacts", icon: Users, url: "/contacts" },
   { title: "Integrations", icon: Plug, url: "/integrations" },
   { title: "Settings", icon: Settings, url: "/settings" },
+];
+
+const devItems = [
+  { title: "Test Chat", icon: Zap, url: "/test-chat" },
+  { title: "Test Google", icon: Calendar, url: "/test-google" },
 ];
 
 export function DashboardSidebar() {
@@ -63,6 +71,28 @@ export function DashboardSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {navItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton
+                    onClick={() => navigate(item.url)}
+                    isActive={isActive(item.url)}
+                    className="w-full justify-start gap-3 px-4 py-3 text-sidebar-foreground hover:bg-sidebar-accent data-[active=true]:bg-sidebar-accent"
+                  >
+                    <item.icon className="h-5 w-5" />
+                    <span>{item.title}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup className="mt-auto">
+          <SidebarGroupLabel className="px-4 text-xs font-medium text-sidebar-foreground/60">
+            Developer Tools
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {devItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
                     onClick={() => navigate(item.url)}
