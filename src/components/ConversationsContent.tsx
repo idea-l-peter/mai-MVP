@@ -181,8 +181,8 @@ export function ConversationsContent() {
 
 
   return (
-    <div className="flex flex-col h-[calc(100dvh-8rem)] md:h-[calc(100dvh-10rem)] max-w-3xl mx-auto w-full">
-      <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col">
+    <div className="flex flex-col h-[calc(100dvh-14rem)] md:h-[calc(100dvh-16rem)]">
+      <div className="flex-1 overflow-y-auto py-4 flex flex-col">
         <div className="flex-1 min-h-0" />
         
         {messages.length === 0 && (
@@ -246,8 +246,8 @@ export function ConversationsContent() {
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="flex-shrink-0 border-t bg-background p-3 pb-[env(safe-area-inset-bottom,0.75rem)]">
-        <div className="flex gap-2 items-end max-w-3xl mx-auto">
+      <div className="flex-shrink-0 border-t bg-background pt-4">
+        <div className="flex gap-2 items-end">
           <Textarea
             ref={textareaRef}
             value={input}
