@@ -7,8 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
-import { GoogleCalendarLogo } from '@/components/icons/GoogleCalendarLogo';
-import { GmailLogo } from '@/components/icons/GmailLogo';
+import googleCalendarIcon from '@/assets/google-calendar-icon.svg';
+import gmailLogo from '@/assets/gmail-logo.png';
 
 interface CalendarEvent {
   id: string;
@@ -371,7 +371,7 @@ export function TestGoogleContent() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <GoogleCalendarLogo className="h-5 w-5" />
+              <img src={googleCalendarIcon} alt="Google Calendar" className="h-5 w-5" />
               Google Calendar
             </CardTitle>
             <CardDescription>Test Calendar API v3 operations</CardDescription>
@@ -450,7 +450,7 @@ export function TestGoogleContent() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <GmailLogo className="h-5 w-5" />
+              <img src={gmailLogo} alt="Gmail" className="h-5 w-auto" />
               Gmail
             </CardTitle>
             <CardDescription>Test Gmail API v1 operations</CardDescription>
