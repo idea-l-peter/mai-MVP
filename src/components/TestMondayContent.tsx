@@ -12,7 +12,7 @@ import { MondayLogo } from '@/components/icons/MondayLogo';
 interface MondayBoard {
   id: string;
   name: string;
-  board_kind: 'public' | 'private' | 'share';
+  board_kind: 'main' | 'shareable' | 'private';
 }
 
 interface MondayItem {
@@ -27,6 +27,8 @@ export function TestMondayContent() {
   const [boards, setBoards] = useState<MondayBoard[]>([]);
   const [loadingBoards, setLoadingBoards] = useState(false);
   const [boardSearch, setBoardSearch] = useState('');
+  const [itemsBoardSearch, setItemsBoardSearch] = useState('');
+  const [createBoardSearch, setCreateBoardSearch] = useState('');
   
   // Items state
   const [selectedBoardId, setSelectedBoardId] = useState<string>('');
@@ -92,7 +94,7 @@ export function TestMondayContent() {
       if (!data?.connected) {
         console.log('>>> getValidToken: Not connected, data:', data);
         toast({ 
-          title: 'Monday.com not connected', 
+          title: 'monday.com not connected', 
           description: data?.error || 'Please connect from the Integrations page',
           variant: 'destructive' 
         });
@@ -260,7 +262,7 @@ export function TestMondayContent() {
 
   return (
     <div className="space-y-6">
-      <p className="text-muted-foreground">Test Monday.com GraphQL API functionality</p>
+      <p className="text-muted-foreground">Test monday.com GraphQL API functionality</p>
 
       <div className="grid md:grid-cols-2 gap-6">
         {/* List Boards Section */}
@@ -302,7 +304,7 @@ export function TestMondayContent() {
                           <span className={`text-xs px-2 py-0.5 rounded ${
                             board.board_kind === 'private' 
                               ? 'bg-orange-100 text-orange-700' 
-                              : board.board_kind === 'share'
+                              : board.board_kind === 'shareable'
                               ? 'bg-blue-100 text-blue-700'
                               : 'bg-green-100 text-green-700'
                           }`}>
@@ -330,16 +332,26 @@ export function TestMondayContent() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label>Select Board</Label>
+              <Input
+                placeholder="Search boards..."
+                value={itemsBoardSearch}
+                onChange={(e) => setItemsBoardSearch(e.target.value)}
+                className="mb-2"
+              />
               <Select value={selectedBoardId} onValueChange={setSelectedBoardId}>
                 <SelectTrigger>
                   <SelectValue placeholder={boards.length === 0 ? "Load boards first" : "Select a board"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {boards.map((board) => (
-                    <SelectItem key={board.id} value={board.id}>
-                      {board.name}
-                    </SelectItem>
-                  ))}
+                  {boards
+                    .filter((board) => 
+                      board.name.toLowerCase().includes(itemsBoardSearch.toLowerCase())
+                    )
+                    .map((board) => (
+                      <SelectItem key={board.id} value={board.id}>
+                        {board.name}
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </div>
@@ -380,16 +392,26 @@ export function TestMondayContent() {
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Select Board</Label>
+                  <Input
+                    placeholder="Search boards..."
+                    value={createBoardSearch}
+                    onChange={(e) => setCreateBoardSearch(e.target.value)}
+                    className="mb-2"
+                  />
                   <Select value={createBoardId} onValueChange={setCreateBoardId}>
                     <SelectTrigger>
                       <SelectValue placeholder={boards.length === 0 ? "Load boards first" : "Select a board"} />
                     </SelectTrigger>
                     <SelectContent>
-                      {boards.map((board) => (
-                        <SelectItem key={board.id} value={board.id}>
-                          {board.name}
-                        </SelectItem>
-                      ))}
+                      {boards
+                        .filter((board) => 
+                          board.name.toLowerCase().includes(createBoardSearch.toLowerCase())
+                        )
+                        .map((board) => (
+                          <SelectItem key={board.id} value={board.id}>
+                            {board.name}
+                          </SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                 </div>

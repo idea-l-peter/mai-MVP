@@ -30,6 +30,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { useToast } from "@/hooks/use-toast";
 import maiLogoWhite from "@/assets/mai-logo-white.png";
 import { MondayLogo } from "@/components/icons/MondayLogo";
+import { GoogleCalendarLogo } from "@/components/icons/GoogleCalendarLogo";
 
 const navItems = [
   { title: "Dashboard", icon: LayoutDashboard, url: "/dashboard" },
@@ -41,8 +42,8 @@ const navItems = [
 
 const devItems = [
   { title: "Test Chat", icon: Zap, url: "/test-chat" },
-  { title: "Test Google", icon: Calendar, url: "/test-google" },
-  { title: "Test Monday", icon: MondayLogo, url: "/test-monday" },
+  { title: "Test Google", icon: GoogleCalendarLogo, url: "/test-google" },
+  { title: "Test monday.com", icon: MondayLogo, url: "/test-monday" },
 ];
 
 export function DashboardSidebar() {
@@ -50,6 +51,7 @@ export function DashboardSidebar() {
   const location = useLocation();
   const { toast } = useToast();
   const [devToolsOpen, setDevToolsOpen] = useState(false);
+  const isDevToolActive = devItems.some(item => location.pathname === item.url);
 
   const handleLogout = async () => {
     const { error } = await supabase.auth.signOut();
@@ -65,7 +67,6 @@ export function DashboardSidebar() {
   };
 
   const isActive = (url: string) => location.pathname === url;
-  const isDevToolActive = devItems.some(item => isActive(item.url));
 
   return (
     <Sidebar className="w-60 border-r-0">
