@@ -681,17 +681,27 @@ async function sendEmail(
     let emailBody = args.body;
     let contentType = "text/plain; charset=utf-8";
 
+    // mai branding
+    const maiBrandingText = "Sent via mai, my AI assistant.";
+    const maiBrandingHtml = `<span style="color: #888; font-size: 12px;">Sent via mai, my AI assistant.</span>`;
+
     if (signatureData && signatureData.signature) {
       if (signatureData.isHtml) {
-        // Convert plain text body to HTML and append HTML signature
+        // Convert plain text body to HTML, add mai branding, then signature
         const htmlBody = args.body.replace(/\n/g, "<br>");
-        emailBody = `${htmlBody}<br><br>--<br>${signatureData.signature}`;
+        emailBody = `${htmlBody}<br><br>${maiBrandingHtml}<br><br>${signatureData.signature}`;
         contentType = "text/html; charset=utf-8";
       } else {
-        // Plain text signature
-        emailBody = `${args.body}\n\n--\n${signatureData.signature}`;
+        // Plain text: body + mai branding + signature
+        emailBody = `${args.body}\n\n${maiBrandingText}\n\n${signatureData.signature}`;
       }
-      console.log("[Tools] Appended signature to email");
+      console.log("[Tools] Appended mai branding and signature to email");
+    } else {
+      // No signature - just add mai branding
+      const htmlBody = args.body.replace(/\n/g, "<br>");
+      emailBody = `${htmlBody}<br><br>${maiBrandingHtml}`;
+      contentType = "text/html; charset=utf-8";
+      console.log("[Tools] Appended mai branding to email (no signature)");
     }
 
     // Construct RFC 2822 formatted email
