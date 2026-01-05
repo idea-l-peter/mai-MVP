@@ -8,6 +8,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import maiLogo from "@/assets/mai-logo.png";
 
+// Configure allowed email domains here (e.g., ["yourcompany.com", "partner.com"])
+const ALLOWED_EMAIL_DOMAINS = ["yourcompany.com"];
+
+const isEmailDomainAllowed = (email: string): boolean => {
+  const domain = email.split("@")[1]?.toLowerCase();
+  return ALLOWED_EMAIL_DOMAINS.some(
+    (allowed) => domain === allowed.toLowerCase()
+  );
+};
+
 const getAuthRedirectOrigin = () => {
   // Lovable preview URLs (id-preview--*.lovable.app) may enforce Lovable platform auth.
   // For OAuth/email redirects, prefer the public project domain to keep app auth fully Supabase-based.
@@ -64,6 +74,11 @@ const Auth = () => {
         if (error) throw error;
         toast({ title: "Welcome back!", description: "You've successfully signed in." });
       } else {
+        // Check email domain restriction for signups
+        if (!isEmailDomainAllowed(email)) {
+          throw new Error(`Signups are restricted to ${ALLOWED_EMAIL_DOMAINS.join(", ")} email addresses.`);
+        }
+        
         const { error } = await supabase.auth.signUp({
           email,
           password,
