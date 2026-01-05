@@ -16,7 +16,7 @@ serve(async (req) => {
   try {
     console.log('Starting Google OAuth flow');
     
-    const { scopes, user_id, app_redirect_uri } = await req.json();
+    const { scopes, user_id, app_redirect_uri, provider } = await req.json();
     
     if (!user_id) {
       throw new Error('user_id is required');
@@ -24,6 +24,10 @@ serve(async (req) => {
 
     if (!app_redirect_uri) {
       throw new Error('app_redirect_uri is required');
+    }
+
+    if (!provider) {
+      throw new Error('provider is required');
     }
 
     const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID');
@@ -39,7 +43,7 @@ serve(async (req) => {
     // Encode state with user_id, provider, and app redirect URI
     const stateData = {
       user_id,
-      provider: 'google',
+      provider,
       app_redirect_uri,
     };
     const state = btoa(JSON.stringify(stateData));
