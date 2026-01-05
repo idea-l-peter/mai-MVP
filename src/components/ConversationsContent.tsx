@@ -181,9 +181,10 @@ export function ConversationsContent() {
 
 
   return (
-    <div className="flex flex-col h-[calc(100dvh-12rem)] md:h-[calc(100dvh-14rem)] -mx-4 md:mx-0">
-      <div className="flex-1 overflow-y-auto py-4 flex flex-col px-4 md:px-0">
-        <div className="max-w-3xl w-full mx-auto flex flex-col flex-1">
+    <div className="flex flex-col h-[calc(100dvh-12rem)] md:h-[calc(100dvh-14rem)] relative">
+      {/* Messages area with bottom padding for input */}
+      <div className="flex-1 overflow-y-auto py-4 pb-20 md:pb-4 flex flex-col">
+        <div className="max-w-3xl w-full mx-auto flex flex-col flex-1 px-4 md:px-0">
           <div className="flex-1 min-h-0" />
           
           {messages.length === 0 && (
@@ -210,7 +211,7 @@ export function ConversationsContent() {
                     </div>
                   )}
                   <div
-                    className={`max-w-[85%] md:max-w-[80%] rounded-2xl px-3 py-2 md:px-4 md:py-2.5 ${
+                    className={`max-w-[75%] md:max-w-[80%] rounded-2xl px-3 py-2 md:px-4 md:py-2.5 ${
                       msg.role === "user"
                         ? "bg-primary text-primary-foreground rounded-br-md"
                         : "bg-muted rounded-bl-md"
@@ -248,15 +249,16 @@ export function ConversationsContent() {
         </div>
       </div>
 
-      <div className="flex-shrink-0 border-t bg-background pt-3 pb-2 px-4 md:px-0 md:pt-4 md:pb-0">
+      {/* Fixed input area at bottom on mobile */}
+      <div className="fixed bottom-0 left-0 right-0 md:relative md:bottom-auto border-t bg-background py-3 px-4 md:px-0 md:pt-4 md:pb-0 z-50">
         <div className="max-w-3xl w-full mx-auto">
-          <div className="flex gap-2 items-end">
+          <div className="flex gap-3 items-end">
             <Textarea
               ref={textareaRef}
               value={input}
               onChange={handleTextareaChange}
               placeholder="Message mai..."
-              className="min-h-[44px] max-h-[120px] resize-none rounded-2xl py-3 flex-1"
+              className="min-h-[44px] max-h-[120px] resize-none rounded-2xl py-3 flex-1 min-w-0 text-base"
               rows={1}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
@@ -269,7 +271,7 @@ export function ConversationsContent() {
               onClick={sendMessage}
               disabled={isLoading || !input.trim()}
               size="icon"
-              className="h-11 w-11 rounded-full flex-shrink-0"
+              className="h-11 w-11 min-w-11 rounded-full flex-shrink-0"
             >
               <Send className="h-5 w-5" />
             </Button>
