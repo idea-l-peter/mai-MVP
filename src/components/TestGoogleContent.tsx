@@ -130,8 +130,8 @@ export function TestGoogleContent() {
     setCalendarEvents([]);
     
     try {
-      console.log('Step 1: Getting valid token for google_calendar...');
-      const token = await getValidToken('google_calendar');
+      console.log('Step 1: Getting valid token for google-calendar...');
+      const token = await getValidToken('google-calendar');
       console.log('Step 2: Token result:', token ? `Got token (${token.length} chars)` : 'NO TOKEN');
       
       if (!token) {
@@ -192,7 +192,7 @@ export function TestGoogleContent() {
     setCreatingEvent(true);
     
     try {
-      const token = await getValidToken('google_calendar');
+      const token = await getValidToken('google-calendar');
       if (!token) return;
 
       const startDate = new Date(eventForm.dateTime);
