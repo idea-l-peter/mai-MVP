@@ -66,6 +66,21 @@ export function ConversationsContent() {
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
 
+    // Ensure user is authenticated so the edge function can enable tools (calendar, gmail, monday)
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData.session) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: "Please sign in so I can access your connected integrations.",
+          timestamp: new Date(),
+        },
+      ]);
+      return;
+    }
+
     const userMessage: Message = {
       id: crypto.randomUUID(),
       role: "user",
