@@ -7,6 +7,25 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import maiLogo from "@/assets/mai-logo.png";
+
+const getAuthRedirectOrigin = () => {
+  // Lovable preview URLs (id-preview--*.lovable.app) may enforce Lovable platform auth.
+  // For OAuth/email redirects, prefer the public project domain to keep app auth fully Supabase-based.
+  if (typeof window === "undefined") return "";
+
+  const { protocol, hostname } = window.location;
+
+  if (hostname.startsWith("id-preview--") && hostname.endsWith(".lovable.app")) {
+    const publicHost = hostname
+      .replace(/^id-preview--/, "")
+      .replace(/\.lovable\.app$/, ".lovableproject.com");
+
+    return `${protocol}//${publicHost}`;
+  }
+
+  return window.location.origin;
+};
+
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
@@ -49,7 +68,7 @@ const Auth = () => {
           email,
           password,
           options: {
-            emailRedirectTo: `${window.location.origin}/dashboard`,
+            emailRedirectTo: `${getAuthRedirectOrigin()}/dashboard`,
           },
         });
         if (error) throw error;
@@ -75,7 +94,7 @@ const Auth = () => {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/dashboard`,
+          redirectTo: `${getAuthRedirectOrigin()}/dashboard`,
         },
       });
       if (error) throw error;
