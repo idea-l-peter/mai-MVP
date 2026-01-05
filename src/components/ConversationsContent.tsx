@@ -181,10 +181,10 @@ export function ConversationsContent() {
 
 
   return (
-    <div className="flex flex-col h-[calc(100dvh-12rem)] md:h-[calc(100dvh-14rem)] relative">
-      {/* Messages area with bottom padding for input */}
-      <div className="flex-1 overflow-y-auto py-4 pb-20 md:pb-4 flex flex-col">
-        <div className="max-w-3xl w-full mx-auto flex flex-col flex-1 px-4 md:px-0">
+    <div className="flex flex-col h-[calc(100dvh-12rem)] md:h-[calc(100dvh-14rem)] max-w-4xl mx-auto w-full">
+      {/* Messages area with bottom padding for input on mobile */}
+      <div className="flex-1 overflow-y-auto py-4 pb-24 md:pb-4 flex flex-col px-4 md:px-0">
+        <div className="flex flex-col flex-1">
           <div className="flex-1 min-h-0" />
           
           {messages.length === 0 && (
@@ -249,9 +249,9 @@ export function ConversationsContent() {
         </div>
       </div>
 
-      {/* Fixed input area at bottom on mobile */}
-      <div className="fixed bottom-0 left-0 right-0 md:relative md:bottom-auto border-t bg-background py-3 px-4 md:px-0 md:pt-4 md:pb-0 z-50">
-        <div className="max-w-3xl w-full mx-auto">
+      {/* Input area - fixed on mobile, relative on desktop */}
+      <div className="fixed bottom-0 left-0 right-0 md:static border-t bg-background py-3 px-4 md:px-0 md:pt-4 md:pb-0 z-50">
+        <div className="max-w-4xl w-full mx-auto md:max-w-none">
           <div className="flex gap-3 items-end">
             <Textarea
               ref={textareaRef}
