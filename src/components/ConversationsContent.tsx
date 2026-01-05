@@ -104,20 +104,6 @@ export function ConversationsContent() {
     e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
   };
 
-  // Avatar component for consistency
-  const MaiAvatar = () => (
-    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary shadow-md ring-1 ring-primary/20 flex items-center justify-center overflow-hidden">
-      <img 
-        src={maiLogoWhite} 
-        alt="mai" 
-        className="w-5 h-5 object-contain"
-        onError={(e) => {
-          // Fallback: hide image, show just the colored circle
-          e.currentTarget.style.display = 'none';
-        }}
-      />
-    </div>
-  );
 
   return (
     <div className="flex flex-col h-[calc(100dvh-8rem)] md:h-[calc(100dvh-10rem)] max-w-3xl mx-auto w-full">
@@ -142,7 +128,11 @@ export function ConversationsContent() {
                 key={msg.id}
                 className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
               >
-                {msg.role === "assistant" && <MaiAvatar />}
+                {msg.role === "assistant" && (
+                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary shadow-md ring-1 ring-primary/20 flex items-center justify-center">
+                    <img src={maiLogoWhite} alt="mai" className="w-5 h-5" />
+                  </div>
+                )}
                 <div
                   className={`max-w-[80%] rounded-2xl px-4 py-2.5 ${
                     msg.role === "user"
@@ -165,7 +155,9 @@ export function ConversationsContent() {
 
         {isLoading && (
           <div className="flex gap-3 justify-start mt-4">
-            <MaiAvatar />
+            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary shadow-md ring-1 ring-primary/20 flex items-center justify-center">
+              <img src={maiLogoWhite} alt="mai" className="w-5 h-5" />
+            </div>
             <div className="bg-muted rounded-2xl rounded-bl-md px-4 py-3">
               <div className="flex gap-1">
                 <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce [animation-delay:-0.3s]" />
