@@ -180,6 +180,12 @@ export function IntegrationsContent() {
     if (!config?.provider) return;
 
     setDisconnectingId(integrationId);
+
+    // Fail-safe: never let the UI get stuck if the disconnect promise hangs
+    const failSafe = window.setTimeout(() => {
+      setDisconnectingId((current) => (current === integrationId ? null : current));
+    }, 12000);
+
     try {
       let success = false;
       if (config.provider === "monday") {
@@ -194,6 +200,7 @@ export function IntegrationsContent() {
         }));
       }
     } finally {
+      window.clearTimeout(failSafe);
       setDisconnectingId(null);
     }
   };
