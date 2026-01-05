@@ -468,7 +468,7 @@ async function getEmails(
 
   console.log(`[Tools] get_emails: query="${query}", maxResults=${maxResults}`);
 
-  const accessToken = await getValidToken(userId, "google");
+  const accessToken = await getValidToken(userId, "gmail");
   if (!accessToken) {
     return { success: false, error: "Gmail is not connected or token expired" };
   }
@@ -561,7 +561,7 @@ async function sendEmail(
 ): Promise<SendEmailResult> {
   console.log(`[Tools] send_email: to="${args.to}", subject="${args.subject}"`);
 
-  const accessToken = await getValidToken(userId, "google");
+  const accessToken = await getValidToken(userId, "gmail");
   if (!accessToken) {
     return { success: false, error: "Gmail is not connected or token expired" };
   }
