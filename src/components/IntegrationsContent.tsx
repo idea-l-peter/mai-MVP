@@ -80,7 +80,7 @@ interface IntegrationState {
 export function IntegrationsContent() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [integrationStates, setIntegrationStates] = useState<Record<string, IntegrationState>>({});
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
   const {
