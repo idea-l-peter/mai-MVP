@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -22,6 +22,12 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
   const [isConnecting, setIsConnecting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const { toast } = useToast();
+
+  // Reset loading states on mount (after OAuth redirect returns)
+  useEffect(() => {
+    setIsConnecting(false);
+    setIsDisconnecting(false);
+  }, []);
 
   const initiateOAuth = useCallback(async (provider: string, scopes: string[]) => {
     setIsConnecting(true);
