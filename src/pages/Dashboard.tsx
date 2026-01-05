@@ -10,7 +10,7 @@ import { IntegrationsContent } from "@/components/IntegrationsContent";
 import { TestGoogleContent } from "@/components/TestGoogleContent";
 import { TestChatContent } from "@/components/TestChatContent";
 import { TestMondayContent } from "@/components/TestMondayContent";
-
+import { ConversationsContent } from "@/components/ConversationsContent";
 const Dashboard = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -74,6 +74,9 @@ const Dashboard = () => {
     }
   };
 
+  // Conversations page has a different layout (no header/padding for full-screen chat)
+  const isConversationsPage = location.pathname === "/conversations";
+
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full">
@@ -84,41 +87,45 @@ const Dashboard = () => {
           {/* Mobile Header */}
           {isMobile && <MobileNav />}
           
-          <main className="flex-1 p-4 md:p-8">
-            <h1 className="text-2xl md:text-3xl font-bold text-foreground mb-2">
-              {getPageTitle()}
-            </h1>
-            {location.pathname === "/dashboard" && (
-              <p className="text-muted-foreground text-sm md:text-base">
-                Logged in as: {user.email}
-              </p>
-            )}
-            
-            {/* Page-specific content */}
-            {location.pathname === "/integrations" && (
-              <div className="mt-6">
-                <IntegrationsContent />
-              </div>
-            )}
-            
-            {location.pathname === "/test-google" && (
-              <div className="mt-6">
-                <TestGoogleContent />
-              </div>
-            )}
-            
-            {location.pathname === "/test-chat" && (
-              <div className="mt-6">
-                <TestChatContent />
-              </div>
-            )}
-            
-            {location.pathname === "/test-monday" && (
-              <div className="mt-6">
-                <TestMondayContent />
-              </div>
-            )}
-          </main>
+          {isConversationsPage ? (
+            <ConversationsContent />
+          ) : (
+            <main className="flex-1 p-4 md:p-8">
+              <h1 className="text-2xl md:text-3xl font-bold text-foreground mb-2">
+                {getPageTitle()}
+              </h1>
+              {location.pathname === "/dashboard" && (
+                <p className="text-muted-foreground text-sm md:text-base">
+                  Logged in as: {user.email}
+                </p>
+              )}
+              
+              {/* Page-specific content */}
+              {location.pathname === "/integrations" && (
+                <div className="mt-6">
+                  <IntegrationsContent />
+                </div>
+              )}
+              
+              {location.pathname === "/test-google" && (
+                <div className="mt-6">
+                  <TestGoogleContent />
+                </div>
+              )}
+              
+              {location.pathname === "/test-chat" && (
+                <div className="mt-6">
+                  <TestChatContent />
+                </div>
+              )}
+              
+              {location.pathname === "/test-monday" && (
+                <div className="mt-6">
+                  <TestMondayContent />
+                </div>
+              )}
+            </main>
+          )}
         </SidebarInset>
       </div>
     </SidebarProvider>
