@@ -12,6 +12,7 @@ import { MondayLogo } from '@/components/icons/MondayLogo';
 interface MondayBoard {
   id: string;
   name: string;
+  board_kind: 'public' | 'private' | 'share';
 }
 
 interface MondayItem {
@@ -25,6 +26,7 @@ export function TestMondayContent() {
   // Boards state
   const [boards, setBoards] = useState<MondayBoard[]>([]);
   const [loadingBoards, setLoadingBoards] = useState(false);
+  const [boardSearch, setBoardSearch] = useState('');
   
   // Items state
   const [selectedBoardId, setSelectedBoardId] = useState<string>('');
@@ -145,7 +147,7 @@ export function TestMondayContent() {
     setBoards([]);
     
     try {
-      const query = `query { boards(limit: 50) { id name } }`;
+      const query = `query { boards(limit: 100) { id name board_kind } }`;
       const data = await callMondayAPI(query);
       
       if (data?.boards) {
@@ -282,14 +284,36 @@ export function TestMondayContent() {
             </Button>
 
             {boards.length > 0 && (
-              <div className="border rounded-lg divide-y max-h-60 overflow-y-auto">
-                {boards.map((board) => (
-                  <div key={board.id} className="p-3">
-                    <p className="font-medium">{board.name}</p>
-                    <p className="text-sm text-muted-foreground">ID: {board.id}</p>
-                  </div>
-                ))}
-              </div>
+              <>
+                <Input
+                  placeholder="Search boards..."
+                  value={boardSearch}
+                  onChange={(e) => setBoardSearch(e.target.value)}
+                />
+                <div className="border rounded-lg divide-y max-h-60 overflow-y-auto">
+                  {boards
+                    .filter((board) => 
+                      board.name.toLowerCase().includes(boardSearch.toLowerCase())
+                    )
+                    .map((board) => (
+                      <div key={board.id} className="p-3">
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium">{board.name}</p>
+                          <span className={`text-xs px-2 py-0.5 rounded ${
+                            board.board_kind === 'private' 
+                              ? 'bg-orange-100 text-orange-700' 
+                              : board.board_kind === 'share'
+                              ? 'bg-blue-100 text-blue-700'
+                              : 'bg-green-100 text-green-700'
+                          }`}>
+                            {board.board_kind}
+                          </span>
+                        </div>
+                        <p className="text-sm text-muted-foreground">ID: {board.id}</p>
+                      </div>
+                    ))}
+                </div>
+              </>
             )}
           </CardContent>
         </Card>
