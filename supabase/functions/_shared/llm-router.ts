@@ -138,19 +138,24 @@ async function callGemini(
         parts: [{ text: m.content }],
       }));
 
-    // Add system instruction if present
-    const systemMessage = request.messages.find((m) => m.role === "system");
+    // NOTE: The Generative Language API v1 does NOT accept `systemInstruction`.
+    // Instead, we fold the system prompt into the first user message.
+    const systemMessage = request.messages.find((m) => m.role === "system")?.content;
 
     const body: Record<string, unknown> = {
-      contents,
+      contents: systemMessage
+        ? [
+            {
+              role: "user",
+              parts: [{ text: `System: ${systemMessage}` }],
+            },
+            ...contents,
+          ]
+        : contents,
       generationConfig: {
         maxOutputTokens: request.max_tokens || 2048,
       },
     };
-
-    if (systemMessage) {
-      body.systemInstruction = { parts: [{ text: systemMessage.content }] };
-    }
 
     if (request.temperature !== undefined) {
       (body.generationConfig as Record<string, unknown>).temperature = request.temperature;
