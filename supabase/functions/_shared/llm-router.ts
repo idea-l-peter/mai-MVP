@@ -51,7 +51,7 @@ const PROVIDER_CONFIGS: Record<Provider, ProviderConfig> = {
   },
   gemini: {
     name: "gemini",
-    baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+    baseUrl: "https://generativelanguage.googleapis.com/v1",
     model: "gemini-1.5-flash",
     timeout: 15000,
     apiKeyEnv: "GEMINI_API_KEY",
@@ -127,6 +127,8 @@ async function callGemini(
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), config.timeout);
 
+  console.log(`[LLM Router] Gemini API key present: ${!!apiKey}, length: ${apiKey?.length || 0}`);
+
   try {
     // Convert OpenAI format to Gemini format
     const contents = request.messages
@@ -154,15 +156,16 @@ async function callGemini(
       (body.generationConfig as Record<string, unknown>).temperature = request.temperature;
     }
 
-    const response = await fetch(
-      `${config.baseUrl}/models/${config.model}:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      }
-    );
+    const requestUrl = `${config.baseUrl}/models/${config.model}:generateContent?key=${apiKey}`;
+    console.log(`[LLM Router] Gemini request URL: ${requestUrl.replace(apiKey, 'API_KEY_REDACTED')}`);
+    console.log(`[LLM Router] Gemini request body:`, JSON.stringify(body, null, 2));
+
+    const response = await fetch(requestUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
 
     if (!response.ok) {
       const errorText = await response.text();
