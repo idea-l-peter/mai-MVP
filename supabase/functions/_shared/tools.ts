@@ -50,6 +50,44 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "create_calendar_event",
+      description: "Create a new event on the user's Google Calendar. Use this when the user wants to schedule, add, or create a meeting or event.",
+      parameters: {
+        type: "object",
+        properties: {
+          summary: {
+            type: "string",
+            description: "Title of the event",
+          },
+          start_time: {
+            type: "string",
+            description: "Start time in ISO 8601 format (e.g., 2026-01-06T10:00:00+04:00)",
+          },
+          end_time: {
+            type: "string",
+            description: "End time in ISO 8601 format",
+          },
+          description: {
+            type: "string",
+            description: "Description/notes for the event",
+          },
+          location: {
+            type: "string",
+            description: "Location of the event",
+          },
+          attendees: {
+            type: "array",
+            items: { type: "string" },
+            description: "List of attendee email addresses",
+          },
+        },
+        required: ["summary", "start_time", "end_time"],
+      },
+    },
+  },
   // Future tools will be added here:
   // - send_email
   // - get_emails
@@ -242,6 +280,92 @@ async function getCalendarEvents(
   }
 }
 
+interface CreateCalendarEventArgs {
+  summary: string;
+  start_time: string;
+  end_time: string;
+  description?: string;
+  location?: string;
+  attendees?: string[];
+}
+
+interface CreatedEventResult {
+  success: boolean;
+  event?: {
+    id: string;
+    summary: string;
+    start: string;
+    end: string;
+    htmlLink: string;
+  };
+  error?: string;
+}
+
+async function createCalendarEvent(
+  userId: string,
+  args: CreateCalendarEventArgs
+): Promise<CreatedEventResult> {
+  console.log(`[Tools] create_calendar_event: summary="${args.summary}", start=${args.start_time}, end=${args.end_time}`);
+
+  const accessToken = await getValidToken(userId, "google");
+  if (!accessToken) {
+    return { success: false, error: "Google Calendar is not connected or token expired" };
+  }
+
+  try {
+    const eventBody: Record<string, unknown> = {
+      summary: args.summary,
+      start: { dateTime: args.start_time },
+      end: { dateTime: args.end_time },
+    };
+
+    if (args.description) {
+      eventBody.description = args.description;
+    }
+    if (args.location) {
+      eventBody.location = args.location;
+    }
+    if (args.attendees && args.attendees.length > 0) {
+      eventBody.attendees = args.attendees.map((email) => ({ email }));
+    }
+
+    const response = await fetch(
+      "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(eventBody),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[Tools] Calendar API error: ${response.status} - ${errorText}`);
+      return { success: false, error: `Failed to create event: ${response.status}` };
+    }
+
+    const data = await response.json();
+    console.log(`[Tools] Created calendar event: ${data.id}`);
+
+    return {
+      success: true,
+      event: {
+        id: data.id,
+        summary: data.summary,
+        start: data.start?.dateTime || data.start?.date || "",
+        end: data.end?.dateTime || data.end?.date || "",
+        htmlLink: data.htmlLink,
+      },
+    };
+  } catch (error) {
+    console.error(`[Tools] Calendar create error:`, error);
+    return { success: false, error: "Failed to create calendar event" };
+  }
+}
+
 // ============= Tool Execution Router =============
 
 export async function executeTool(
@@ -260,6 +384,10 @@ export async function executeTool(
     switch (name) {
       case "get_calendar_events":
         result = await getCalendarEvents(userId, args);
+        break;
+      
+      case "create_calendar_event":
+        result = await createCalendarEvent(userId, args);
         break;
       
       // Future tool implementations:
