@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { IntegrationCard } from "./IntegrationCard";
 import { WhatsAppLogo } from "./icons";
 import { useGoogleIntegration } from "@/hooks/useGoogleIntegration";
+import { useMondayIntegration } from "@/hooks/useMondayIntegration";
 import { useToast } from "@/hooks/use-toast";
 import googleCalendarIcon from "@/assets/google-calendar-icon.svg";
 import gmailLogo from "@/assets/gmail-logo.png";
@@ -59,6 +60,7 @@ const INTEGRATION_CONFIGS: IntegrationConfig[] = [
     icon: <img src={mondayLogo} alt="Monday.com" className="h-auto w-6" />,
     defaultStatus: "not_connected",
     showConnectButton: true,
+    provider: "monday",
   },
   {
     id: "whatsapp",
@@ -82,12 +84,20 @@ export function IntegrationsContent() {
   const { toast } = useToast();
 
   const {
-    isConnecting,
-    isDisconnecting,
-    initiateOAuth,
-    disconnect,
-    checkConnection,
+    isConnecting: isGoogleConnecting,
+    isDisconnecting: isGoogleDisconnecting,
+    initiateOAuth: initiateGoogleOAuth,
+    disconnect: disconnectGoogle,
+    checkConnection: checkGoogleConnection,
   } = useGoogleIntegration();
+
+  const {
+    isConnecting: isMondayConnecting,
+    isDisconnecting: isMondayDisconnecting,
+    initiateOAuth: initiateMondayOAuth,
+    disconnect: disconnectMonday,
+    checkConnection: checkMondayConnection,
+  } = useMondayIntegration();
 
   // Check connection status for all integrations
   const refreshIntegrations = useCallback(async () => {
@@ -95,8 +105,18 @@ export function IntegrationsContent() {
     const states: Record<string, IntegrationState> = {};
 
     for (const config of INTEGRATION_CONFIGS) {
-      if (config.provider) {
-        const integration = await checkConnection(config.provider);
+      if (config.provider === "monday") {
+        const integration = await checkMondayConnection();
+        if (integration?.connected) {
+          states[config.id] = {
+            status: "connected",
+            providerEmail: integration.provider_email || undefined,
+          };
+        } else {
+          states[config.id] = { status: "not_connected" };
+        }
+      } else if (config.provider) {
+        const integration = await checkGoogleConnection(config.provider);
         if (integration?.connected) {
           states[config.id] = {
             status: "connected",
@@ -112,7 +132,7 @@ export function IntegrationsContent() {
 
     setIntegrationStates(states);
     setIsLoading(false);
-  }, [checkConnection]);
+  }, [checkGoogleConnection, checkMondayConnection]);
 
   // Handle OAuth callback result on mount
   useEffect(() => {
@@ -144,8 +164,10 @@ export function IntegrationsContent() {
 
   const handleConnect = (integrationId: string) => {
     const config = INTEGRATION_CONFIGS.find((c) => c.id === integrationId);
-    if (config?.provider && config.scopes) {
-      initiateOAuth(config.provider, config.scopes);
+    if (config?.provider === "monday") {
+      initiateMondayOAuth();
+    } else if (config?.provider && config.scopes) {
+      initiateGoogleOAuth(config.provider, config.scopes);
     } else {
       console.log(`No OAuth configured for ${integrationId}`);
     }
@@ -153,8 +175,16 @@ export function IntegrationsContent() {
 
   const handleDisconnect = async (integrationId: string) => {
     const config = INTEGRATION_CONFIGS.find((c) => c.id === integrationId);
-    if (config?.provider) {
-      const success = await disconnect(config.provider);
+    if (config?.provider === "monday") {
+      const success = await disconnectMonday();
+      if (success) {
+        setIntegrationStates((prev) => ({
+          ...prev,
+          [integrationId]: { status: "not_connected" },
+        }));
+      }
+    } else if (config?.provider) {
+      const success = await disconnectGoogle(config.provider);
       if (success) {
         setIntegrationStates((prev) => ({
           ...prev,
@@ -185,7 +215,7 @@ export function IntegrationsContent() {
           status={getStatus(integration.id)}
           showConnectButton={integration.showConnectButton}
           connectedEmail={getProviderEmail(integration.id)}
-          isLoading={isLoading || isConnecting || isDisconnecting}
+          isLoading={isLoading || isGoogleConnecting || isGoogleDisconnecting || isMondayConnecting || isMondayDisconnecting}
           onConnect={() => handleConnect(integration.id)}
           onDisconnect={() => handleDisconnect(integration.id)}
         />
