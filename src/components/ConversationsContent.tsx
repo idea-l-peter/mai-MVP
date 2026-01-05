@@ -105,6 +105,13 @@ export function ConversationsContent() {
       const { data: sessionData } = await supabase.auth.getSession();
       const accessToken = sessionData.session?.access_token;
 
+      console.log("[Chat] Session:", {
+        hasSession: !!sessionData.session,
+        userEmail: sessionData.session?.user?.email,
+        accessTokenPresent: !!accessToken,
+        accessTokenPrefix: accessToken ? accessToken.substring(0, 12) + "..." : null,
+      });
+
       const { data, error } = await supabase.functions.invoke("ai-assistant", {
         body: {
           messages: [

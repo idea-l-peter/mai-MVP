@@ -14,7 +14,9 @@ const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 // Maximum tool calls per request to prevent runaway costs
 const MAX_TOOL_CALLS = 5;
 
-function decodeJwtClaims(authHeader: string): { sub?: string; email?: string } | null {
+function decodeJwtClaims(
+  authHeader: string
+): { sub?: string; email?: string; raw?: Record<string, unknown> } | null {
   const token = authHeader.replace(/^Bearer\s+/i, "").trim();
   const parts = token.split(".");
   if (parts.length !== 3) return null;
@@ -26,8 +28,12 @@ function decodeJwtClaims(authHeader: string): { sub?: string; email?: string } |
       .padEnd(Math.ceil(parts[1].length / 4) * 4, "=");
 
     const json = atob(payload);
-    const data = JSON.parse(json);
-    return { sub: data.sub, email: data.email };
+    const data = JSON.parse(json) as Record<string, unknown>;
+    return {
+      sub: typeof data.sub === "string" ? data.sub : undefined,
+      email: typeof data.email === "string" ? data.email : undefined,
+      raw: data,
+    };
   } catch {
     return null;
   }
@@ -44,9 +50,9 @@ serve(async (req) => {
     let userId: string | null = null;
     let userEmail: string | null = null;
 
-    console.log(`[AI Assistant] Auth header present: ${!!authHeader}`);
+    console.log("[AI Assistant] Auth header:", authHeader ? "present" : "missing");
     if (authHeader) {
-      console.log(`[AI Assistant] Auth header starts with: ${authHeader.slice(0, 20)}...`);
+      console.log("[AI Assistant] Auth header value:", authHeader.substring(0, 50) + "...");
     }
 
     // Prefer Supabase auth verification when available
@@ -75,6 +81,11 @@ serve(async (req) => {
       // Fallback: decode JWT payload (ai-assistant verify_jwt=true will validate the token)
       if (!userId) {
         const decoded = decodeJwtClaims(authHeader);
+        console.log(
+          "[AI Assistant] Decoded JWT payload:",
+          decoded?.raw ? JSON.stringify(decoded.raw).substring(0, 400) + "..." : "null"
+        );
+
         if (decoded?.sub) {
           userId = decoded.sub;
           userEmail = decoded.email || null;
