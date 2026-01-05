@@ -1,111 +1,208 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { routeLLMRequest, streamLLMRequest, type LLMRequest } from "../_shared/llm-router.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { routeLLMRequest, TOOL_DEFINITIONS, type LLMMessage } from "../_shared/llm-router.ts";
+import { executeTool, type ToolCall, type ToolResult } from "../_shared/tools.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+
+// Maximum tool calls per request to prevent runaway costs
+const MAX_TOOL_CALLS = 5;
+
 serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const body = await req.json();
-    const { messages, temperature, max_tokens, stream, provider } = body as LLMRequest & { stream?: boolean };
+    // Get user from auth header
+    const authHeader = req.headers.get("authorization");
+    let userId: string | null = null;
 
-    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+    if (authHeader) {
+      const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        global: { headers: { authorization: authHeader } },
+      });
+      const { data: { user } } = await supabase.auth.getUser();
+      userId = user?.id || null;
+    }
+
+    console.log(`[AI Assistant] User ID: ${userId || "anonymous"}`);
+
+    const body = await req.json();
+    const { messages: inputMessages, temperature, max_tokens, stream, provider } = body;
+
+    if (!inputMessages || !Array.isArray(inputMessages) || inputMessages.length === 0) {
       return new Response(
         JSON.stringify({ error: "messages array is required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log(`[AI Assistant] Received request with ${messages.length} messages, stream=${stream}, provider=${provider || 'default'}`);
+    // Convert to LLMMessage format
+    let messages: LLMMessage[] = inputMessages.map((m: { role: string; content: string }) => ({
+      role: m.role as LLMMessage["role"],
+      content: m.content,
+    }));
 
-    // Non-streaming response
-    if (!stream) {
-      const result = await routeLLMRequest({ messages, temperature, max_tokens, provider });
+    console.log(`[AI Assistant] Received ${messages.length} messages, stream=${stream}`);
 
-      if (result.error) {
-        console.error(`[AI Assistant] LLM routing failed: ${result.error}`);
-        return new Response(
-          JSON.stringify({
-            error: result.error,
-            latency_ms: result.latency_ms,
-          }),
-          { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+    // Streaming doesn't support tool calling yet
+    if (stream) {
+      return handleStreamingRequest(messages, temperature, max_tokens, provider);
+    }
+
+    // Non-streaming with tool calling loop
+    let toolCallCount = 0;
+    let finalResponse = await routeLLMRequest({
+      messages,
+      temperature,
+      max_tokens,
+      provider,
+      tools: userId ? TOOL_DEFINITIONS : undefined, // Only provide tools if user is authenticated
+      tool_choice: "auto",
+    });
+
+    // Tool calling loop
+    while (finalResponse.tool_calls && finalResponse.tool_calls.length > 0 && toolCallCount < MAX_TOOL_CALLS) {
+      console.log(`[AI Assistant] Processing ${finalResponse.tool_calls.length} tool calls (iteration ${toolCallCount + 1})`);
+
+      if (!userId) {
+        console.error("[AI Assistant] Tool calls requested but no user ID");
+        break;
       }
 
-      console.log(
-        `[AI Assistant] Success: ${result.provider_used}/${result.model_used} in ${result.latency_ms}ms, fallback=${result.fallback_used}`
-      );
+      // Add assistant message with tool calls
+      messages.push({
+        role: "assistant",
+        content: finalResponse.content || "",
+        tool_calls: finalResponse.tool_calls,
+      });
 
-      return new Response(JSON.stringify(result), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      // Execute each tool call
+      const toolResults: ToolResult[] = [];
+      for (const toolCall of finalResponse.tool_calls) {
+        toolCallCount++;
+        if (toolCallCount > MAX_TOOL_CALLS) {
+          console.warn(`[AI Assistant] Max tool calls (${MAX_TOOL_CALLS}) reached`);
+          break;
+        }
+
+        const result = await executeTool(toolCall, userId);
+        toolResults.push(result);
+        console.log(`[AI Assistant] Tool ${toolCall.function.name} result: ${result.content.substring(0, 100)}...`);
+      }
+
+      // Add tool results to messages
+      for (const result of toolResults) {
+        messages.push({
+          role: "tool",
+          content: result.content,
+          tool_call_id: result.tool_call_id,
+        });
+      }
+
+      // Call LLM again with tool results
+      finalResponse = await routeLLMRequest({
+        messages,
+        temperature,
+        max_tokens,
+        provider,
+        tools: TOOL_DEFINITIONS,
+        tool_choice: "auto",
       });
     }
 
-    // Streaming response
-    const encoder = new TextEncoder();
-    const readableStream = new ReadableStream({
-      async start(controller) {
-        try {
-          for await (const { chunk, done, model_used, provider_used } of streamLLMRequest({
-            messages,
-            temperature,
-            max_tokens,
-            provider,
-          })) {
-            if (done) {
-              // Send final metadata
-              const finalData = JSON.stringify({
-                choices: [{ delta: {}, finish_reason: "stop" }],
-                model: model_used,
-                provider: provider_used,
-              });
-              controller.enqueue(encoder.encode(`data: ${finalData}\n\n`));
-              controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-              controller.close();
-              return;
-            }
+    if (finalResponse.error) {
+      console.error(`[AI Assistant] LLM routing failed: ${finalResponse.error}`);
+      return new Response(
+        JSON.stringify({ error: finalResponse.error, latency_ms: finalResponse.latency_ms }),
+        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
-            if (chunk) {
-              const data = JSON.stringify({
-                choices: [{ delta: { content: chunk } }],
-              });
-              controller.enqueue(encoder.encode(`data: ${data}\n\n`));
-            }
-          }
-        } catch (error) {
-          console.error("[AI Assistant] Stream error:", error);
-          const errorData = JSON.stringify({
-            error: error instanceof Error ? error.message : "Stream failed",
-          });
-          controller.enqueue(encoder.encode(`data: ${errorData}\n\n`));
-          controller.close();
-        }
-      },
-    });
+    console.log(
+      `[AI Assistant] Success: ${finalResponse.provider_used}/${finalResponse.model_used} in ${finalResponse.latency_ms}ms, tool_calls=${toolCallCount}`
+    );
 
-    return new Response(readableStream, {
-      headers: {
-        ...corsHeaders,
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
-      },
-    });
+    return new Response(
+      JSON.stringify({
+        content: finalResponse.content,
+        model_used: finalResponse.model_used,
+        provider_used: finalResponse.provider_used,
+        latency_ms: finalResponse.latency_ms,
+        fallback_used: finalResponse.fallback_used,
+        tool_calls_made: toolCallCount,
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   } catch (error) {
     console.error("[AI Assistant] Request error:", error);
     return new Response(
-      JSON.stringify({
-        error: error instanceof Error ? error.message : "Unknown error",
-      }),
+      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
+
+// Streaming handler (no tool support yet)
+async function handleStreamingRequest(
+  messages: LLMMessage[],
+  temperature?: number,
+  max_tokens?: number,
+  provider?: string
+): Promise<Response> {
+  const { streamLLMRequest } = await import("../_shared/llm-router.ts");
+  
+  const encoder = new TextEncoder();
+  const readableStream = new ReadableStream({
+    async start(controller) {
+      try {
+        for await (const { chunk, done, model_used, provider_used } of streamLLMRequest({
+          messages,
+          temperature,
+          max_tokens,
+          provider: provider as "groq" | "openai" | "gemini" | undefined,
+        })) {
+          if (done) {
+            const finalData = JSON.stringify({
+              choices: [{ delta: {}, finish_reason: "stop" }],
+              model: model_used,
+              provider: provider_used,
+            });
+            controller.enqueue(encoder.encode(`data: ${finalData}\n\n`));
+            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+            controller.close();
+            return;
+          }
+
+          if (chunk) {
+            const data = JSON.stringify({ choices: [{ delta: { content: chunk } }] });
+            controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+          }
+        }
+      } catch (error) {
+        console.error("[AI Assistant] Stream error:", error);
+        const errorData = JSON.stringify({
+          error: error instanceof Error ? error.message : "Stream failed",
+        });
+        controller.enqueue(encoder.encode(`data: ${errorData}\n\n`));
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(readableStream, {
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  });
+}

@@ -2,16 +2,28 @@
  * Multi-provider LLM Router
  * Supports Groq (primary), OpenAI (fallback), Gemini (secondary fallback)
  * Config-driven with auto-fallback on failure
+ * Now with function/tool calling support
  */
+
+import { TOOL_DEFINITIONS, type ToolDefinition, type ToolCall } from "./tools.ts";
 
 export type Provider = "groq" | "openai" | "gemini";
 
+export interface LLMMessage {
+  role: "system" | "user" | "assistant" | "tool";
+  content: string;
+  tool_calls?: ToolCall[];
+  tool_call_id?: string;
+}
+
 export interface LLMRequest {
-  messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
+  messages: LLMMessage[];
   temperature?: number;
   max_tokens?: number;
   stream?: boolean;
-  provider?: Provider; // Override provider selection
+  provider?: Provider;
+  tools?: ToolDefinition[];
+  tool_choice?: "auto" | "none";
 }
 
 export interface LLMResponse {
@@ -20,6 +32,7 @@ export interface LLMResponse {
   provider_used: Provider;
   latency_ms: number;
   fallback_used: boolean;
+  tool_calls?: ToolCall[];
   error?: string;
 }
 
@@ -30,6 +43,7 @@ interface ProviderConfig {
   timeout: number;
   apiKeyEnv: string;
   supportsTemperature: boolean;
+  supportsTools: boolean;
 }
 
 const PROVIDER_CONFIGS: Record<Provider, ProviderConfig> = {
@@ -37,25 +51,28 @@ const PROVIDER_CONFIGS: Record<Provider, ProviderConfig> = {
     name: "groq",
     baseUrl: "https://api.groq.com/openai/v1",
     model: "llama-3.3-70b-versatile",
-    timeout: 10000,
+    timeout: 15000,
     apiKeyEnv: "GROQ_API_KEY",
     supportsTemperature: true,
+    supportsTools: true,
   },
   openai: {
     name: "openai",
     baseUrl: "https://api.openai.com/v1",
     model: "gpt-4o-mini",
-    timeout: 15000,
+    timeout: 20000,
     apiKeyEnv: "OPENAI_API_KEY",
     supportsTemperature: true,
+    supportsTools: true,
   },
   gemini: {
     name: "gemini",
     baseUrl: "https://generativelanguage.googleapis.com/v1beta",
     model: "gemini-2.5-flash",
-    timeout: 15000,
+    timeout: 20000,
     apiKeyEnv: "GEMINI_API_KEY",
     supportsTemperature: true,
+    supportsTools: false, // Gemini has different tool format, skip for now
   },
 };
 
@@ -73,22 +90,34 @@ async function callOpenAICompatible(
   config: ProviderConfig,
   request: LLMRequest,
   apiKey: string
-): Promise<{ content: string; model: string }> {
+): Promise<{ content: string; model: string; tool_calls?: ToolCall[] }> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), config.timeout);
 
   try {
     const body: Record<string, unknown> = {
       model: config.model,
-      messages: request.messages,
+      messages: request.messages.map(m => {
+        const msg: Record<string, unknown> = { role: m.role, content: m.content };
+        if (m.tool_call_id) msg.tool_call_id = m.tool_call_id;
+        if (m.tool_calls) msg.tool_calls = m.tool_calls;
+        return msg;
+      }),
       max_tokens: request.max_tokens || 2048,
       stream: false,
     };
 
-    // Only add temperature if provider supports it
     if (config.supportsTemperature && request.temperature !== undefined) {
       body.temperature = request.temperature;
     }
+
+    // Add tools if provided and provider supports them
+    if (request.tools && request.tools.length > 0 && config.supportsTools) {
+      body.tools = request.tools;
+      body.tool_choice = request.tool_choice || "auto";
+    }
+
+    console.log(`[LLM Router] Calling ${config.name} with ${request.messages.length} messages, tools=${request.tools?.length || 0}`);
 
     const response = await fetch(`${config.baseUrl}/chat/completions`, {
       method: "POST",
@@ -107,46 +136,15 @@ async function callOpenAICompatible(
     }
 
     const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
+    const message = data.choices?.[0]?.message;
+    const content = message?.content || "";
+    const tool_calls = message?.tool_calls;
 
-    if (!content) {
-      throw new Error(`${config.name} returned empty content`);
-    }
+    console.log(`[LLM Router] ${config.name} response: content=${content?.length || 0} chars, tool_calls=${tool_calls?.length || 0}`);
 
-    return { content, model: data.model || config.model };
+    return { content, model: data.model || config.model, tool_calls };
   } finally {
     clearTimeout(timeoutId);
-  }
-}
-
-async function listGeminiModels(apiKey: string): Promise<void> {
-  try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
-    console.log(`[LLM Router] Fetching available Gemini models...`);
-    
-    const response = await fetch(url);
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[LLM Router] ListModels error: ${response.status} - ${errorText}`);
-      return;
-    }
-    
-    const data = await response.json();
-    const models = data.models || [];
-    
-    console.log(`[LLM Router] Available Gemini models (${models.length} total):`);
-    for (const model of models) {
-      const methods = model.supportedGenerationMethods?.join(", ") || "none";
-      console.log(`  - ${model.name} | methods: ${methods}`);
-    }
-    
-    // Find models that support generateContent
-    const generateContentModels = models.filter((m: { supportedGenerationMethods?: string[] }) => 
-      m.supportedGenerationMethods?.includes("generateContent")
-    );
-    console.log(`[LLM Router] Models supporting generateContent: ${generateContentModels.map((m: { name: string }) => m.name).join(", ")}`);
-  } catch (error) {
-    console.error(`[LLM Router] ListModels failed:`, error);
   }
 }
 
@@ -154,37 +152,24 @@ async function callGemini(
   config: ProviderConfig,
   request: LLMRequest,
   apiKey: string
-): Promise<{ content: string; model: string }> {
+): Promise<{ content: string; model: string; tool_calls?: ToolCall[] }> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), config.timeout);
 
-  console.log(`[LLM Router] Gemini API key present: ${!!apiKey}, length: ${apiKey?.length || 0}`);
-  
-  // Run diagnostic to list available models
-  await listGeminiModels(apiKey);
-
   try {
-    // Convert OpenAI format to Gemini format
+    // Convert messages to Gemini format (skip tool messages for Gemini)
     const contents = request.messages
-      .filter((m) => m.role !== "system")
+      .filter((m) => m.role !== "system" && m.role !== "tool")
       .map((m) => ({
         role: m.role === "assistant" ? "model" : "user",
         parts: [{ text: m.content }],
       }));
 
-    // NOTE: The Generative Language API v1 does NOT accept `systemInstruction`.
-    // Instead, we fold the system prompt into the first user message.
     const systemMessage = request.messages.find((m) => m.role === "system")?.content;
 
     const body: Record<string, unknown> = {
       contents: systemMessage
-        ? [
-            {
-              role: "user",
-              parts: [{ text: `System: ${systemMessage}` }],
-            },
-            ...contents,
-          ]
+        ? [{ role: "user", parts: [{ text: `System: ${systemMessage}` }] }, ...contents]
         : contents,
       generationConfig: {
         maxOutputTokens: request.max_tokens || 2048,
@@ -195,16 +180,15 @@ async function callGemini(
       (body.generationConfig as Record<string, unknown>).temperature = request.temperature;
     }
 
-    const requestUrl = `${config.baseUrl}/models/${config.model}:generateContent?key=${apiKey}`;
-    console.log(`[LLM Router] Gemini request URL: ${requestUrl.replace(apiKey, 'API_KEY_REDACTED')}`);
-    console.log(`[LLM Router] Gemini request body:`, JSON.stringify(body, null, 2));
-
-    const response = await fetch(requestUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
+    const response = await fetch(
+      `${config.baseUrl}/models/${config.model}:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      }
+    );
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -228,7 +212,7 @@ async function callGemini(
 async function callProvider(
   provider: Provider,
   request: LLMRequest
-): Promise<{ content: string; model: string }> {
+): Promise<{ content: string; model: string; tool_calls?: ToolCall[] }> {
   const config = PROVIDER_CONFIGS[provider];
   const apiKey = Deno.env.get(config.apiKeyEnv);
 
@@ -236,33 +220,27 @@ async function callProvider(
     throw new Error(`${config.apiKeyEnv} not configured`);
   }
 
-  console.log(`[LLM Router] Calling ${provider} with model ${config.model}`);
-
   if (provider === "gemini") {
     return callGemini(config, request, apiKey);
   }
 
-  // Groq and OpenAI use OpenAI-compatible API
   return callOpenAICompatible(config, request, apiKey);
 }
 
 export async function routeLLMRequest(request: LLMRequest): Promise<LLMResponse> {
   const startTime = Date.now();
-  // Provider override from request takes precedence over env var
-  const defaultProvider = request.provider && PROVIDER_CONFIGS[request.provider] 
-    ? request.provider 
-    : getDefaultProvider();
+  const defaultProvider =
+    request.provider && PROVIDER_CONFIGS[request.provider]
+      ? request.provider
+      : getDefaultProvider();
 
-  console.log(`[LLM Router] Using provider: ${defaultProvider} (override: ${!!request.provider})`);
+  console.log(`[LLM Router] Using provider: ${defaultProvider}`);
 
-  // Build fallback chain starting with default provider
-  const fallbackChain = [
-    defaultProvider,
-    ...FALLBACK_ORDER.filter((p) => p !== defaultProvider),
-  ];
+  // Build fallback chain
+  const fallbackChain = [defaultProvider, ...FALLBACK_ORDER.filter((p) => p !== defaultProvider)];
 
   let lastError: Error | null = null;
-  let attemptedProviders: Provider[] = [];
+  const attemptedProviders: Provider[] = [];
 
   for (const provider of fallbackChain) {
     attemptedProviders.push(provider);
@@ -271,9 +249,7 @@ export async function routeLLMRequest(request: LLMRequest): Promise<LLMResponse>
       const result = await callProvider(provider, request);
       const latency_ms = Date.now() - startTime;
 
-      console.log(
-        `[LLM Router] Success with ${provider} (${result.model}) in ${latency_ms}ms`
-      );
+      console.log(`[LLM Router] Success with ${provider} in ${latency_ms}ms`);
 
       return {
         content: result.content,
@@ -281,20 +257,17 @@ export async function routeLLMRequest(request: LLMRequest): Promise<LLMResponse>
         provider_used: provider,
         latency_ms,
         fallback_used: attemptedProviders.length > 1,
+        tool_calls: result.tool_calls,
       };
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
-      console.error(
-        `[LLM Router] ${provider} failed: ${lastError.message}, trying next...`
-      );
+      console.error(`[LLM Router] ${provider} failed: ${lastError.message}, trying next...`);
     }
   }
 
   // All providers failed
   const latency_ms = Date.now() - startTime;
-  console.error(
-    `[LLM Router] All providers failed after ${latency_ms}ms. Attempted: ${attemptedProviders.join(", ")}`
-  );
+  console.error(`[LLM Router] All providers failed after ${latency_ms}ms`);
 
   return {
     content: "",
@@ -306,13 +279,14 @@ export async function routeLLMRequest(request: LLMRequest): Promise<LLMResponse>
   };
 }
 
-// Streaming support for future use
+// Streaming support (unchanged)
 export async function* streamLLMRequest(
   request: LLMRequest
 ): AsyncGenerator<{ chunk: string; done: boolean; model_used?: string; provider_used?: Provider }> {
-  const defaultProvider = request.provider && PROVIDER_CONFIGS[request.provider] 
-    ? request.provider 
-    : getDefaultProvider();
+  const defaultProvider =
+    request.provider && PROVIDER_CONFIGS[request.provider]
+      ? request.provider
+      : getDefaultProvider();
   const config = PROVIDER_CONFIGS[defaultProvider];
   const apiKey = Deno.env.get(config.apiKeyEnv);
 
@@ -320,9 +294,7 @@ export async function* streamLLMRequest(
     throw new Error(`${config.apiKeyEnv} not configured`);
   }
 
-  // Only Groq and OpenAI support streaming in OpenAI format
   if (defaultProvider === "gemini") {
-    // Fall back to non-streaming for Gemini
     const result = await routeLLMRequest(request);
     yield { chunk: result.content, done: true, model_used: result.model_used, provider_used: result.provider_used };
     return;
@@ -380,10 +352,13 @@ export async function* streamLLMRequest(
           yield { chunk: content, done: false };
         }
       } catch {
-        // Ignore parse errors for partial chunks
+        // Ignore parse errors
       }
     }
   }
 
   yield { chunk: "", done: true, model_used: config.model, provider_used: defaultProvider };
 }
+
+// Re-export for convenience
+export { TOOL_DEFINITIONS };
