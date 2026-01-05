@@ -50,25 +50,49 @@ export default function TestGoogle() {
     body: ''
   });
 
+  // Helper to add timeout to any promise
+  const withTimeout = <T,>(promise: Promise<T>, ms: number, errorMessage: string): Promise<T> => {
+    return Promise.race([
+      promise,
+      new Promise<T>((_, reject) => 
+        setTimeout(() => reject(new Error(errorMessage)), ms)
+      )
+    ]);
+  };
+
   const getValidToken = async (provider: string): Promise<string | null> => {
     console.log('>>> getValidToken ENTERED for provider:', provider);
     
     try {
-      console.log('>>> getValidToken: About to call supabase.auth.getUser()...');
-      const { data: { user } } = await supabase.auth.getUser();
-      console.log('>>> getValidToken: getUser() returned, user:', user?.id || 'NO USER');
+      // Use getSession instead of getUser - more reliable and doesn't require network call
+      console.log('>>> getValidToken: About to call supabase.auth.getSession()...');
+      const sessionResult = await withTimeout(
+        supabase.auth.getSession(),
+        5000,
+        'getSession() timed out after 5 seconds'
+      );
+      
+      const session = sessionResult.data.session;
+      const user = session?.user;
+      console.log('>>> getValidToken: getSession() returned, user:', user?.id || 'NO USER');
       
       if (!user) {
         console.log('>>> getValidToken: No user, showing toast and returning null');
-        toast({ title: 'Not authenticated', variant: 'destructive' });
+        toast({ title: 'Not authenticated', description: 'Please log in first', variant: 'destructive' });
         return null;
       }
 
       console.log('>>> getValidToken: About to invoke edge function get-valid-token...');
       const startTime = Date.now();
-      const { data, error } = await supabase.functions.invoke('get-valid-token', {
-        body: { user_id: user.id, provider }
-      });
+      
+      const { data, error } = await withTimeout(
+        supabase.functions.invoke('get-valid-token', {
+          body: { user_id: user.id, provider }
+        }),
+        10000,
+        'Edge function timed out after 10 seconds'
+      );
+      
       console.log('>>> getValidToken: Edge function returned in', Date.now() - startTime, 'ms');
       console.log('>>> getValidToken: Response data:', JSON.stringify(data));
       console.log('>>> getValidToken: Response error:', error);
@@ -92,7 +116,11 @@ export default function TestGoogle() {
       return data.access_token;
     } catch (error) {
       console.error('>>> getValidToken CATCH ERROR:', error);
-      toast({ title: 'Failed to get token', variant: 'destructive' });
+      toast({ 
+        title: 'Failed to get token', 
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive' 
+      });
       return null;
     }
   };
