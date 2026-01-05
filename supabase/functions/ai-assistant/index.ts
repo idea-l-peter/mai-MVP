@@ -67,14 +67,30 @@ serve(async (req) => {
 
     // Non-streaming with tool calling loop
     let toolCallCount = 0;
+    const toolsForRequest = userId ? TOOL_DEFINITIONS : undefined;
+
+    console.log(
+      `[AI Assistant] LLM request: provider=${provider || "auto"}, messages=${messages.length}, tools=${toolsForRequest ? toolsForRequest.map(t => t.function.name).join(",") : "none"}`
+    );
+    console.log(
+      `[AI Assistant] LLM messages (roles): ${messages.map(m => m.role).join(" -> ")}`
+    );
+
     let finalResponse = await routeLLMRequest({
       messages,
       temperature,
       max_tokens,
       provider,
-      tools: userId ? TOOL_DEFINITIONS : undefined, // Only provide tools if user is authenticated
+      tools: toolsForRequest, // Only provide tools if user is authenticated
       tool_choice: "auto",
     });
+
+    console.log(
+      `[AI Assistant] LLM response: provider_used=${finalResponse.provider_used}, model_used=${finalResponse.model_used}, tool_calls=${finalResponse.tool_calls?.length || 0}`
+    );
+    if (finalResponse.tool_calls?.length) {
+      console.log(`[AI Assistant] tool_calls detail: ${JSON.stringify(finalResponse.tool_calls)}`);
+    }
 
     // Tool calling loop
     while (finalResponse.tool_calls && finalResponse.tool_calls.length > 0 && toolCallCount < MAX_TOOL_CALLS) {
@@ -101,9 +117,10 @@ serve(async (req) => {
           break;
         }
 
+        console.log(`[AI Assistant] Executing tool: ${toolCall.function.name} args=${toolCall.function.arguments}`);
         const result = await executeTool(toolCall, userId);
         toolResults.push(result);
-        console.log(`[AI Assistant] Tool ${toolCall.function.name} result: ${result.content.substring(0, 100)}...`);
+        console.log(`[AI Assistant] Tool ${toolCall.function.name} result: ${result.content.substring(0, 200)}...`);
       }
 
       // Add tool results to messages
