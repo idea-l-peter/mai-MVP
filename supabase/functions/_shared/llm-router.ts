@@ -11,6 +11,7 @@ export interface LLMRequest {
   temperature?: number;
   max_tokens?: number;
   stream?: boolean;
+  provider?: Provider; // Override provider selection
 }
 
 export interface LLMResponse {
@@ -205,7 +206,12 @@ async function callProvider(
 
 export async function routeLLMRequest(request: LLMRequest): Promise<LLMResponse> {
   const startTime = Date.now();
-  const defaultProvider = getDefaultProvider();
+  // Provider override from request takes precedence over env var
+  const defaultProvider = request.provider && PROVIDER_CONFIGS[request.provider] 
+    ? request.provider 
+    : getDefaultProvider();
+
+  console.log(`[LLM Router] Using provider: ${defaultProvider} (override: ${!!request.provider})`);
 
   // Build fallback chain starting with default provider
   const fallbackChain = [
@@ -262,7 +268,9 @@ export async function routeLLMRequest(request: LLMRequest): Promise<LLMResponse>
 export async function* streamLLMRequest(
   request: LLMRequest
 ): AsyncGenerator<{ chunk: string; done: boolean; model_used?: string; provider_used?: Provider }> {
-  const defaultProvider = getDefaultProvider();
+  const defaultProvider = request.provider && PROVIDER_CONFIGS[request.provider] 
+    ? request.provider 
+    : getDefaultProvider();
   const config = PROVIDER_CONFIGS[defaultProvider];
   const apiKey = Deno.env.get(config.apiKeyEnv);
 
