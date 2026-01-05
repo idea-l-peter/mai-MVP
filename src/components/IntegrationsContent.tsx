@@ -81,17 +81,16 @@ export function IntegrationsContent() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [integrationStates, setIntegrationStates] = useState<Record<string, IntegrationState>>({});
   const [isLoading, setIsLoading] = useState(false);
+  const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
   const { toast } = useToast();
 
   const {
-    isDisconnecting: isGoogleDisconnecting,
     initiateOAuth: initiateGoogleOAuth,
     disconnect: disconnectGoogle,
     checkConnection: checkGoogleConnection,
   } = useGoogleIntegration();
 
   const {
-    isDisconnecting: isMondayDisconnecting,
     initiateOAuth: initiateMondayOAuth,
     disconnect: disconnectMonday,
     checkConnection: checkMondayConnection,
@@ -178,22 +177,24 @@ export function IntegrationsContent() {
 
   const handleDisconnect = async (integrationId: string) => {
     const config = INTEGRATION_CONFIGS.find((c) => c.id === integrationId);
-    if (config?.provider === "monday") {
-      const success = await disconnectMonday();
+    if (!config?.provider) return;
+
+    setDisconnectingId(integrationId);
+    try {
+      let success = false;
+      if (config.provider === "monday") {
+        success = await disconnectMonday();
+      } else {
+        success = await disconnectGoogle(config.provider);
+      }
       if (success) {
         setIntegrationStates((prev) => ({
           ...prev,
           [integrationId]: { status: "not_connected" },
         }));
       }
-    } else if (config?.provider) {
-      const success = await disconnectGoogle(config.provider);
-      if (success) {
-        setIntegrationStates((prev) => ({
-          ...prev,
-          [integrationId]: { status: "not_connected" },
-        }));
-      }
+    } finally {
+      setDisconnectingId(null);
     }
   };
 
@@ -218,7 +219,7 @@ export function IntegrationsContent() {
           status={getStatus(integration.id)}
           showConnectButton={integration.showConnectButton}
           connectedEmail={getProviderEmail(integration.id)}
-          isLoading={isLoading || isGoogleDisconnecting || isMondayDisconnecting}
+          isLoading={disconnectingId === integration.id}
           onConnect={() => handleConnect(integration.id)}
           onDisconnect={() => handleDisconnect(integration.id)}
         />
