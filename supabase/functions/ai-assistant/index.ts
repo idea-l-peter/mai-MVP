@@ -24,15 +24,23 @@ serve(async (req) => {
     const authHeader = req.headers.get("authorization");
     let userId: string | null = null;
 
+    console.log(`[AI Assistant] Auth header present: ${!!authHeader}`);
+
     if (authHeader) {
       const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
         global: { headers: { authorization: authHeader } },
       });
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError) {
+        console.error(`[AI Assistant] Auth error: ${authError.message}`);
+      }
+      
       userId = user?.id || null;
+      console.log(`[AI Assistant] User ID: ${userId || "anonymous"}, email: ${user?.email || "none"}`);
+    } else {
+      console.log(`[AI Assistant] No auth header - user is anonymous`);
     }
-
-    console.log(`[AI Assistant] User ID: ${userId || "anonymous"}`);
 
     const body = await req.json();
     const { messages: inputMessages, temperature, max_tokens, stream, provider } = body;
@@ -50,7 +58,7 @@ serve(async (req) => {
       content: m.content,
     }));
 
-    console.log(`[AI Assistant] Received ${messages.length} messages, stream=${stream}`);
+    console.log(`[AI Assistant] Received ${messages.length} messages, stream=${stream}, tools_enabled=${!!userId}, tools_count=${userId ? TOOL_DEFINITIONS.length : 0}`);
 
     // Streaming doesn't support tool calling yet
     if (stream) {
