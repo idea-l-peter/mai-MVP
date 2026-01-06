@@ -181,9 +181,9 @@ export function ConversationsContent() {
 
 
   return (
-    <div className="flex flex-col h-[calc(100dvh-12rem)] md:h-[calc(100dvh-14rem)] max-w-4xl mx-auto w-full">
+    <div className="flex flex-col h-[calc(100dvh-12rem)] md:h-[calc(100dvh-14rem)] w-full max-w-[800px] mx-auto">
       {/* Messages area with bottom padding for input on mobile */}
-      <div className="flex-1 overflow-y-auto py-4 pb-24 md:pb-4 flex flex-col px-4 md:px-0">
+      <div className="flex-1 overflow-y-auto py-4 pb-28 md:pb-4 flex flex-col px-3 md:px-4">
         <div className="flex flex-col flex-1">
           <div className="flex-1 min-h-0" />
           
@@ -206,14 +206,14 @@ export function ConversationsContent() {
                   className={`flex gap-2 md:gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                 >
                   {msg.role === "assistant" && (
-                    <div className="flex-shrink-0 w-7 h-7 md:w-8 md:h-8 flex items-center justify-center">
+                    <div className="flex-shrink-0 w-7 h-7 md:w-8 md:h-8 flex items-center justify-center ml-1 md:ml-2">
                       <img src={maiLogo} alt="mai" className="h-7 md:h-8 w-auto" />
                     </div>
                   )}
                   <div
-                    className={`max-w-[75%] md:max-w-[80%] rounded-2xl px-3 py-2 md:px-4 md:py-2.5 ${
+                    className={`max-w-[80%] rounded-2xl px-3 py-2 md:px-4 md:py-2.5 break-words ${
                       msg.role === "user"
-                        ? "bg-primary text-primary-foreground rounded-br-md"
+                        ? "bg-primary text-primary-foreground rounded-br-md mr-1 md:mr-2"
                         : "bg-muted rounded-bl-md"
                     }`}
                   >
@@ -222,7 +222,7 @@ export function ConversationsContent() {
                         <ReactMarkdown>{msg.content}</ReactMarkdown>
                       </div>
                     ) : (
-                      <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</p>
+                      <p className="whitespace-pre-wrap text-sm leading-relaxed break-words">{msg.content}</p>
                     )}
                   </div>
                 </div>
@@ -232,7 +232,7 @@ export function ConversationsContent() {
 
           {isLoading && (
             <div className="flex gap-2 md:gap-3 justify-start mt-4">
-              <div className="flex-shrink-0 w-7 h-7 md:w-8 md:h-8 flex items-center justify-center">
+              <div className="flex-shrink-0 w-7 h-7 md:w-8 md:h-8 flex items-center justify-center ml-1 md:ml-2">
                 <img src={maiLogo} alt="mai" className="h-7 md:h-8 w-auto" />
               </div>
               <div className="bg-muted rounded-2xl rounded-bl-md px-3 py-2.5 md:px-4 md:py-3">
@@ -249,16 +249,16 @@ export function ConversationsContent() {
         </div>
       </div>
 
-      {/* Input area - fixed on mobile, relative on desktop */}
-      <div className="fixed bottom-0 left-0 right-0 md:static border-t bg-background py-3 px-4 md:px-0 md:pt-4 md:pb-0 z-50">
-        <div className="max-w-4xl w-full mx-auto md:max-w-none">
-          <div className="flex gap-3 items-end">
+      {/* Input area - fixed on mobile, static on desktop */}
+      <div className="fixed bottom-0 left-0 right-0 md:static border-t bg-background py-3 px-3 md:px-4 md:pt-4 md:pb-0 z-50 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+        <div className="w-full max-w-[800px] mx-auto">
+          <div className="flex gap-2 items-end">
             <Textarea
               ref={textareaRef}
               value={input}
               onChange={handleTextareaChange}
               placeholder="Message mai..."
-              className="min-h-[44px] max-h-[120px] resize-none rounded-2xl py-3 flex-1 min-w-0 text-base"
+              className="min-h-[44px] max-h-[120px] resize-none rounded-2xl py-3 flex-1 min-w-0 text-[16px]"
               rows={1}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
@@ -271,7 +271,7 @@ export function ConversationsContent() {
               onClick={sendMessage}
               disabled={isLoading || !input.trim()}
               size="icon"
-              className="h-11 w-11 min-w-11 rounded-full flex-shrink-0"
+              className="h-11 w-11 min-w-[44px] rounded-full flex-shrink-0"
             >
               <Send className="h-5 w-5" />
             </Button>
