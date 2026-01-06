@@ -181,7 +181,7 @@ export function ConversationsContent() {
 
 
   return (
-    <div className="flex flex-col h-[calc(100dvh-12rem)] md:h-[calc(100dvh-14rem)] w-full max-w-[800px] mx-auto">
+    <div className="flex flex-col h-[100dvh] md:h-[calc(100dvh-4rem)] w-full max-w-[800px] mx-auto">
       {/* Messages area with bottom padding for input on mobile */}
       <div className="flex-1 overflow-y-auto py-4 pb-28 md:pb-4 flex flex-col px-3 md:px-4">
         <div className="flex flex-col flex-1">
@@ -249,8 +249,16 @@ export function ConversationsContent() {
         </div>
       </div>
 
-      {/* Input area - fixed on mobile, static on desktop */}
-      <div className="fixed bottom-0 left-0 right-0 md:static border-t bg-background py-3 px-3 md:px-4 md:pt-4 md:pb-0 z-50 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+      {/* Input area - fixed on mobile with keyboard-aware positioning */}
+      <div 
+        className="fixed bottom-0 left-0 right-0 md:static border-t bg-background z-50"
+        style={{
+          paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))',
+          paddingTop: '0.75rem',
+          paddingLeft: 'calc(0.75rem + env(safe-area-inset-left))',
+          paddingRight: 'calc(0.75rem + env(safe-area-inset-right))',
+        }}
+      >
         <div className="w-full max-w-[800px] mx-auto">
           <div className="flex gap-2 items-end">
             <Textarea
@@ -258,7 +266,8 @@ export function ConversationsContent() {
               value={input}
               onChange={handleTextareaChange}
               placeholder="Message mai..."
-              className="min-h-[44px] max-h-[120px] resize-none rounded-2xl py-3 flex-1 min-w-0 text-[16px]"
+              className="min-h-[44px] max-h-[120px] resize-none rounded-2xl py-3 flex-1 min-w-0"
+              style={{ fontSize: '16px' }}
               rows={1}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
