@@ -70,6 +70,7 @@ export type Database = {
           access_token_secret_id: string | null
           created_at: string
           id: string
+          metadata: Json | null
           provider: string
           provider_email: string | null
           provider_user_id: string | null
@@ -83,6 +84,7 @@ export type Database = {
           access_token_secret_id?: string | null
           created_at?: string
           id?: string
+          metadata?: Json | null
           provider: string
           provider_email?: string | null
           provider_user_id?: string | null
@@ -96,12 +98,46 @@ export type Database = {
           access_token_secret_id?: string | null
           created_at?: string
           id?: string
+          metadata?: Json | null
           provider?: string
           provider_email?: string | null
           provider_user_id?: string | null
           refresh_token_secret_id?: string | null
           scopes?: string[] | null
           token_expires_at?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_preferences: {
+        Row: {
+          created_at: string
+          emoji_confirmations_enabled: boolean
+          id: string
+          security_phrase_color: string | null
+          security_phrase_emoji: string | null
+          security_phrase_object: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          emoji_confirmations_enabled?: boolean
+          id?: string
+          security_phrase_color?: string | null
+          security_phrase_emoji?: string | null
+          security_phrase_object?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          emoji_confirmations_enabled?: boolean
+          id?: string
+          security_phrase_color?: string | null
+          security_phrase_emoji?: string | null
+          security_phrase_object?: string | null
           updated_at?: string
           user_id?: string
         }

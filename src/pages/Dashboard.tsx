@@ -11,6 +11,7 @@ import { TestGoogleContent } from "@/components/TestGoogleContent";
 import { TestChatContent } from "@/components/TestChatContent";
 import { TestMondayContent } from "@/components/TestMondayContent";
 import { ConversationsContent } from "@/components/ConversationsContent";
+import { SettingsContent } from "@/components/SettingsContent";
 import Admin from "@/pages/Admin";
 const Dashboard = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -102,6 +103,7 @@ const Dashboard = () => {
               {location.pathname === "/conversations" && <ConversationsContent />}
               {location.pathname === "/admin" && <Admin />}
               {location.pathname === "/integrations" && <IntegrationsContent />}
+              {location.pathname === "/settings" && <SettingsContent />}
               {location.pathname === "/test-google" && <TestGoogleContent />}
               {location.pathname === "/test-chat" && <TestChatContent />}
               {location.pathname === "/test-monday" && <TestMondayContent />}
