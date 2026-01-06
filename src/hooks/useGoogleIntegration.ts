@@ -85,16 +85,9 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
     setIsDisconnecting(true);
     
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        throw new Error('User not authenticated');
-      }
-
+      // Only pass provider - user_id is derived from auth token on server
       const { data, error } = await supabase.functions.invoke('disconnect-integration', {
-        body: {
-          user_id: user.id,
-          provider,
-        },
+        body: { provider },
       });
 
       if (error) throw error;
