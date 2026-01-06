@@ -66,6 +66,7 @@ export function useMondayIntegration() {
   const disconnect = async (): Promise<boolean> => {
     setIsDisconnecting(true);
     try {
+      // Only pass provider - user_id is derived from auth token on server
       const { error } = await supabase.functions.invoke("disconnect-integration", {
         body: { provider: "monday" },
       });
