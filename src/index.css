@@ -90,8 +90,41 @@
     @apply border-border;
   }
 
+  html {
+    /* Use dynamic viewport height for mobile keyboards */
+    height: 100dvh;
+    height: -webkit-fill-available;
+  }
+
   body {
     @apply bg-background text-foreground font-sans antialiased;
     font-family: 'Inter', sans-serif;
+    min-height: 100dvh;
+    min-height: -webkit-fill-available;
+    /* Prevent overscroll bounce on iOS */
+    overscroll-behavior: none;
+    /* Safe area padding for notched devices */
+    padding-top: env(safe-area-inset-top);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
+  /* PWA standalone mode adjustments */
+  @media (display-mode: standalone) {
+    body {
+      /* Extra top padding when in PWA mode (no browser chrome) */
+      padding-top: env(safe-area-inset-top);
+    }
+  }
+
+  /* Prevent iOS auto-zoom on input focus - ensure all inputs are 16px+ */
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+
+  @media (min-width: 768px) {
+    input, textarea, select {
+      font-size: inherit !important;
+    }
   }
 }
