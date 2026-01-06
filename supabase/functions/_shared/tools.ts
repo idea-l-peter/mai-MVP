@@ -193,6 +193,18 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "get_user_preferences",
+      description: "Get the user's preferences including emoji confirmation settings and security phrase. Use this internally to know how to handle confirmations.",
+      parameters: {
+        type: "object",
+        properties: {},
+        required: [],
+      },
+    },
+  },
   // Future tools will be added here:
   // - get_monday_boards
   // - create_monday_item
@@ -918,6 +930,70 @@ async function sendEmail(
   }
 }
 
+// ============= User Preferences =============
+
+interface UserPreferencesResult {
+  success: boolean;
+  preferences?: {
+    emoji_confirmations_enabled: boolean;
+    security_phrase_text: string | null;
+    security_phrase_emoji: string | null;
+    has_security_phrase: boolean;
+  };
+  error?: string;
+}
+
+async function getUserPreferences(userId: string): Promise<UserPreferencesResult> {
+  console.log(`[Tools] get_user_preferences for user ${userId}`);
+  
+  try {
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+      auth: { persistSession: false },
+    });
+
+    const { data, error } = await supabase
+      .from("user_preferences")
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (error) {
+      console.error(`[Tools] Error fetching preferences:`, error);
+      return { success: false, error: "Failed to fetch preferences" };
+    }
+
+    if (!data) {
+      // Return defaults if no preferences set
+      return {
+        success: true,
+        preferences: {
+          emoji_confirmations_enabled: true,
+          security_phrase_text: null,
+          security_phrase_emoji: null,
+          has_security_phrase: false,
+        },
+      };
+    }
+
+    const securityPhraseText = data.security_phrase_color && data.security_phrase_object
+      ? `${data.security_phrase_color} ${data.security_phrase_object}`
+      : null;
+
+    return {
+      success: true,
+      preferences: {
+        emoji_confirmations_enabled: data.emoji_confirmations_enabled,
+        security_phrase_text: securityPhraseText,
+        security_phrase_emoji: data.security_phrase_emoji || null,
+        has_security_phrase: !!(data.security_phrase_color && data.security_phrase_object),
+      },
+    };
+  } catch (error) {
+    console.error(`[Tools] Preferences error:`, error);
+    return { success: false, error: "Failed to access preferences" };
+  }
+}
+
 // ============= Tool Execution Router =============
 
 export async function executeTool(
@@ -952,6 +1028,10 @@ export async function executeTool(
       
       case "send_email":
         result = await sendEmail(userId, args);
+        break;
+      
+      case "get_user_preferences":
+        result = await getUserPreferences(userId);
         break;
       
       // Future tool implementations:

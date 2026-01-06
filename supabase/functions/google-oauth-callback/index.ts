@@ -91,6 +91,30 @@ serve(async (req) => {
       
       console.log(`Got user info for: ${userInfo.email}`);
 
+      // Fetch Google Calendar timezone if this is a calendar-related connection
+      let calendarTimezone: string | null = null;
+      if (scope && (scope.includes('calendar') || provider === 'google' || provider === 'google-calendar')) {
+        try {
+          console.log('Fetching Google Calendar timezone...');
+          const calendarResponse = await fetch(
+            'https://www.googleapis.com/calendar/v3/users/me/calendarList/primary',
+            {
+              headers: { Authorization: `Bearer ${access_token}` },
+            }
+          );
+          
+          if (calendarResponse.ok) {
+            const calendarData = await calendarResponse.json();
+            calendarTimezone = calendarData.timeZone || null;
+            console.log(`Got calendar timezone: ${calendarTimezone}`);
+          } else {
+            console.log(`Could not fetch calendar timezone: ${calendarResponse.status}`);
+          }
+        } catch (tzError) {
+          console.error('Error fetching calendar timezone:', tzError);
+        }
+      }
+
       // Create service role client
       const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
         auth: { persistSession: false }
@@ -136,6 +160,12 @@ serve(async (req) => {
         }
       }
 
+      // Build metadata object with timezone if available
+      const metadata: Record<string, unknown> = {};
+      if (calendarTimezone) {
+        metadata.timezone = calendarTimezone;
+      }
+
       // Upsert integration record (metadata only, no secret IDs)
       const { error: upsertError } = await supabase
         .from('user_integrations')
@@ -146,6 +176,7 @@ serve(async (req) => {
           scopes: scope ? scope.split(' ') : [],
           provider_user_id: userInfo.id,
           provider_email: userInfo.email,
+          metadata,
         }, {
           onConflict: 'user_id,provider',
         });
@@ -155,7 +186,7 @@ serve(async (req) => {
         throw new Error('Failed to save integration');
       }
 
-      console.log(`Successfully saved ${provider} integration for user ${user_id}`);
+      console.log(`Successfully saved ${provider} integration for user ${user_id} with timezone: ${calendarTimezone || 'not set'}`);
 
       // Redirect back to the app with success
       const successRedirect = new URL(app_redirect_uri);
