@@ -95,6 +95,48 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: "function",
     function: {
+      name: "update_calendar_event",
+      description: "Update an existing event on the user's Google Calendar. Use this when the user wants to reschedule, modify, or change an existing meeting or event. You must first find the event using get_calendar_events to get the event_id.",
+      parameters: {
+        type: "object",
+        properties: {
+          event_id: {
+            type: "string",
+            description: "The ID of the event to update (obtained from get_calendar_events)",
+          },
+          summary: {
+            type: "string",
+            description: "New title for the event (optional)",
+          },
+          start_time: {
+            type: "string",
+            description: "New start time in ISO 8601 format (optional)",
+          },
+          end_time: {
+            type: "string",
+            description: "New end time in ISO 8601 format (optional)",
+          },
+          description: {
+            type: "string",
+            description: "New description/notes for the event (optional)",
+          },
+          location: {
+            type: "string",
+            description: "New location for the event (optional)",
+          },
+          attendees: {
+            type: "array",
+            items: { type: "string" },
+            description: "Updated list of attendee email addresses (optional, replaces existing attendees)",
+          },
+        },
+        required: ["event_id"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "get_emails",
       description: "Get emails from the user's Gmail inbox. Use this when the user asks about their emails, inbox, or messages.",
       parameters: {
@@ -273,6 +315,7 @@ interface CalendarEventAttendee {
 }
 
 interface CalendarEvent {
+  id: string;
   summary: string;
   start: string;
   end: string;
@@ -316,12 +359,14 @@ async function getCalendarEvents(
 
     const data = await response.json();
     const events: CalendarEvent[] = (data.items || []).map((item: {
+      id?: string;
       summary?: string;
       start?: { dateTime?: string; date?: string };
       end?: { dateTime?: string; date?: string };
       location?: string;
       attendees?: Array<{ email?: string; displayName?: string; responseStatus?: string }>;
     }) => ({
+      id: item.id || "",
       summary: item.summary || "Untitled event",
       start: item.start?.dateTime || item.start?.date || "",
       end: item.end?.dateTime || item.end?.date || "",
@@ -444,6 +489,125 @@ async function createCalendarEvent(
   } catch (error) {
     console.error(`[Tools] Calendar create error:`, error);
     return { success: false, error: "Failed to create calendar event" };
+  }
+}
+
+// ============= Update Calendar Event =============
+
+interface UpdateCalendarEventArgs {
+  event_id: string;
+  summary?: string;
+  start_time?: string;
+  end_time?: string;
+  description?: string;
+  location?: string;
+  attendees?: string[];
+}
+
+interface UpdatedEventResult {
+  success: boolean;
+  event?: {
+    id: string;
+    summary: string;
+    start: string;
+    end: string;
+    htmlLink: string;
+  };
+  error?: string;
+}
+
+async function updateCalendarEvent(
+  userId: string,
+  args: UpdateCalendarEventArgs
+): Promise<UpdatedEventResult> {
+  console.log(`[Tools] update_calendar_event: event_id="${args.event_id}"`);
+
+  const accessToken = await getValidToken(userId, "google");
+  if (!accessToken) {
+    return { success: false, error: "Google Calendar is not connected or token expired" };
+  }
+
+  try {
+    // First, get the existing event to preserve fields we're not updating
+    const getUrl = `https://www.googleapis.com/calendar/v3/calendars/primary/events/${args.event_id}`;
+    const getResponse = await fetch(getUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!getResponse.ok) {
+      const errorText = await getResponse.text();
+      console.error(`[Tools] Calendar API error fetching event: ${getResponse.status} - ${errorText}`);
+      return { success: false, error: `Event not found or access denied: ${getResponse.status}` };
+    }
+
+    const existingEvent = await getResponse.json();
+
+    // Build the update body, preserving existing fields
+    const eventBody: Record<string, unknown> = {
+      summary: args.summary ?? existingEvent.summary,
+      start: args.start_time ? { dateTime: args.start_time } : existingEvent.start,
+      end: args.end_time ? { dateTime: args.end_time } : existingEvent.end,
+    };
+
+    if (args.description !== undefined) {
+      eventBody.description = args.description;
+    } else if (existingEvent.description) {
+      eventBody.description = existingEvent.description;
+    }
+
+    if (args.location !== undefined) {
+      eventBody.location = args.location;
+    } else if (existingEvent.location) {
+      eventBody.location = existingEvent.location;
+    }
+
+    if (args.attendees !== undefined) {
+      eventBody.attendees = args.attendees.map((email) => ({ email }));
+    } else if (existingEvent.attendees) {
+      eventBody.attendees = existingEvent.attendees;
+    }
+
+    // Preserve conference data if it exists
+    if (existingEvent.conferenceData) {
+      eventBody.conferenceData = existingEvent.conferenceData;
+    }
+
+    // Update the event
+    const updateUrl = existingEvent.conferenceData
+      ? `https://www.googleapis.com/calendar/v3/calendars/primary/events/${args.event_id}?conferenceDataVersion=1`
+      : `https://www.googleapis.com/calendar/v3/calendars/primary/events/${args.event_id}`;
+
+    const response = await fetch(updateUrl, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(eventBody),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[Tools] Calendar API error: ${response.status} - ${errorText}`);
+      return { success: false, error: `Failed to update event: ${response.status}` };
+    }
+
+    const data = await response.json();
+    console.log(`[Tools] Updated calendar event: ${data.id}`);
+
+    return {
+      success: true,
+      event: {
+        id: data.id,
+        summary: data.summary,
+        start: data.start?.dateTime || data.start?.date || "",
+        end: data.end?.dateTime || data.end?.date || "",
+        htmlLink: data.htmlLink,
+      },
+    };
+  } catch (error) {
+    console.error(`[Tools] Calendar update error:`, error);
+    return { success: false, error: "Failed to update calendar event" };
   }
 }
 
@@ -776,6 +940,10 @@ export async function executeTool(
       
       case "create_calendar_event":
         result = await createCalendarEvent(userId, args);
+        break;
+      
+      case "update_calendar_event":
+        result = await updateCalendarEvent(userId, args);
         break;
       
       case "get_emails":
