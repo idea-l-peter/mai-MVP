@@ -6,6 +6,7 @@ const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID')!;
 const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET')!;
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const APP_BASE_URL = Deno.env.get('APP_BASE_URL');
 
 serve(async (req) => {
   try {
@@ -24,7 +25,7 @@ serve(async (req) => {
 
       if (error) {
         console.error('Google OAuth error:', error);
-        const errorRedirect = new URL('https://id-preview--7a75d720-624c-4a53-a51c-94b8713f1707.lovable.app/integrations');
+        const errorRedirect = new URL(`${APP_BASE_URL}/integrations`);
         errorRedirect.searchParams.set('error', error);
         return Response.redirect(errorRedirect.toString(), 302);
       }
@@ -176,7 +177,7 @@ serve(async (req) => {
     const message = error instanceof Error ? error.message : 'Unknown error';
     
     // Redirect back to app with error
-    const errorRedirect = new URL('https://id-preview--7a75d720-624c-4a53-a51c-94b8713f1707.lovable.app/integrations');
+    const errorRedirect = new URL(`${APP_BASE_URL}/integrations`);
     errorRedirect.searchParams.set('error', message);
     return Response.redirect(errorRedirect.toString(), 302);
   }

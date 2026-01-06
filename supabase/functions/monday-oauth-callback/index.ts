@@ -7,10 +7,11 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const MONDAY_CLIENT_ID = "9c6239a90707ff2f471aef766cc7cf6e";
+const MONDAY_CLIENT_ID = Deno.env.get("MONDAY_CLIENT_ID")!;
 const MONDAY_CLIENT_SECRET = Deno.env.get("MONDAY_CLIENT_SECRET") ?? "";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const APP_BASE_URL = Deno.env.get("APP_BASE_URL");
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -50,7 +51,7 @@ serve(async (req) => {
     }
 
     const redirectToApp = (params: { error?: string; connected?: string; email?: string }) => {
-      const base = stateData?.app_redirect_uri ?? "https://id-preview--7a75d720-624c-4a53-a51c-94b8713f1707.lovable.app/integrations";
+      const base = stateData?.app_redirect_uri ?? `${APP_BASE_URL}/integrations`;
       const target = new URL(base);
       if (params.error) target.searchParams.set("error", params.error);
       if (params.connected) target.searchParams.set("connected", params.connected);
@@ -186,9 +187,7 @@ serve(async (req) => {
     const message = error instanceof Error ? error.message : "Unknown error";
 
     // Fallback redirect (if we can't decode state)
-    const errorRedirect = new URL(
-      "https://id-preview--7a75d720-624c-4a53-a51c-94b8713f1707.lovable.app/integrations"
-    );
+    const errorRedirect = new URL(`${APP_BASE_URL}/integrations`);
     errorRedirect.searchParams.set("error", message);
     return Response.redirect(errorRedirect.toString(), 302);
   }

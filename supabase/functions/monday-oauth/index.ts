@@ -6,7 +6,8 @@ const corsHeaders = {
 };
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
-const MONDAY_CLIENT_ID = '9c6239a90707ff2f471aef766cc7cf6e';
+const MONDAY_CLIENT_ID = Deno.env.get('MONDAY_CLIENT_ID')!;
+const APP_BASE_URL = Deno.env.get('APP_BASE_URL');
 
 serve(async (req) => {
   // Handle CORS preflight requests
