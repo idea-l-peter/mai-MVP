@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useAdminCheck } from "@/hooks/useAdminCheck";
 import {
   LayoutDashboard,
   MessageSquare,
@@ -9,7 +10,13 @@ import {
   Settings,
   LogOut,
   Menu,
-  X,
+  Zap,
+  Calendar,
+  List,
+  ChevronDown,
+  ChevronRight,
+  Wrench,
+  Shield,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,6 +26,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
 import maiLogo from "@/assets/mai-logo.png";
 import maiLogoWhite from "@/assets/mai-logo-white.png";
@@ -31,11 +39,20 @@ const navItems = [
   { title: "Settings", icon: Settings, url: "/settings" },
 ];
 
+const devItems = [
+  { title: "Test Chat", icon: Zap, url: "/test-chat" },
+  { title: "Test Google", icon: Calendar, url: "/test-google" },
+  { title: "Test monday.com", icon: List, url: "/test-monday" },
+];
+
 export function MobileNav() {
   const [open, setOpen] = useState(false);
+  const [devToolsOpen, setDevToolsOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
+  const { isAdmin } = useAdminCheck();
+  const isDevToolActive = devItems.some(item => location.pathname === item.url);
 
   const handleLogout = async () => {
     const { error } = await supabase.auth.signOut();
@@ -70,7 +87,7 @@ export function MobileNav() {
             <span className="sr-only">Toggle menu</span>
           </Button>
         </SheetTrigger>
-        <SheetContent side="right" className="w-[280px] bg-primary p-0">
+        <SheetContent side="right" className="w-[280px] bg-primary p-0 flex flex-col">
           <SheetHeader className="border-b border-primary-foreground/20 p-6">
             <SheetTitle className="text-left">
               <button onClick={() => handleNavigation("/dashboard")} className="focus:outline-none">
@@ -79,7 +96,7 @@ export function MobileNav() {
             </SheetTitle>
           </SheetHeader>
           
-          <nav className="flex flex-col p-4">
+          <nav className="flex flex-col p-4 flex-1 overflow-y-auto">
             {navItems.map((item) => (
               <button
                 key={item.title}
@@ -94,9 +111,59 @@ export function MobileNav() {
                 <span className="font-medium">{item.title}</span>
               </button>
             ))}
+
+            {/* Developer Tools Section */}
+            <Collapsible open={devToolsOpen || isDevToolActive} onOpenChange={setDevToolsOpen} className="mt-4">
+              <CollapsibleTrigger className="w-full">
+                <div className="flex items-center justify-between px-4 py-3 text-primary-foreground/60 hover:bg-primary-foreground/10 rounded-lg cursor-pointer">
+                  <span className="flex items-center gap-3 text-sm font-medium">
+                    <Wrench className="h-4 w-4" />
+                    Developer Tools
+                  </span>
+                  {devToolsOpen || isDevToolActive ? (
+                    <ChevronDown className="h-4 w-4" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4" />
+                  )}
+                </div>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="pl-4">
+                  {devItems.map((item) => (
+                    <button
+                      key={item.title}
+                      onClick={() => handleNavigation(item.url)}
+                      className={`flex items-center gap-3 rounded-lg px-4 py-3 text-left text-primary-foreground transition-colors w-full ${
+                        isActive(item.url)
+                          ? "bg-primary-foreground/20"
+                          : "hover:bg-primary-foreground/10"
+                      }`}
+                    >
+                      <item.icon className="h-5 w-5" />
+                      <span className="font-medium">{item.title}</span>
+                    </button>
+                  ))}
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+
+            {/* Admin link if admin */}
+            {isAdmin && (
+              <button
+                onClick={() => handleNavigation("/admin")}
+                className={`flex items-center gap-3 rounded-lg px-4 py-3 text-left text-primary-foreground transition-colors mt-2 ${
+                  isActive("/admin")
+                    ? "bg-primary-foreground/20"
+                    : "hover:bg-primary-foreground/10"
+                }`}
+              >
+                <Shield className="h-5 w-5" />
+                <span className="font-medium">Admin</span>
+              </button>
+            )}
           </nav>
           
-          <div className="absolute bottom-0 left-0 right-0 border-t border-primary-foreground/20 p-4">
+          <div className="border-t border-primary-foreground/20 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
             <button
               onClick={handleLogout}
               className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-primary-foreground transition-colors hover:bg-primary-foreground/10"
