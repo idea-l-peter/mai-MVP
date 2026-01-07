@@ -387,7 +387,7 @@ export function SettingsContent() {
                   <SelectContent>
                     {availableObjects.map((option) => (
                       <SelectItem key={option.object} value={option.object}>
-                        {option.object.charAt(0).toUpperCase() + option.object.slice(1)} {option.emoji}
+                        {option.object.charAt(0).toUpperCase() + option.object.slice(1)}
                       </SelectItem>
                     ))}
                   </SelectContent>
