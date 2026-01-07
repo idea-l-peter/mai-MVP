@@ -2179,9 +2179,9 @@ async function getEmails(
 
   console.log(`[Tools] get_emails: query="${query}", maxResults=${maxResults}`);
 
-  const accessToken = await getValidToken(userId, "gmail");
+  const accessToken = await getValidToken(userId, "google");
   if (!accessToken) {
-    return { success: false, error: "Gmail is not connected or token expired" };
+    return { success: false, error: "Google Workspace is not connected or token expired. Please connect from Integrations." };
   }
 
   try {
@@ -2375,9 +2375,9 @@ async function sendEmail(
     };
   }
 
-  const accessToken = await getValidToken(userId, "gmail");
+  const accessToken = await getValidToken(userId, "google");
   if (!accessToken) {
-    return { success: false, error: "Gmail is not connected or token expired" };
+    return { success: false, error: "Google Workspace is not connected or token expired. Please connect from Integrations." };
   }
 
   try {
@@ -2478,9 +2478,9 @@ async function deleteEmail(
 ): Promise<DeleteEmailResult> {
   console.log(`[Tools] delete_email: message_id="${args.message_id}"`);
 
-  const accessToken = await getValidToken(userId, "gmail");
+  const accessToken = await getValidToken(userId, "google");
   if (!accessToken) {
-    return { success: false, error: "Gmail is not connected or token expired" };
+    return { success: false, error: "Google Workspace is not connected or token expired. Please connect from Integrations." };
   }
 
   try {
@@ -2525,9 +2525,9 @@ async function archiveEmail(
 ): Promise<ArchiveEmailResult> {
   console.log(`[Tools] archive_email: message_id="${args.message_id}"`);
 
-  const accessToken = await getValidToken(userId, "gmail");
+  const accessToken = await getValidToken(userId, "google");
   if (!accessToken) {
-    return { success: false, error: "Gmail is not connected or token expired" };
+    return { success: false, error: "Google Workspace is not connected or token expired. Please connect from Integrations." };
   }
 
   try {
@@ -2591,9 +2591,9 @@ async function createDraft(
     };
   }
 
-  const accessToken = await getValidToken(userId, "gmail");
+  const accessToken = await getValidToken(userId, "google");
   if (!accessToken) {
-    return { success: false, error: "Gmail is not connected or token expired" };
+    return { success: false, error: "Google Workspace is not connected or token expired. Please connect from Integrations." };
   }
 
   try {
@@ -2671,9 +2671,9 @@ async function markEmailRead(
 ): Promise<MarkEmailResult> {
   console.log(`[Tools] mark_email_read: message_id="${args.message_id}"`);
 
-  const accessToken = await getValidToken(userId, "gmail");
+  const accessToken = await getValidToken(userId, "google");
   if (!accessToken) {
-    return { success: false, error: "Gmail is not connected or token expired" };
+    return { success: false, error: "Google Workspace is not connected or token expired. Please connect from Integrations." };
   }
 
   try {
@@ -2709,9 +2709,9 @@ async function markEmailUnread(
 ): Promise<MarkEmailResult> {
   console.log(`[Tools] mark_email_unread: message_id="${args.message_id}"`);
 
-  const accessToken = await getValidToken(userId, "gmail");
+  const accessToken = await getValidToken(userId, "google");
   if (!accessToken) {
-    return { success: false, error: "Gmail is not connected or token expired" };
+    return { success: false, error: "Google Workspace is not connected or token expired. Please connect from Integrations." };
   }
 
   try {
@@ -2760,9 +2760,9 @@ async function replyToEmail(
 ): Promise<ReplyToEmailResult> {
   console.log(`[Tools] reply_to_email: message_id="${args.message_id}"`);
 
-  const accessToken = await getValidToken(userId, "gmail");
+  const accessToken = await getValidToken(userId, "google");
   if (!accessToken) {
-    return { success: false, error: "Gmail is not connected or token expired" };
+    return { success: false, error: "Google Workspace is not connected or token expired. Please connect from Integrations." };
   }
 
   try {
@@ -2890,9 +2890,9 @@ async function forwardEmail(
     return { success: false, error: `Invalid email address: "${args.to}"` };
   }
 
-  const accessToken = await getValidToken(userId, "gmail");
+  const accessToken = await getValidToken(userId, "google");
   if (!accessToken) {
-    return { success: false, error: "Gmail is not connected or token expired" };
+    return { success: false, error: "Google Workspace is not connected. Please connect from Integrations." };
   }
 
   try {
@@ -3019,9 +3019,9 @@ interface GetLabelsResult {
 async function getLabels(userId: string): Promise<GetLabelsResult> {
   console.log(`[Tools] get_labels`);
 
-  const accessToken = await getValidToken(userId, "gmail");
+  const accessToken = await getValidToken(userId, "google");
   if (!accessToken) {
-    return { success: false, error: "Gmail is not connected or token expired" };
+    return { success: false, error: "Google Workspace is not connected. Please connect from Integrations." };
   }
 
   try {
@@ -3072,9 +3072,9 @@ async function applyLabel(
 ): Promise<LabelEmailResult> {
   console.log(`[Tools] apply_label: message_id="${args.message_id}", label_id="${args.label_id}"`);
 
-  const accessToken = await getValidToken(userId, "gmail");
+  const accessToken = await getValidToken(userId, "google");
   if (!accessToken) {
-    return { success: false, error: "Gmail is not connected or token expired" };
+    return { success: false, error: "Google Workspace is not connected. Please connect from Integrations." };
   }
 
   try {
@@ -3110,9 +3110,9 @@ async function removeLabel(
 ): Promise<LabelEmailResult> {
   console.log(`[Tools] remove_label: message_id="${args.message_id}", label_id="${args.label_id}"`);
 
-  const accessToken = await getValidToken(userId, "gmail");
+  const accessToken = await getValidToken(userId, "google");
   if (!accessToken) {
-    return { success: false, error: "Gmail is not connected or token expired" };
+    return { success: false, error: "Google Workspace is not connected. Please connect from Integrations." };
   }
 
   try {
@@ -3475,11 +3475,18 @@ async function executeContactsTool(
     const data = await response.json();
     
     if (!response.ok || !data.success) {
+      if (data.needsScopeUpdate) {
+        return { 
+          success: false, 
+          needsScopeUpdate: true,
+          error: "Contacts permission not granted. Please update your Google permissions from the Integrations page to include Contacts access." 
+        };
+      }
       if (data.needsAuth) {
         return { 
           success: false, 
           needsAuth: true,
-          error: "Google Contacts is not connected. Please connect from the Integrations page." 
+          error: "Google Workspace is not connected. Please connect from the Integrations page." 
         };
       }
       return { success: false, error: data.error || 'Google Contacts API request failed' };

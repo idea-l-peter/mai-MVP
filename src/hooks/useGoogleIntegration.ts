@@ -6,6 +6,7 @@ interface Integration {
   provider: string;
   provider_email: string | null;
   token_expires_at: string | null;
+  scopes: string[] | null;
   connected: boolean;
 }
 
@@ -150,7 +151,7 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
 
       const { data, error } = await supabase
         .from('user_integrations')
-        .select('provider, provider_email, token_expires_at')
+        .select('provider, provider_email, token_expires_at, scopes')
         .eq('user_id', user.id)
         .eq('provider', provider)
         .maybeSingle();

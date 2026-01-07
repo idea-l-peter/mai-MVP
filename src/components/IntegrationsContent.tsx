@@ -1,15 +1,23 @@
 import { useEffect, useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { IntegrationCard } from "./IntegrationCard";
+import { GoogleWorkspaceCard } from "./GoogleWorkspaceCard";
 import { WhatsAppLogo } from "./icons";
 import { useGoogleIntegration } from "@/hooks/useGoogleIntegration";
 import { useMondayIntegration } from "@/hooks/useMondayIntegration";
 import { useToast } from "@/hooks/use-toast";
-import googleCalendarIcon from "@/assets/google-calendar-icon.svg";
-import gmailLogo from "@/assets/gmail-logo.png";
 import mondayLogo from "@/assets/monday-logo.svg";
 
 type IntegrationStatus = "connected" | "not_connected" | "pending";
+
+// Full Google Workspace scopes - requesting broad access
+const GOOGLE_WORKSPACE_SCOPES = [
+  "https://www.googleapis.com/auth/calendar",
+  "https://www.googleapis.com/auth/gmail.modify",
+  "https://www.googleapis.com/auth/contacts",
+  "https://www.googleapis.com/auth/userinfo.email",
+  "https://www.googleapis.com/auth/userinfo.profile",
+];
 
 interface IntegrationConfig {
   id: string;
@@ -22,55 +30,7 @@ interface IntegrationConfig {
   scopes?: string[];
 }
 
-const INTEGRATION_CONFIGS: IntegrationConfig[] = [
-  {
-    id: "google-calendar",
-    title: "Google Calendar",
-    description: "Sync your calendar to let mai schedule meetings",
-    icon: <img src={googleCalendarIcon} alt="Google Calendar" className="h-6 w-6" />,
-    defaultStatus: "not_connected",
-    showConnectButton: true,
-    provider: "google-calendar",
-    scopes: [
-      "https://www.googleapis.com/auth/calendar.readonly",
-      "https://www.googleapis.com/auth/calendar.events",
-      "https://www.googleapis.com/auth/contacts",
-      "https://www.googleapis.com/auth/userinfo.email",
-      "https://www.googleapis.com/auth/userinfo.profile",
-    ],
-  },
-  {
-    id: "gmail",
-    title: "Gmail",
-    description: "Allow mai to read and send emails on your behalf",
-    icon: <img src={gmailLogo} alt="Gmail" className="h-6 w-auto" />,
-    defaultStatus: "not_connected",
-    showConnectButton: true,
-    provider: "gmail",
-    scopes: [
-      "https://www.googleapis.com/auth/gmail.readonly",
-      "https://www.googleapis.com/auth/gmail.send",
-      "https://www.googleapis.com/auth/gmail.modify",
-      "https://www.googleapis.com/auth/gmail.settings.basic",
-      "https://www.googleapis.com/auth/contacts",
-      "https://www.googleapis.com/auth/userinfo.email",
-      "https://www.googleapis.com/auth/userinfo.profile",
-    ],
-  },
-  {
-    id: "google-contacts",
-    title: "Google Contacts",
-    description: "Let mai access your contacts for context and insights",
-    icon: <img src={googleCalendarIcon} alt="Google Contacts" className="h-6 w-6" />,
-    defaultStatus: "not_connected",
-    showConnectButton: true,
-    provider: "google-contacts",
-    scopes: [
-      "https://www.googleapis.com/auth/contacts",
-      "https://www.googleapis.com/auth/userinfo.email",
-      "https://www.googleapis.com/auth/userinfo.profile",
-    ],
-  },
+const OTHER_INTEGRATION_CONFIGS: IntegrationConfig[] = [
   {
     id: "monday",
     title: "monday.com",
@@ -93,10 +53,12 @@ const INTEGRATION_CONFIGS: IntegrationConfig[] = [
 interface IntegrationState {
   status: IntegrationStatus;
   providerEmail?: string;
+  scopes?: string[];
 }
 
 export function IntegrationsContent() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const [googleState, setGoogleState] = useState<IntegrationState>({ status: "not_connected" });
   const [integrationStates, setIntegrationStates] = useState<Record<string, IntegrationState>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
@@ -104,7 +66,7 @@ export function IntegrationsContent() {
 
   const DISCONNECT_STORAGE_KEY = "disconnect_in_progress_provider";
 
-  // Clear any stale disconnect-in-progress flag on page load (best-effort)
+  // Clear any stale disconnect-in-progress flag on page load
   useEffect(() => {
     try {
       sessionStorage.removeItem(DISCONNECT_STORAGE_KEY);
@@ -129,21 +91,23 @@ export function IntegrationsContent() {
   const refreshIntegrations = useCallback(async () => {
     setIsLoading(true);
     try {
-      const states: Record<string, IntegrationState> = {};
+      // Check Google Workspace connection (uses "google" provider)
+      const googleIntegration = await checkGoogleConnection("google");
+      if (googleIntegration?.connected) {
+        setGoogleState({
+          status: "connected",
+          providerEmail: googleIntegration.provider_email || undefined,
+          scopes: (googleIntegration as { scopes?: string[] }).scopes || [],
+        });
+      } else {
+        setGoogleState({ status: "not_connected" });
+      }
 
-      for (const config of INTEGRATION_CONFIGS) {
+      // Check other integrations
+      const states: Record<string, IntegrationState> = {};
+      for (const config of OTHER_INTEGRATION_CONFIGS) {
         if (config.provider === "monday") {
           const integration = await checkMondayConnection();
-          if (integration?.connected) {
-            states[config.id] = {
-              status: "connected",
-              providerEmail: integration.provider_email || undefined,
-            };
-          } else {
-            states[config.id] = { status: "not_connected" };
-          }
-        } else if (config.provider) {
-          const integration = await checkGoogleConnection(config.provider);
           if (integration?.connected) {
             states[config.id] = {
               status: "connected",
@@ -193,22 +157,57 @@ export function IntegrationsContent() {
     refreshIntegrations();
   }, [searchParams.toString(), setSearchParams, refreshIntegrations, toast]);
 
+  const handleGoogleConnect = () => {
+    initiateGoogleOAuth("google", GOOGLE_WORKSPACE_SCOPES);
+  };
+
+  const handleGoogleUpdatePermissions = () => {
+    // Re-initiate OAuth with all scopes - Google will only ask for new ones
+    initiateGoogleOAuth("google", GOOGLE_WORKSPACE_SCOPES);
+  };
+
+  const handleGoogleDisconnect = async () => {
+    try {
+      sessionStorage.setItem(DISCONNECT_STORAGE_KEY, "google");
+    } catch {
+      // ignore
+    }
+
+    setDisconnectingId("google");
+
+    const failSafe = window.setTimeout(() => {
+      setDisconnectingId((current) => (current === "google" ? null : current));
+    }, 12000);
+
+    try {
+      const success = await disconnectGoogle("google");
+      if (success) {
+        setGoogleState({ status: "not_connected" });
+      }
+    } finally {
+      window.clearTimeout(failSafe);
+      setDisconnectingId(null);
+      try {
+        sessionStorage.removeItem(DISCONNECT_STORAGE_KEY);
+      } catch {
+        // ignore
+      }
+    }
+  };
+
   const handleConnect = (integrationId: string) => {
-    const config = INTEGRATION_CONFIGS.find((c) => c.id === integrationId);
+    const config = OTHER_INTEGRATION_CONFIGS.find((c) => c.id === integrationId);
     if (config?.provider === "monday") {
       initiateMondayOAuth();
-    } else if (config?.provider && config.scopes) {
-      initiateGoogleOAuth(config.provider, config.scopes);
     } else {
       console.log(`No OAuth configured for ${integrationId}`);
     }
   };
 
   const handleDisconnect = async (integrationId: string) => {
-    const config = INTEGRATION_CONFIGS.find((c) => c.id === integrationId);
+    const config = OTHER_INTEGRATION_CONFIGS.find((c) => c.id === integrationId);
     if (!config?.provider) return;
 
-    // Mark disconnect as in-progress (best-effort) so a full refresh can't leave UI stuck
     try {
       sessionStorage.setItem(DISCONNECT_STORAGE_KEY, config.provider);
     } catch {
@@ -217,7 +216,6 @@ export function IntegrationsContent() {
 
     setDisconnectingId(integrationId);
 
-    // Fail-safe: never let the UI get stuck if the disconnect promise hangs
     const failSafe = window.setTimeout(() => {
       setDisconnectingId((current) => (current === integrationId ? null : current));
     }, 12000);
@@ -226,8 +224,6 @@ export function IntegrationsContent() {
       let success = false;
       if (config.provider === "monday") {
         success = await disconnectMonday();
-      } else {
-        success = await disconnectGoogle(config.provider);
       }
       if (success) {
         setIntegrationStates((prev) => ({
@@ -248,7 +244,7 @@ export function IntegrationsContent() {
 
   const getStatus = (integrationId: string): IntegrationStatus => {
     return integrationStates[integrationId]?.status || 
-           INTEGRATION_CONFIGS.find((c) => c.id === integrationId)?.defaultStatus || 
+           OTHER_INTEGRATION_CONFIGS.find((c) => c.id === integrationId)?.defaultStatus || 
            "not_connected";
   };
 
@@ -258,7 +254,20 @@ export function IntegrationsContent() {
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      {INTEGRATION_CONFIGS.map((integration) => (
+      {/* Google Workspace Card - Primary integration */}
+      <GoogleWorkspaceCard
+        isConnected={googleState.status === "connected"}
+        connectedEmail={googleState.providerEmail}
+        grantedScopes={googleState.scopes}
+        isLoading={isLoading}
+        isDisconnecting={disconnectingId === "google"}
+        onConnect={handleGoogleConnect}
+        onDisconnect={handleGoogleDisconnect}
+        onUpdatePermissions={handleGoogleUpdatePermissions}
+      />
+      
+      {/* Other integrations */}
+      {OTHER_INTEGRATION_CONFIGS.map((integration) => (
         <IntegrationCard
           key={integration.id}
           title={integration.title}
