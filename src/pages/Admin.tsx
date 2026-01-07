@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { useAdminCheck } from "@/hooks/useAdminCheck";
 import { Button } from "@/components/ui/button";
@@ -10,6 +11,21 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Trash2, Plus, Shield, Globe, Loader2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+// Validation schemas
+const domainSchema = z.string()
+  .min(3, "Domain must be at least 3 characters")
+  .max(255, "Domain must be less than 255 characters")
+  .regex(
+    /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/i,
+    "Invalid domain format"
+  )
+  .transform(s => s.toLowerCase());
+
+const emailSchema = z.string()
+  .email("Invalid email address")
+  .max(320, "Email must be less than 320 characters")
+  .transform(s => s.toLowerCase());
 
 interface AllowedDomain {
   id: string;
@@ -102,7 +118,20 @@ const Admin = () => {
     if (!newDomain.trim()) return;
     
     setAddingDomain(true);
-    const domainToAdd = newDomain.trim().toLowerCase();
+    
+    // Validate domain format
+    const parseResult = domainSchema.safeParse(newDomain.trim());
+    if (!parseResult.success) {
+      toast({
+        title: "Invalid Domain",
+        description: parseResult.error.errors[0]?.message || "Invalid domain format",
+        variant: "destructive",
+      });
+      setAddingDomain(false);
+      return;
+    }
+    
+    const domainToAdd = parseResult.data;
     
     const { error } = await supabase
       .from("allowed_domains")
@@ -155,10 +184,24 @@ const Admin = () => {
     
     setAddingRole(true);
     
+    // Validate email format
+    const parseResult = emailSchema.safeParse(newUserEmail.trim());
+    if (!parseResult.success) {
+      toast({
+        title: "Invalid Email",
+        description: parseResult.error.errors[0]?.message || "Invalid email format",
+        variant: "destructive",
+      });
+      setAddingRole(false);
+      return;
+    }
+    
+    const validatedEmail = parseResult.data;
+    
     // First, we need to find the user by email using auth admin API
     // Since we can't access auth.users directly, we'll use an edge function
     const { data: userData, error: userError } = await supabase.functions.invoke("get-user-by-email", {
-      body: { email: newUserEmail.trim().toLowerCase() },
+      body: { email: validatedEmail },
     });
 
     if (userError || !userData?.user_id) {

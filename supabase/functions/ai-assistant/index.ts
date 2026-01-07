@@ -79,9 +79,76 @@ serve(async (req) => {
     const body = await req.json();
     const { messages: inputMessages, temperature, max_tokens, stream, provider } = body;
 
+    // Validate required fields
     if (!inputMessages || !Array.isArray(inputMessages) || inputMessages.length === 0) {
       return new Response(
         JSON.stringify({ error: "messages array is required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Validate messages array constraints
+    if (inputMessages.length > 100) {
+      return new Response(
+        JSON.stringify({ error: "Too many messages (max 100)" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Validate each message
+    const validRoles = ["user", "assistant", "system", "tool"];
+    for (const msg of inputMessages) {
+      if (!msg || typeof msg !== "object") {
+        return new Response(
+          JSON.stringify({ error: "Invalid message format" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      if (!validRoles.includes(msg.role)) {
+        return new Response(
+          JSON.stringify({ error: `Invalid message role: ${msg.role}` }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      if (typeof msg.content !== "string") {
+        return new Response(
+          JSON.stringify({ error: "Message content must be a string" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      if (msg.content.length > 50000) {
+        return new Response(
+          JSON.stringify({ error: "Message content too long (max 50000 characters)" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
+    // Validate optional parameters
+    if (temperature !== undefined && (typeof temperature !== "number" || temperature < 0 || temperature > 2)) {
+      return new Response(
+        JSON.stringify({ error: "Temperature must be a number between 0 and 2" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (max_tokens !== undefined && (typeof max_tokens !== "number" || max_tokens < 1 || max_tokens > 16000)) {
+      return new Response(
+        JSON.stringify({ error: "max_tokens must be a number between 1 and 16000" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (stream !== undefined && typeof stream !== "boolean") {
+      return new Response(
+        JSON.stringify({ error: "stream must be a boolean" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (provider !== undefined && typeof provider !== "string") {
+      return new Response(
+        JSON.stringify({ error: "provider must be a string" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
