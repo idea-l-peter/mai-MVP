@@ -653,9 +653,249 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     },
   },
 },
-// Future tools will be added here:
-// - get_monday_boards
-// - create_monday_item
+// ============= Monday.com Tools =============
+{
+  type: "function",
+  function: {
+    name: "monday_get_boards",
+    description: "Get list of all Monday.com boards the user has access to. Use this when the user asks about their boards, projects, or tasks in Monday.com.",
+    parameters: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "monday_get_board",
+    description: "Get details of a specific Monday.com board including its columns and groups. Use this to understand the structure before creating or updating items.",
+    parameters: {
+      type: "object",
+      properties: {
+        board_id: {
+          type: "string",
+          description: "The ID of the board to get details for",
+        },
+      },
+      required: ["board_id"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "monday_get_items",
+    description: "Get items (tasks) from a Monday.com board. Optionally filter by group.",
+    parameters: {
+      type: "object",
+      properties: {
+        board_id: {
+          type: "string",
+          description: "The ID of the board",
+        },
+        group_id: {
+          type: "string",
+          description: "Optional group ID to filter items by group",
+        },
+        limit: {
+          type: "number",
+          description: "Maximum number of items to return. Defaults to 25.",
+        },
+      },
+      required: ["board_id"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "monday_get_item",
+    description: "Get details of a specific Monday.com item including its updates/comments.",
+    parameters: {
+      type: "object",
+      properties: {
+        item_id: {
+          type: "string",
+          description: "The ID of the item",
+        },
+      },
+      required: ["item_id"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "monday_search_items",
+    description: "Search for items by name within a Monday.com board.",
+    parameters: {
+      type: "object",
+      properties: {
+        board_id: {
+          type: "string",
+          description: "The ID of the board to search in",
+        },
+        search_term: {
+          type: "string",
+          description: "The search term to find in item names",
+        },
+      },
+      required: ["board_id", "search_term"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "monday_get_me",
+    description: "Get the current Monday.com user's information.",
+    parameters: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "monday_create_item",
+    description: "Create a new item (task) on a Monday.com board. This is a Tier B action - show the item details and ask for confirmation before creating.",
+    parameters: {
+      type: "object",
+      properties: {
+        board_id: {
+          type: "string",
+          description: "The ID of the board",
+        },
+        item_name: {
+          type: "string",
+          description: "The name/title of the item",
+        },
+        group_id: {
+          type: "string",
+          description: "Optional group ID to place the item in",
+        },
+        column_values: {
+          type: "object",
+          description: "Optional column values as a JSON object (column_id: value)",
+        },
+      },
+      required: ["board_id", "item_name"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "monday_update_item",
+    description: "Update column values on a Monday.com item. This is a Tier B action - show the proposed changes and ask for confirmation.",
+    parameters: {
+      type: "object",
+      properties: {
+        board_id: {
+          type: "string",
+          description: "The ID of the board",
+        },
+        item_id: {
+          type: "string",
+          description: "The ID of the item to update",
+        },
+        column_values: {
+          type: "object",
+          description: "Column values to update as a JSON object (column_id: value)",
+        },
+      },
+      required: ["board_id", "item_id", "column_values"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "monday_change_status",
+    description: "Change the status column of a Monday.com item. This is a Tier B action - confirm with user before changing.",
+    parameters: {
+      type: "object",
+      properties: {
+        board_id: {
+          type: "string",
+          description: "The ID of the board",
+        },
+        item_id: {
+          type: "string",
+          description: "The ID of the item",
+        },
+        column_id: {
+          type: "string",
+          description: "The ID of the status column",
+        },
+        status_label: {
+          type: "string",
+          description: "The status label to set (e.g., 'Done', 'Working on it', 'Stuck')",
+        },
+      },
+      required: ["board_id", "item_id", "column_id", "status_label"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "monday_add_update",
+    description: "Add a comment/update to a Monday.com item. This is a Tier B action - show the comment and ask for confirmation.",
+    parameters: {
+      type: "object",
+      properties: {
+        item_id: {
+          type: "string",
+          description: "The ID of the item",
+        },
+        body: {
+          type: "string",
+          description: "The comment/update text",
+        },
+      },
+      required: ["item_id", "body"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "monday_delete_item",
+    description: "Delete a Monday.com item. This is a Tier C destructive action - requires 🗑️ or 'delete' confirmation.",
+    parameters: {
+      type: "object",
+      properties: {
+        item_id: {
+          type: "string",
+          description: "The ID of the item to delete",
+        },
+      },
+      required: ["item_id"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "monday_archive_item",
+    description: "Archive a Monday.com item. This is a Tier C action - requires 🗑️ or 'delete' confirmation.",
+    parameters: {
+      type: "object",
+      properties: {
+        item_id: {
+          type: "string",
+          description: "The ID of the item to archive",
+        },
+      },
+      required: ["item_id"],
+    },
+  },
+},
 ];
 
 // ============= Tool Call Types =============
@@ -3010,9 +3250,54 @@ export async function executeTool(
         result = await removeLabel(userId, args);
         break;
       
-      // Future tool implementations:
-      // case "get_monday_boards":
-      // case "create_monday_item":
+      // Monday.com tools
+      case "monday_get_boards":
+        result = await executeMondayTool(userId, "get_boards", {});
+        break;
+      
+      case "monday_get_board":
+        result = await executeMondayTool(userId, "get_board", args);
+        break;
+      
+      case "monday_get_items":
+        result = await executeMondayTool(userId, "get_items", args);
+        break;
+      
+      case "monday_get_item":
+        result = await executeMondayTool(userId, "get_item", args);
+        break;
+      
+      case "monday_search_items":
+        result = await executeMondayTool(userId, "search_items", args);
+        break;
+      
+      case "monday_get_me":
+        result = await executeMondayTool(userId, "get_me", {});
+        break;
+      
+      case "monday_create_item":
+        result = await executeMondayTool(userId, "create_item", args);
+        break;
+      
+      case "monday_update_item":
+        result = await executeMondayTool(userId, "update_item", args);
+        break;
+      
+      case "monday_change_status":
+        result = await executeMondayTool(userId, "change_status", args);
+        break;
+      
+      case "monday_add_update":
+        result = await executeMondayTool(userId, "add_update", args);
+        break;
+      
+      case "monday_delete_item":
+        result = await executeMondayTool(userId, "delete_item", args);
+        break;
+      
+      case "monday_archive_item":
+        result = await executeMondayTool(userId, "archive_item", args);
+        break;
       
       default:
         result = { success: false, error: `Unknown tool: ${name}` };
@@ -3027,4 +3312,50 @@ export async function executeTool(
     role: "tool",
     content: JSON.stringify(result),
   };
+}
+
+// ============= Monday.com Tool Executor =============
+
+async function executeMondayTool(
+  userId: string, 
+  action: string, 
+  params: Record<string, unknown>
+): Promise<unknown> {
+  console.log(`[Tools] Executing Monday.com action: ${action}`);
+  
+  try {
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/monday-api`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      },
+      body: JSON.stringify({
+        action,
+        user_id: userId,
+        params,
+      }),
+    });
+
+    const data = await response.json();
+    
+    if (!response.ok || !data.success) {
+      if (data.needsAuth) {
+        return { 
+          success: false, 
+          needsAuth: true,
+          error: "Monday.com is not connected. Please connect from the Integrations page." 
+        };
+      }
+      return { success: false, error: data.error || 'Monday.com API request failed' };
+    }
+
+    return { success: true, ...data.data };
+  } catch (error) {
+    console.error(`[Tools] Monday.com tool error:`, error);
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Failed to execute Monday.com action' 
+    };
+  }
 }
