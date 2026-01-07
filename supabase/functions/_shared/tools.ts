@@ -896,6 +896,78 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     },
   },
 },
+// ============= Google Contacts Tools (All Tier A - Read Only) =============
+{
+  type: "function",
+  function: {
+    name: "contacts_get_contacts",
+    description: "Get a list of contacts from the user's Google Contacts. Returns names, emails, phones, organizations, and more. Use this to look up contact information or find someone's details.",
+    parameters: {
+      type: "object",
+      properties: {
+        page_size: {
+          type: "number",
+          description: "Number of contacts to return (max 1000, default 100)",
+        },
+        page_token: {
+          type: "string",
+          description: "Token for pagination to get next page of results",
+        },
+      },
+      required: [],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "contacts_search",
+    description: "Search for contacts by name, email, or phone number. Returns matching contacts with their details. Use this when looking for a specific person.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "Search query - can be name, email, or phone number",
+        },
+        page_size: {
+          type: "number",
+          description: "Number of results to return (max 30, default 30)",
+        },
+      },
+      required: ["query"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "contacts_get_contact",
+    description: "Get detailed information about a specific contact by their resource name/ID.",
+    parameters: {
+      type: "object",
+      properties: {
+        resource_name: {
+          type: "string",
+          description: "The contact's resource name (e.g., 'people/c123456789')",
+        },
+      },
+      required: ["resource_name"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "contacts_get_groups",
+    description: "Get list of contact groups/labels (e.g., Family, Work, Friends). Use this to understand how contacts are organized.",
+    parameters: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
+},
 ];
 
 // ============= Tool Call Types =============
@@ -3299,6 +3371,23 @@ export async function executeTool(
         result = await executeMondayTool(userId, "archive_item", args);
         break;
       
+      // Google Contacts tools
+      case "contacts_get_contacts":
+        result = await executeContactsTool(userId, "get_contacts", args);
+        break;
+      
+      case "contacts_search":
+        result = await executeContactsTool(userId, "search_contacts", args);
+        break;
+      
+      case "contacts_get_contact":
+        result = await executeContactsTool(userId, "get_contact", args);
+        break;
+      
+      case "contacts_get_groups":
+        result = await executeContactsTool(userId, "get_contact_groups", {});
+        break;
+      
       default:
         result = { success: false, error: `Unknown tool: ${name}` };
     }
@@ -3356,6 +3445,52 @@ async function executeMondayTool(
     return { 
       success: false, 
       error: error instanceof Error ? error.message : 'Failed to execute Monday.com action' 
+    };
+  }
+}
+
+// ============= Google Contacts Tool Executor =============
+
+async function executeContactsTool(
+  userId: string, 
+  action: string, 
+  params: Record<string, unknown>
+): Promise<unknown> {
+  console.log(`[Tools] Executing Google Contacts action: ${action}`);
+  
+  try {
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/google-contacts`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      },
+      body: JSON.stringify({
+        action,
+        user_id: userId,
+        params,
+      }),
+    });
+
+    const data = await response.json();
+    
+    if (!response.ok || !data.success) {
+      if (data.needsAuth) {
+        return { 
+          success: false, 
+          needsAuth: true,
+          error: "Google Contacts is not connected. Please connect from the Integrations page." 
+        };
+      }
+      return { success: false, error: data.error || 'Google Contacts API request failed' };
+    }
+
+    return { success: true, ...data.data };
+  } catch (error) {
+    console.error(`[Tools] Google Contacts tool error:`, error);
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Failed to execute Google Contacts action' 
     };
   }
 }
