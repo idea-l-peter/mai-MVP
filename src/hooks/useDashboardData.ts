@@ -39,6 +39,8 @@ interface ContactFollowup {
   lastContactDate?: string;
   notes?: string;
   tags?: { name: string; color: string }[];
+  birthday?: string;
+  anniversaryDate?: string;
 }
 
 export interface DashboardData {

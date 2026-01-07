@@ -1265,11 +1265,173 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   type: "function",
   function: {
     name: "get_daily_briefing",
-    description: "Get a comprehensive daily briefing including: follow-ups due, contacts going cold, and summary counts. Use when user says 'good morning', 'what's on today', or asks for a briefing.",
+    description: "Get a comprehensive daily briefing including: follow-ups due, contacts going cold, upcoming birthdays, holidays, anniversaries. Use when user says 'good morning', 'what's on today', or asks for a briefing.",
     parameters: {
       type: "object",
       properties: {},
       required: [],
+    },
+  },
+},
+// ============= Occasions Tools =============
+// Tier A - Read Operations
+{
+  type: "function",
+  function: {
+    name: "get_upcoming_birthdays",
+    description: "Get contacts with birthdays in the next N days. Use to prepare birthday wishes.",
+    parameters: {
+      type: "object",
+      properties: {
+        days_ahead: {
+          type: "number",
+          description: "Number of days to look ahead (default 7)",
+        },
+      },
+      required: [],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "get_upcoming_holidays",
+    description: "Get upcoming holidays in the next N days (based on user's observed holidays preferences).",
+    parameters: {
+      type: "object",
+      properties: {
+        days_ahead: {
+          type: "number",
+          description: "Number of days to look ahead (default 7)",
+        },
+      },
+      required: [],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "get_all_holidays",
+    description: "Get list of all available holidays for the user to select from.",
+    parameters: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "get_upcoming_anniversaries",
+    description: "Get contacts with anniversaries in the next N days.",
+    parameters: {
+      type: "object",
+      properties: {
+        days_ahead: {
+          type: "number",
+          description: "Number of days to look ahead (default 7)",
+        },
+      },
+      required: [],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "get_outreach_suggestions",
+    description: "Get all outreach suggestions including birthdays, holidays, anniversaries, and cold contacts. Returns sorted list with reasons.",
+    parameters: {
+      type: "object",
+      properties: {
+        days_ahead: {
+          type: "number",
+          description: "Number of days to look ahead (default 7)",
+        },
+      },
+      required: [],
+    },
+  },
+},
+// Tier B - Write Operations (require confirmation)
+{
+  type: "function",
+  function: {
+    name: "set_contact_birthday",
+    description: "Set the birthday for a contact. This is a Tier B action.",
+    parameters: {
+      type: "object",
+      properties: {
+        google_contact_id: {
+          type: "string",
+          description: "The Google Contact resource name",
+        },
+        birthday: {
+          type: "string",
+          description: "Birthday date in YYYY-MM-DD format",
+        },
+        email: {
+          type: "string",
+          description: "Contact's email for quick lookup (optional)",
+        },
+      },
+      required: ["google_contact_id", "birthday"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "set_contact_anniversary",
+    description: "Set an anniversary date for a contact (wedding, work anniversary, etc.). This is a Tier B action.",
+    parameters: {
+      type: "object",
+      properties: {
+        google_contact_id: {
+          type: "string",
+          description: "The Google Contact resource name",
+        },
+        anniversary_date: {
+          type: "string",
+          description: "Anniversary date in YYYY-MM-DD format",
+        },
+        email: {
+          type: "string",
+          description: "Contact's email for quick lookup (optional)",
+        },
+      },
+      required: ["google_contact_id", "anniversary_date"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "add_custom_date",
+    description: "Add a custom special date for a contact (e.g., 'client since', 'first met'). This is a Tier B action.",
+    parameters: {
+      type: "object",
+      properties: {
+        google_contact_id: {
+          type: "string",
+          description: "The Google Contact resource name",
+        },
+        name: {
+          type: "string",
+          description: "Name of the custom date (e.g., 'Client Since', 'First Met')",
+        },
+        date: {
+          type: "string",
+          description: "Date in YYYY-MM-DD format",
+        },
+        email: {
+          type: "string",
+          description: "Contact's email for quick lookup (optional)",
+        },
+      },
+      required: ["google_contact_id", "name", "date"],
     },
   },
 },
@@ -3896,6 +4058,40 @@ export async function executeTool(
 
       case "get_daily_briefing":
         result = await executeIntelligenceTool(userId, "get_daily_briefing", {});
+        break;
+
+      // Occasions tools - Read
+      case "get_upcoming_birthdays":
+        result = await executeIntelligenceTool(userId, "get_upcoming_birthdays", args);
+        break;
+
+      case "get_upcoming_holidays":
+        result = await executeIntelligenceTool(userId, "get_upcoming_holidays", args);
+        break;
+
+      case "get_all_holidays":
+        result = await executeIntelligenceTool(userId, "get_all_holidays", {});
+        break;
+
+      case "get_upcoming_anniversaries":
+        result = await executeIntelligenceTool(userId, "get_upcoming_anniversaries", args);
+        break;
+
+      case "get_outreach_suggestions":
+        result = await executeIntelligenceTool(userId, "get_outreach_suggestions", args);
+        break;
+
+      // Occasions tools - Write
+      case "set_contact_birthday":
+        result = await executeIntelligenceTool(userId, "set_birthday", args);
+        break;
+
+      case "set_contact_anniversary":
+        result = await executeIntelligenceTool(userId, "set_anniversary", args);
+        break;
+
+      case "add_custom_date":
+        result = await executeIntelligenceTool(userId, "add_custom_date", args);
         break;
 
       // Contact Intelligence tools - Write

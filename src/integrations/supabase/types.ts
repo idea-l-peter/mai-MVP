@@ -67,37 +67,49 @@ export type Database = {
       }
       contact_profiles: {
         Row: {
+          anniversary_date: string | null
+          birthday: string | null
           created_at: string
+          custom_dates: Json | null
           email: string | null
           google_contact_id: string
           id: string
           last_contact_date: string | null
           next_followup_date: string | null
           notes: string | null
+          observed_holidays: string[] | null
           tier: number | null
           updated_at: string
           user_id: string
         }
         Insert: {
+          anniversary_date?: string | null
+          birthday?: string | null
           created_at?: string
+          custom_dates?: Json | null
           email?: string | null
           google_contact_id: string
           id?: string
           last_contact_date?: string | null
           next_followup_date?: string | null
           notes?: string | null
+          observed_holidays?: string[] | null
           tier?: number | null
           updated_at?: string
           user_id: string
         }
         Update: {
+          anniversary_date?: string | null
+          birthday?: string | null
           created_at?: string
+          custom_dates?: Json | null
           email?: string | null
           google_contact_id?: string
           id?: string
           last_contact_date?: string | null
           next_followup_date?: string | null
           notes?: string | null
+          observed_holidays?: string[] | null
           tier?: number | null
           updated_at?: string
           user_id?: string
@@ -206,6 +218,39 @@ export type Database = {
         }
         Relationships: []
       }
+      holidays: {
+        Row: {
+          created_at: string
+          days_notice: number | null
+          description: string | null
+          holiday_date: string
+          id: string
+          name: string
+          regions: string[] | null
+          type: string
+        }
+        Insert: {
+          created_at?: string
+          days_notice?: number | null
+          description?: string | null
+          holiday_date: string
+          id?: string
+          name: string
+          regions?: string[] | null
+          type: string
+        }
+        Update: {
+          created_at?: string
+          days_notice?: number | null
+          description?: string | null
+          holiday_date?: string
+          id?: string
+          name?: string
+          regions?: string[] | null
+          type?: string
+        }
+        Relationships: []
+      }
       user_integrations: {
         Row: {
           access_token_secret_id: string | null
@@ -256,6 +301,7 @@ export type Database = {
           created_at: string
           emoji_confirmations_enabled: boolean
           id: string
+          observed_holidays: string[] | null
           security_phrase_color: string | null
           security_phrase_emoji: string | null
           security_phrase_object: string | null
@@ -266,6 +312,7 @@ export type Database = {
           created_at?: string
           emoji_confirmations_enabled?: boolean
           id?: string
+          observed_holidays?: string[] | null
           security_phrase_color?: string | null
           security_phrase_emoji?: string | null
           security_phrase_object?: string | null
@@ -276,6 +323,7 @@ export type Database = {
           created_at?: string
           emoji_confirmations_enabled?: boolean
           id?: string
+          observed_holidays?: string[] | null
           security_phrase_color?: string | null
           security_phrase_emoji?: string | null
           security_phrase_object?: string | null
