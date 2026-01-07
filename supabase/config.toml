@@ -38,3 +38,6 @@ verify_jwt = false
 
 [functions.contact-intelligence]
 verify_jwt = false
+
+[functions.dashboard-data]
+verify_jwt = false
