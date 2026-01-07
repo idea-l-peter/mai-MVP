@@ -22,29 +22,45 @@ interface ContactsApiRequest {
 }
 
 // Helper to get Google access token for a user (with refresh if needed)
-async function getGoogleToken(userId: string): Promise<{ token: string | null; error?: string }> {
+// Uses unified "google" provider and checks for contacts scope
+async function getGoogleToken(userId: string): Promise<{ token: string | null; error?: string; needsScopeUpdate?: boolean }> {
   console.log(`[GoogleContacts] Getting token for user: ${userId}`);
   
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
     auth: { persistSession: false },
   });
 
-  // Get the user's Google Contacts integration
+  // Get the user's unified Google integration
   const { data: integration, error: integrationError } = await supabase
     .from('user_integrations')
-    .select('access_token_secret_id, refresh_token_secret_id, token_expires_at')
+    .select('access_token_secret_id, refresh_token_secret_id, token_expires_at, scopes')
     .eq('user_id', userId)
-    .eq('provider', 'google-contacts')
+    .eq('provider', 'google')
     .maybeSingle();
 
   if (integrationError) {
     console.error(`[GoogleContacts] Error fetching integration:`, integrationError);
-    return { token: null, error: 'Failed to fetch Google Contacts integration' };
+    return { token: null, error: 'Failed to fetch Google integration' };
   }
 
   if (!integration?.access_token_secret_id) {
-    console.log(`[GoogleContacts] No Google Contacts integration found for user`);
-    return { token: null, error: 'Google Contacts not connected. Please connect from Integrations.' };
+    console.log(`[GoogleContacts] No Google integration found for user`);
+    return { token: null, error: 'Google Workspace not connected. Please connect from Integrations.' };
+  }
+
+  // Check if contacts scope is granted
+  const grantedScopes = integration.scopes || [];
+  const hasContactsScope = grantedScopes.some((scope: string) => 
+    scope.includes('contacts')
+  );
+
+  if (!hasContactsScope) {
+    console.log(`[GoogleContacts] Contacts scope not granted. Granted scopes:`, grantedScopes);
+    return { 
+      token: null, 
+      needsScopeUpdate: true,
+      error: 'Contacts permission not granted. Please update your Google permissions from the Integrations page to include Contacts access.' 
+    };
   }
 
   // Check if token needs refresh
@@ -325,14 +341,15 @@ serve(async (req) => {
     }
 
     // Get the Google token
-    const { token, error: tokenError } = await getGoogleToken(user_id);
+    const { token, error: tokenError, needsScopeUpdate } = await getGoogleToken(user_id);
     
     if (!token) {
       return new Response(
         JSON.stringify({ 
           success: false, 
-          needsAuth: true,
-          error: tokenError || 'Google Contacts not connected' 
+          needsAuth: !needsScopeUpdate,
+          needsScopeUpdate: needsScopeUpdate || false,
+          error: tokenError || 'Google Workspace not connected' 
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
       );
