@@ -24,6 +24,10 @@ interface ContactProfile {
   notes: string | null;
   last_contact_date: string | null;
   next_followup_date: string | null;
+  birthday: string | null;
+  anniversary_date: string | null;
+  custom_dates: Array<{ name: string; date: string }> | null;
+  observed_holidays: string[] | null;
   created_at: string;
   updated_at: string;
   tags?: Tag[];
@@ -35,6 +39,25 @@ interface Tag {
   name: string;
   color: string;
   created_at: string;
+}
+
+interface Holiday {
+  id: string;
+  name: string;
+  holiday_date: string;
+  type: string;
+  regions: string[];
+  description: string | null;
+  days_notice: number;
+}
+
+interface OutreachSuggestion {
+  type: 'birthday' | 'holiday' | 'anniversary' | 'custom_date' | 'cold_contact';
+  contact?: ContactProfile;
+  holiday?: Holiday;
+  date: string;
+  days_until: number;
+  reason: string;
 }
 
 // ============= Helper Functions =============
@@ -573,28 +596,363 @@ async function getColdContacts(
   }));
 }
 
-// Get daily briefing summary
+// Get daily briefing summary (enhanced with occasions)
 async function getDailyBriefing(userId: string): Promise<{
   followupsDue: ContactProfile[];
   coldContacts: ContactProfile[];
+  upcomingBirthdays: ContactProfile[];
+  upcomingHolidays: Holiday[];
+  upcomingAnniversaries: ContactProfile[];
   summary: {
     followupsCount: number;
     coldContactsCount: number;
+    birthdaysCount: number;
+    holidaysCount: number;
+    anniversariesCount: number;
   };
 }> {
   console.log(`[ContactIntelligence] Getting daily briefing`);
   
   const followupsDue = await getOverdueFollowups(userId);
   const coldContacts = await getColdContacts(userId, 30);
+  const upcomingBirthdays = await getUpcomingBirthdays(userId, 7);
+  const upcomingHolidays = await getUpcomingHolidays(userId, 7);
+  const upcomingAnniversaries = await getUpcomingAnniversaries(userId, 7);
   
   return {
     followupsDue,
     coldContacts,
+    upcomingBirthdays,
+    upcomingHolidays,
+    upcomingAnniversaries,
     summary: {
       followupsCount: followupsDue.length,
       coldContactsCount: coldContacts.length,
+      birthdaysCount: upcomingBirthdays.length,
+      holidaysCount: upcomingHolidays.length,
+      anniversariesCount: upcomingAnniversaries.length,
     },
   };
+}
+
+// ============= Occasions Functions =============
+
+// Get upcoming birthdays
+async function getUpcomingBirthdays(
+  userId: string,
+  daysAhead: number = 7
+): Promise<ContactProfile[]> {
+  console.log(`[ContactIntelligence] Getting birthdays in next ${daysAhead} days`);
+  const supabase = getSupabaseClient();
+  
+  const today = new Date();
+  const currentYear = today.getFullYear();
+  
+  // Get all contacts with birthdays
+  const { data: profiles, error } = await supabase
+    .from('contact_profiles')
+    .select(`
+      *,
+      contact_profile_tags (
+        contact_tags (
+          id, name, color
+        )
+      )
+    `)
+    .eq('user_id', userId)
+    .not('birthday', 'is', null);
+  
+  if (error) throw error;
+  
+  // Filter by upcoming dates (comparing month/day)
+  const upcoming = (profiles || []).filter((p: ContactProfile) => {
+    if (!p.birthday) return false;
+    const bday = new Date(p.birthday);
+    // Create date in current year for comparison
+    const thisYearBday = new Date(currentYear, bday.getMonth(), bday.getDate());
+    // If already passed this year, check next year
+    if (thisYearBday < today) {
+      thisYearBday.setFullYear(currentYear + 1);
+    }
+    const daysUntil = Math.ceil((thisYearBday.getTime() - today.getTime()) / 86400000);
+    return daysUntil >= 0 && daysUntil <= daysAhead;
+  });
+  
+  return upcoming.map((p: ContactProfile & { contact_profile_tags?: { contact_tags: Tag }[] }) => ({
+    ...p,
+    tags: p.contact_profile_tags?.map((pt) => pt.contact_tags) || [],
+    contact_profile_tags: undefined,
+  }));
+}
+
+// Get upcoming holidays for user
+async function getUpcomingHolidays(
+  userId: string,
+  daysAhead: number = 7
+): Promise<Holiday[]> {
+  console.log(`[ContactIntelligence] Getting holidays in next ${daysAhead} days`);
+  const supabase = getSupabaseClient();
+  
+  const today = new Date();
+  const currentYear = today.getFullYear();
+  
+  // Get user's observed holidays from preferences
+  const { data: prefs } = await supabase
+    .from('user_preferences')
+    .select('observed_holidays')
+    .eq('user_id', userId)
+    .maybeSingle();
+  
+  const observedHolidayIds = prefs?.observed_holidays || [];
+  
+  // Get all holidays
+  const { data: holidays, error } = await supabase
+    .from('holidays')
+    .select('*');
+  
+  if (error) throw error;
+  
+  // Filter by upcoming dates and optionally by observed holidays
+  const upcoming = (holidays || []).filter((h: Holiday) => {
+    const hdate = new Date(h.holiday_date);
+    // Create date in current year for comparison
+    const thisYearDate = new Date(currentYear, hdate.getMonth(), hdate.getDate());
+    // If already passed this year, check next year
+    if (thisYearDate < today) {
+      thisYearDate.setFullYear(currentYear + 1);
+    }
+    const daysUntil = Math.ceil((thisYearDate.getTime() - today.getTime()) / 86400000);
+    const isUpcoming = daysUntil >= 0 && daysUntil <= daysAhead;
+    
+    // If user has set observed holidays, filter by those
+    if (observedHolidayIds.length > 0) {
+      return isUpcoming && observedHolidayIds.includes(h.id);
+    }
+    // Otherwise return global holidays
+    return isUpcoming && (h.regions.includes('global') || h.type === 'international');
+  });
+  
+  return upcoming;
+}
+
+// Get all holidays (for selection)
+async function getAllHolidays(): Promise<Holiday[]> {
+  console.log(`[ContactIntelligence] Getting all holidays`);
+  const supabase = getSupabaseClient();
+  
+  const { data: holidays, error } = await supabase
+    .from('holidays')
+    .select('*')
+    .order('name');
+  
+  if (error) throw error;
+  return holidays || [];
+}
+
+// Get upcoming anniversaries
+async function getUpcomingAnniversaries(
+  userId: string,
+  daysAhead: number = 7
+): Promise<ContactProfile[]> {
+  console.log(`[ContactIntelligence] Getting anniversaries in next ${daysAhead} days`);
+  const supabase = getSupabaseClient();
+  
+  const today = new Date();
+  const currentYear = today.getFullYear();
+  
+  const { data: profiles, error } = await supabase
+    .from('contact_profiles')
+    .select(`
+      *,
+      contact_profile_tags (
+        contact_tags (
+          id, name, color
+        )
+      )
+    `)
+    .eq('user_id', userId)
+    .not('anniversary_date', 'is', null);
+  
+  if (error) throw error;
+  
+  const upcoming = (profiles || []).filter((p: ContactProfile) => {
+    if (!p.anniversary_date) return false;
+    const anniv = new Date(p.anniversary_date);
+    const thisYearAnniv = new Date(currentYear, anniv.getMonth(), anniv.getDate());
+    if (thisYearAnniv < today) {
+      thisYearAnniv.setFullYear(currentYear + 1);
+    }
+    const daysUntil = Math.ceil((thisYearAnniv.getTime() - today.getTime()) / 86400000);
+    return daysUntil >= 0 && daysUntil <= daysAhead;
+  });
+  
+  return upcoming.map((p: ContactProfile & { contact_profile_tags?: { contact_tags: Tag }[] }) => ({
+    ...p,
+    tags: p.contact_profile_tags?.map((pt) => pt.contact_tags) || [],
+    contact_profile_tags: undefined,
+  }));
+}
+
+// Set birthday for a contact
+async function setBirthday(
+  userId: string,
+  googleContactId: string,
+  birthday: string,
+  email?: string
+): Promise<ContactProfile> {
+  console.log(`[ContactIntelligence] Setting birthday for: ${googleContactId}`);
+  const supabase = getSupabaseClient();
+  
+  const profile = await getOrCreateProfile(userId, googleContactId, email);
+  
+  const { data: updated, error } = await supabase
+    .from('contact_profiles')
+    .update({ birthday })
+    .eq('id', profile.id)
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return updated as ContactProfile;
+}
+
+// Set anniversary for a contact
+async function setAnniversary(
+  userId: string,
+  googleContactId: string,
+  anniversaryDate: string,
+  email?: string
+): Promise<ContactProfile> {
+  console.log(`[ContactIntelligence] Setting anniversary for: ${googleContactId}`);
+  const supabase = getSupabaseClient();
+  
+  const profile = await getOrCreateProfile(userId, googleContactId, email);
+  
+  const { data: updated, error } = await supabase
+    .from('contact_profiles')
+    .update({ anniversary_date: anniversaryDate })
+    .eq('id', profile.id)
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return updated as ContactProfile;
+}
+
+// Add custom date for a contact
+async function addCustomDate(
+  userId: string,
+  googleContactId: string,
+  name: string,
+  date: string,
+  email?: string
+): Promise<ContactProfile> {
+  console.log(`[ContactIntelligence] Adding custom date "${name}" for: ${googleContactId}`);
+  const supabase = getSupabaseClient();
+  
+  const profile = await getOrCreateProfile(userId, googleContactId, email);
+  
+  const currentDates = (profile.custom_dates || []) as Array<{ name: string; date: string }>;
+  const newDates = [...currentDates.filter(d => d.name !== name), { name, date }];
+  
+  const { data: updated, error } = await supabase
+    .from('contact_profiles')
+    .update({ custom_dates: newDates })
+    .eq('id', profile.id)
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return updated as ContactProfile;
+}
+
+// Get outreach suggestions (combines all occasion types)
+async function getOutreachSuggestions(
+  userId: string,
+  daysAhead: number = 7
+): Promise<OutreachSuggestion[]> {
+  console.log(`[ContactIntelligence] Getting outreach suggestions`);
+  
+  const suggestions: OutreachSuggestion[] = [];
+  const today = new Date();
+  const currentYear = today.getFullYear();
+  
+  // Get birthdays
+  const birthdays = await getUpcomingBirthdays(userId, daysAhead);
+  for (const contact of birthdays) {
+    if (!contact.birthday) continue;
+    const bday = new Date(contact.birthday);
+    const thisYearBday = new Date(currentYear, bday.getMonth(), bday.getDate());
+    if (thisYearBday < today) thisYearBday.setFullYear(currentYear + 1);
+    const daysUntil = Math.ceil((thisYearBday.getTime() - today.getTime()) / 86400000);
+    
+    suggestions.push({
+      type: 'birthday',
+      contact,
+      date: thisYearBday.toISOString().split('T')[0],
+      days_until: daysUntil,
+      reason: daysUntil === 0 ? `Birthday today` : `Birthday in ${daysUntil} day${daysUntil > 1 ? 's' : ''}`,
+    });
+  }
+  
+  // Get anniversaries
+  const anniversaries = await getUpcomingAnniversaries(userId, daysAhead);
+  for (const contact of anniversaries) {
+    if (!contact.anniversary_date) continue;
+    const anniv = new Date(contact.anniversary_date);
+    const thisYearAnniv = new Date(currentYear, anniv.getMonth(), anniv.getDate());
+    if (thisYearAnniv < today) thisYearAnniv.setFullYear(currentYear + 1);
+    const daysUntil = Math.ceil((thisYearAnniv.getTime() - today.getTime()) / 86400000);
+    
+    suggestions.push({
+      type: 'anniversary',
+      contact,
+      date: thisYearAnniv.toISOString().split('T')[0],
+      days_until: daysUntil,
+      reason: daysUntil === 0 ? `Anniversary today` : `Anniversary in ${daysUntil} day${daysUntil > 1 ? 's' : ''}`,
+    });
+  }
+  
+  // Get holidays
+  const holidays = await getUpcomingHolidays(userId, daysAhead);
+  for (const holiday of holidays) {
+    const hdate = new Date(holiday.holiday_date);
+    const thisYearDate = new Date(currentYear, hdate.getMonth(), hdate.getDate());
+    if (thisYearDate < today) thisYearDate.setFullYear(currentYear + 1);
+    const daysUntil = Math.ceil((thisYearDate.getTime() - today.getTime()) / 86400000);
+    
+    suggestions.push({
+      type: 'holiday',
+      holiday,
+      date: thisYearDate.toISOString().split('T')[0],
+      days_until: daysUntil,
+      reason: daysUntil === 0 ? `${holiday.name} is today` : `${holiday.name} in ${daysUntil} day${daysUntil > 1 ? 's' : ''}`,
+    });
+  }
+  
+  // Get cold contacts
+  const coldContacts = await getColdContacts(userId, 30);
+  for (const contact of coldContacts) {
+    const lastContact = contact.last_contact_date ? new Date(contact.last_contact_date) : null;
+    const daysSince = lastContact 
+      ? Math.floor((today.getTime() - lastContact.getTime()) / 86400000)
+      : null;
+    
+    suggestions.push({
+      type: 'cold_contact',
+      contact,
+      date: today.toISOString().split('T')[0],
+      days_until: 0,
+      reason: daysSince 
+        ? `Haven't contacted in ${daysSince} days (Tier ${contact.tier})`
+        : `No contact history (Tier ${contact.tier})`,
+    });
+  }
+  
+  // Sort by days_until
+  suggestions.sort((a, b) => a.days_until - b.days_until);
+  
+  return suggestions;
 }
 
 // ============= Main Handler =============
@@ -768,6 +1126,76 @@ serve(async (req) => {
 
       case 'get_daily_briefing':
         result = await getDailyBriefing(user_id);
+        break;
+
+      // Occasions
+      case 'get_upcoming_birthdays':
+        result = await getUpcomingBirthdays(
+          user_id,
+          (params.days_ahead as number) || 7
+        );
+        break;
+
+      case 'get_upcoming_holidays':
+        result = await getUpcomingHolidays(
+          user_id,
+          (params.days_ahead as number) || 7
+        );
+        break;
+
+      case 'get_all_holidays':
+        result = await getAllHolidays();
+        break;
+
+      case 'get_upcoming_anniversaries':
+        result = await getUpcomingAnniversaries(
+          user_id,
+          (params.days_ahead as number) || 7
+        );
+        break;
+
+      case 'set_birthday':
+        if (!params.google_contact_id || !params.birthday) {
+          throw new Error('google_contact_id and birthday are required');
+        }
+        result = await setBirthday(
+          user_id,
+          params.google_contact_id as string,
+          params.birthday as string,
+          params.email as string | undefined
+        );
+        break;
+
+      case 'set_anniversary':
+        if (!params.google_contact_id || !params.anniversary_date) {
+          throw new Error('google_contact_id and anniversary_date are required');
+        }
+        result = await setAnniversary(
+          user_id,
+          params.google_contact_id as string,
+          params.anniversary_date as string,
+          params.email as string | undefined
+        );
+        break;
+
+      case 'add_custom_date':
+        if (!params.google_contact_id || !params.name || !params.date) {
+          throw new Error('google_contact_id, name, and date are required');
+        }
+        result = await addCustomDate(
+          user_id,
+          params.google_contact_id as string,
+          params.name as string,
+          params.date as string,
+          params.email as string | undefined
+        );
+        break;
+
+      case 'get_outreach_suggestions':
+        result = await getOutreachSuggestions(
+          user_id,
+          (params.days_ahead as number) || 7
+        );
         break;
 
       default:

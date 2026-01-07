@@ -6,6 +6,7 @@ import { NeedsAttentionCard } from './NeedsAttentionCard';
 import { TodayScheduleCard } from './TodayScheduleCard';
 import { RecentEmailsCard } from './RecentEmailsCard';
 import { PriorityContactsCard } from './PriorityContactsCard';
+import { UpcomingOccasionsCard } from './UpcomingOccasionsCard';
 import { QuickActions } from './QuickActions';
 
 export function DashboardContent() {
@@ -48,6 +49,7 @@ export function DashboardContent() {
         <div className="space-y-6">
           <NeedsAttentionCard data={data} loading={loading} />
           <TodayScheduleCard data={data} loading={loading} />
+          <UpcomingOccasionsCard data={data} loading={loading} />
         </div>
 
         {/* Right Column */}
