@@ -27,10 +27,10 @@ async function getMondayToken(userId: string): Promise<{ token: string | null; e
     auth: { persistSession: false },
   });
 
-  // Get the user's Monday integration
+  // Check if user has Monday integration
   const { data: integration, error: integrationError } = await supabase
     .from('user_integrations')
-    .select('access_token_secret_id')
+    .select('id, provider_email')
     .eq('user_id', userId)
     .eq('provider', 'monday')
     .maybeSingle();
@@ -40,26 +40,37 @@ async function getMondayToken(userId: string): Promise<{ token: string | null; e
     return { token: null, error: 'Failed to fetch Monday.com integration' };
   }
 
-  if (!integration?.access_token_secret_id) {
+  if (!integration) {
     console.log(`[MondayAPI] No Monday.com integration found for user`);
-    return { token: null, error: 'Monday.com not connected. Please connect from Integrations.' };
+    return { token: null, error: 'Monday.com is not connected. Please connect from the Integrations page.' };
   }
 
-  // Get the encrypted token from encrypted_integration_tokens
+  console.log(`[MondayAPI] Found integration for: ${integration.provider_email}`);
+
+  // Get the encrypted token directly from encrypted_integration_tokens
+  // (stored by monday-oauth-callback with user_id + provider + token_type)
   const { data: tokenData, error: tokenError } = await supabase
     .from('encrypted_integration_tokens')
     .select('encrypted_value')
-    .eq('id', integration.access_token_secret_id)
+    .eq('user_id', userId)
+    .eq('provider', 'monday')
+    .eq('token_type', 'access_token')
     .maybeSingle();
 
-  if (tokenError || !tokenData?.encrypted_value) {
+  if (tokenError) {
     console.error(`[MondayAPI] Error fetching token:`, tokenError);
     return { token: null, error: 'Failed to retrieve Monday.com token' };
+  }
+
+  if (!tokenData?.encrypted_value) {
+    console.log(`[MondayAPI] No encrypted token found for user`);
+    return { token: null, error: 'Monday.com token not found. Please reconnect from Integrations.' };
   }
 
   // Decrypt the token
   try {
     const decryptedToken = await decrypt(tokenData.encrypted_value);
+    console.log(`[MondayAPI] Successfully decrypted token`);
     return { token: decryptedToken };
   } catch (decryptError) {
     console.error(`[MondayAPI] Error decrypting token:`, decryptError);
