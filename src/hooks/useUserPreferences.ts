@@ -8,6 +8,7 @@ export interface UserPreferences {
   security_phrase_color: string | null;
   security_phrase_object: string | null;
   security_phrase_emoji: string | null;
+  observed_holidays: string[] | null;
 }
 
 const DEFAULT_PREFERENCES: Omit<UserPreferences, 'id' | 'user_id'> = {
@@ -15,6 +16,7 @@ const DEFAULT_PREFERENCES: Omit<UserPreferences, 'id' | 'user_id'> = {
   security_phrase_color: null,
   security_phrase_object: null,
   security_phrase_emoji: null,
+  observed_holidays: [],
 };
 
 export function useUserPreferences() {

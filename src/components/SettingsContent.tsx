@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { useUserPreferences } from "@/hooks/useUserPreferences";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, RefreshCw, Shield, Smile } from "lucide-react";
+import { HolidayPreferencesCard } from "@/components/settings/HolidayPreferencesCard";
 
 const PHRASE_OPTIONS = [
   // RED (4)
@@ -106,6 +107,7 @@ export function SettingsContent() {
   const [phraseEmoji, setPhraseEmoji] = useState<string>("");
   const [customWord1, setCustomWord1] = useState("");
   const [customWord2, setCustomWord2] = useState("");
+  const [observedHolidays, setObservedHolidays] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
 
@@ -113,6 +115,7 @@ export function SettingsContent() {
   useEffect(() => {
     if (preferences) {
       setEmojiEnabled(preferences.emoji_confirmations_enabled);
+      setObservedHolidays(preferences.observed_holidays || []);
       const savedColor = preferences.security_phrase_color || "";
       const savedObject = preferences.security_phrase_object || "";
       const savedEmoji = preferences.security_phrase_emoji || "";
@@ -142,14 +145,19 @@ export function SettingsContent() {
     
     const currentColor = isCustomMode ? customWord1 : phraseColor;
     const currentObject = isCustomMode ? customWord2 : phraseObject;
+    const savedHolidays = preferences.observed_holidays || [];
+    const holidaysChanged = 
+      observedHolidays.length !== savedHolidays.length ||
+      !observedHolidays.every(id => savedHolidays.includes(id));
     
     const changed = 
       emojiEnabled !== preferences.emoji_confirmations_enabled ||
       currentColor !== (preferences.security_phrase_color || "") ||
       currentObject !== (preferences.security_phrase_object || "") ||
-      phraseEmoji !== (preferences.security_phrase_emoji || "");
+      phraseEmoji !== (preferences.security_phrase_emoji || "") ||
+      holidaysChanged;
     setHasChanges(changed);
-  }, [emojiEnabled, phraseColor, phraseObject, phraseEmoji, customWord1, customWord2, isCustomMode, preferences]);
+  }, [emojiEnabled, phraseColor, phraseObject, phraseEmoji, customWord1, customWord2, isCustomMode, observedHolidays, preferences]);
 
   // Auto-fill emoji when color+object is selected in preset mode
   useEffect(() => {
@@ -187,6 +195,7 @@ export function SettingsContent() {
       security_phrase_color: colorToSave || null,
       security_phrase_object: objectToSave || null,
       security_phrase_emoji: phraseEmoji || null,
+      observed_holidays: observedHolidays,
     });
     setIsSaving(false);
 
@@ -428,6 +437,25 @@ export function SettingsContent() {
           </Button>
         </CardContent>
       </Card>
+
+      {/* Holiday Preferences Card */}
+      <HolidayPreferencesCard
+        observedHolidays={observedHolidays}
+        onHolidaysChange={setObservedHolidays}
+      />
+
+      {/* Global Save Button */}
+      <div className="pt-4 border-t">
+        <Button 
+          onClick={handleSave} 
+          disabled={isSaving || !hasChanges}
+          size="lg"
+          className="w-full sm:w-auto"
+        >
+          {isSaving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+          Save All Settings
+        </Button>
+      </div>
     </div>
   );
 }
