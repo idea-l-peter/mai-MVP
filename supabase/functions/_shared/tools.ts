@@ -130,84 +130,101 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
             description: "Updated list of attendee email addresses (optional, replaces existing attendees)",
           },
         },
-        required: ["event_id"],
-      },
+      required: ["event_id"],
     },
   },
-  {
-    type: "function",
-    function: {
-      name: "get_emails",
-      description: "Get emails from the user's Gmail inbox. Use this when the user asks about their emails, inbox, or messages.",
-      parameters: {
-        type: "object",
-        properties: {
-          query: {
-            type: "string",
-            description: "Gmail search query (e.g., 'is:unread', 'from:john@example.com', 'subject:invoice'). Defaults to recent emails if not specified.",
-          },
-          max_results: {
-            type: "number",
-            description: "Maximum number of emails to return. Defaults to 10.",
-          },
+},
+{
+  type: "function",
+  function: {
+    name: "delete_calendar_event",
+    description: "Delete a calendar event. This is a destructive action that requires user confirmation. Use this ONLY when the user explicitly confirms they want to delete an event by responding with 🗑️ or typing 'delete'.",
+    parameters: {
+      type: "object",
+      properties: {
+        event_id: {
+          type: "string",
+          description: "The ID of the event to delete (obtained from get_calendar_events)",
         },
-        required: [],
       },
+      required: ["event_id"],
     },
   },
-  {
-    type: "function",
-    function: {
-      name: "send_email",
-      description: "Send an email from the user's Gmail account. Use this when the user wants to compose, send, or email someone. The email will include the user's Gmail signature automatically.",
-      parameters: {
-        type: "object",
-        properties: {
-          to: {
-            type: "string",
-            description: "Recipient email address",
-          },
-          subject: {
-            type: "string",
-            description: "Email subject line",
-          },
-          body: {
-            type: "string",
-            description: "Email body content (plain text)",
-          },
-          cc: {
-            type: "string",
-            description: "CC recipients (comma-separated)",
-          },
-          bcc: {
-            type: "string",
-            description: "BCC recipients (comma-separated)",
-          },
-          attachments: {
-            type: "array",
-            items: { type: "string" },
-            description: "File paths or URLs to attach (not yet implemented)",
-          },
+},
+{
+  type: "function",
+  function: {
+    name: "get_emails",
+    description: "Get emails from the user's Gmail inbox. Use this when the user asks about their emails, inbox, or messages.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "Gmail search query (e.g., 'is:unread', 'from:john@example.com', 'subject:invoice'). Defaults to recent emails if not specified.",
         },
-        required: ["to", "subject", "body"],
+        max_results: {
+          type: "number",
+          description: "Maximum number of emails to return. Defaults to 10.",
+        },
       },
+      required: [],
     },
   },
-  {
-    type: "function",
-    function: {
-      name: "get_user_preferences",
-      description: "Get the user's preferences including emoji confirmation settings and security phrase. Use this internally to know how to handle confirmations.",
-      parameters: {
-        type: "object",
-        properties: {},
-        required: [],
+},
+{
+  type: "function",
+  function: {
+    name: "send_email",
+    description: "Send an email from the user's Gmail account. Use this when the user wants to compose, send, or email someone. The email will include the user's Gmail signature automatically.",
+    parameters: {
+      type: "object",
+      properties: {
+        to: {
+          type: "string",
+          description: "Recipient email address",
+        },
+        subject: {
+          type: "string",
+          description: "Email subject line",
+        },
+        body: {
+          type: "string",
+          description: "Email body content (plain text)",
+        },
+        cc: {
+          type: "string",
+          description: "CC recipients (comma-separated)",
+        },
+        bcc: {
+          type: "string",
+          description: "BCC recipients (comma-separated)",
+        },
+        attachments: {
+          type: "array",
+          items: { type: "string" },
+          description: "File paths or URLs to attach (not yet implemented)",
+        },
       },
+      required: ["to", "subject", "body"],
     },
   },
-  // Future tools will be added here:
-  // - get_monday_boards
-  // - create_monday_item
+},
+{
+  type: "function",
+  function: {
+    name: "get_user_preferences",
+    description: "Get the user's preferences including emoji confirmation settings and security phrase. Use this internally to know how to handle confirmations.",
+    parameters: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
+},
+// Future tools will be added here:
+// - get_monday_boards
+// - create_monday_item
 ];
 
 // ============= Tool Call Types =============
@@ -623,6 +640,52 @@ async function updateCalendarEvent(
   }
 }
 
+// ============= Delete Calendar Event =============
+
+interface DeleteCalendarEventArgs {
+  event_id: string;
+}
+
+interface DeletedEventResult {
+  success: boolean;
+  message?: string;
+  error?: string;
+}
+
+async function deleteCalendarEvent(
+  userId: string,
+  args: DeleteCalendarEventArgs
+): Promise<DeletedEventResult> {
+  console.log(`[Tools] delete_calendar_event: event_id="${args.event_id}"`);
+
+  const accessToken = await getValidToken(userId, "google");
+  if (!accessToken) {
+    return { success: false, error: "Google Calendar is not connected or token expired" };
+  }
+
+  try {
+    const deleteUrl = `https://www.googleapis.com/calendar/v3/calendars/primary/events/${args.event_id}`;
+
+    const response = await fetch(deleteUrl, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    // Google Calendar API returns 204 No Content on successful delete
+    if (!response.ok && response.status !== 204) {
+      const errorText = await response.text();
+      console.error(`[Tools] Calendar API error: ${response.status} - ${errorText}`);
+      return { success: false, error: `Failed to delete event: ${response.status}` };
+    }
+
+    console.log(`[Tools] Deleted calendar event: ${args.event_id}`);
+    return { success: true, message: "Event deleted successfully" };
+  } catch (error) {
+    console.error(`[Tools] Calendar delete error:`, error);
+    return { success: false, error: "Failed to delete calendar event" };
+  }
+}
+
 // ============= Gmail Tool Implementations =============
 
 interface EmailSummary {
@@ -1020,6 +1083,10 @@ export async function executeTool(
       
       case "update_calendar_event":
         result = await updateCalendarEvent(userId, args);
+        break;
+
+      case "delete_calendar_event":
+        result = await deleteCalendarEvent(userId, args);
         break;
       
       case "get_emails":
