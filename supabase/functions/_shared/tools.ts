@@ -222,6 +222,207 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     },
   },
 },
+{
+  type: "function",
+  function: {
+    name: "delete_email",
+    description: "Delete an email (move to trash). This is a destructive action that requires Tier C confirmation. Use this ONLY when the user explicitly confirms they want to delete the email by responding with 🗑️ or typing 'delete'.",
+    parameters: {
+      type: "object",
+      properties: {
+        message_id: {
+          type: "string",
+          description: "The ID of the email to delete",
+        },
+      },
+      required: ["message_id"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "archive_email",
+    description: "Archive an email (remove from inbox). This is a destructive action that requires Tier C confirmation. Use this ONLY when the user explicitly confirms they want to archive by responding with 🗑️ or typing 'delete'.",
+    parameters: {
+      type: "object",
+      properties: {
+        message_id: {
+          type: "string",
+          description: "The ID of the email to archive",
+        },
+      },
+      required: ["message_id"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "create_draft",
+    description: "Create an email draft without sending. Use this when the user wants to save a draft for later.",
+    parameters: {
+      type: "object",
+      properties: {
+        to: {
+          type: "string",
+          description: "Recipient email address",
+        },
+        subject: {
+          type: "string",
+          description: "Email subject line",
+        },
+        body: {
+          type: "string",
+          description: "Email body content (plain text)",
+        },
+        cc: {
+          type: "string",
+          description: "CC recipients (comma-separated)",
+        },
+        bcc: {
+          type: "string",
+          description: "BCC recipients (comma-separated)",
+        },
+      },
+      required: ["to", "subject", "body"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "mark_email_read",
+    description: "Mark an email as read.",
+    parameters: {
+      type: "object",
+      properties: {
+        message_id: {
+          type: "string",
+          description: "The ID of the email to mark as read",
+        },
+      },
+      required: ["message_id"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "mark_email_unread",
+    description: "Mark an email as unread.",
+    parameters: {
+      type: "object",
+      properties: {
+        message_id: {
+          type: "string",
+          description: "The ID of the email to mark as unread",
+        },
+      },
+      required: ["message_id"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "reply_to_email",
+    description: "Reply to an email thread. Requires confirmation before sending - show the draft first and ask for approval.",
+    parameters: {
+      type: "object",
+      properties: {
+        message_id: {
+          type: "string",
+          description: "The ID of the email to reply to",
+        },
+        body: {
+          type: "string",
+          description: "Reply body content (plain text)",
+        },
+      },
+      required: ["message_id", "body"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "forward_email",
+    description: "Forward an email to someone. Requires confirmation before sending - show the draft first and ask for approval.",
+    parameters: {
+      type: "object",
+      properties: {
+        message_id: {
+          type: "string",
+          description: "The ID of the email to forward",
+        },
+        to: {
+          type: "string",
+          description: "Recipient email address to forward to",
+        },
+        body: {
+          type: "string",
+          description: "Optional additional message to include above the forwarded email",
+        },
+      },
+      required: ["message_id", "to"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "get_labels",
+    description: "Get list of Gmail labels (folders/categories).",
+    parameters: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "apply_label",
+    description: "Apply a label to an email.",
+    parameters: {
+      type: "object",
+      properties: {
+        message_id: {
+          type: "string",
+          description: "The ID of the email",
+        },
+        label_id: {
+          type: "string",
+          description: "The ID of the label to apply",
+        },
+      },
+      required: ["message_id", "label_id"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "remove_label",
+    description: "Remove a label from an email.",
+    parameters: {
+      type: "object",
+      properties: {
+        message_id: {
+          type: "string",
+          description: "The ID of the email",
+        },
+        label_id: {
+          type: "string",
+          description: "The ID of the label to remove",
+        },
+      },
+      required: ["message_id", "label_id"],
+    },
+  },
+},
 // Future tools will be added here:
 // - get_monday_boards
 // - create_monday_item
@@ -993,6 +1194,688 @@ async function sendEmail(
   }
 }
 
+// ============= Delete Email =============
+
+interface DeleteEmailArgs {
+  message_id: string;
+}
+
+interface DeleteEmailResult {
+  success: boolean;
+  message?: string;
+  error?: string;
+}
+
+async function deleteEmail(
+  userId: string,
+  args: DeleteEmailArgs
+): Promise<DeleteEmailResult> {
+  console.log(`[Tools] delete_email: message_id="${args.message_id}"`);
+
+  const accessToken = await getValidToken(userId, "gmail");
+  if (!accessToken) {
+    return { success: false, error: "Gmail is not connected or token expired" };
+  }
+
+  try {
+    // Move to trash (soft delete)
+    const response = await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${args.message_id}/trash`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[Tools] Gmail delete error: ${response.status} - ${errorText}`);
+      return { success: false, error: `Failed to delete email: ${response.status}` };
+    }
+
+    console.log(`[Tools] Deleted email: ${args.message_id}`);
+    return { success: true, message: "Email moved to trash" };
+  } catch (error) {
+    console.error(`[Tools] Gmail delete error:`, error);
+    return { success: false, error: "Failed to delete email" };
+  }
+}
+
+// ============= Archive Email =============
+
+interface ArchiveEmailArgs {
+  message_id: string;
+}
+
+interface ArchiveEmailResult {
+  success: boolean;
+  message?: string;
+  error?: string;
+}
+
+async function archiveEmail(
+  userId: string,
+  args: ArchiveEmailArgs
+): Promise<ArchiveEmailResult> {
+  console.log(`[Tools] archive_email: message_id="${args.message_id}"`);
+
+  const accessToken = await getValidToken(userId, "gmail");
+  if (!accessToken) {
+    return { success: false, error: "Gmail is not connected or token expired" };
+  }
+
+  try {
+    // Remove INBOX label to archive
+    const response = await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${args.message_id}/modify`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ removeLabelIds: ["INBOX"] }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[Tools] Gmail archive error: ${response.status} - ${errorText}`);
+      return { success: false, error: `Failed to archive email: ${response.status}` };
+    }
+
+    console.log(`[Tools] Archived email: ${args.message_id}`);
+    return { success: true, message: "Email archived" };
+  } catch (error) {
+    console.error(`[Tools] Gmail archive error:`, error);
+    return { success: false, error: "Failed to archive email" };
+  }
+}
+
+// ============= Create Draft =============
+
+interface CreateDraftArgs {
+  to: string;
+  subject: string;
+  body: string;
+  cc?: string;
+  bcc?: string;
+}
+
+interface CreateDraftResult {
+  success: boolean;
+  draftId?: string;
+  error?: string;
+  invalidEmails?: string[];
+}
+
+async function createDraft(
+  userId: string,
+  args: CreateDraftArgs
+): Promise<CreateDraftResult> {
+  console.log(`[Tools] create_draft: to="${args.to}", subject="${args.subject}"`);
+
+  // Validate email addresses
+  const toResult = cleanEmailAddress(args.to);
+  if (!toResult.valid) {
+    return { 
+      success: false, 
+      error: `Invalid email address: "${args.to}"`,
+      invalidEmails: [args.to]
+    };
+  }
+
+  const accessToken = await getValidToken(userId, "gmail");
+  if (!accessToken) {
+    return { success: false, error: "Gmail is not connected or token expired" };
+  }
+
+  try {
+    // Construct RFC 2822 formatted email
+    let emailContent = `To: ${toResult.cleaned}\r\n`;
+    if (args.cc) {
+      const ccResult = cleanEmailList(args.cc);
+      if (ccResult.cleaned) {
+        emailContent += `Cc: ${ccResult.cleaned}\r\n`;
+      }
+    }
+    if (args.bcc) {
+      const bccResult = cleanEmailList(args.bcc);
+      if (bccResult.cleaned) {
+        emailContent += `Bcc: ${bccResult.cleaned}\r\n`;
+      }
+    }
+    emailContent += `Subject: ${args.subject}\r\n`;
+    emailContent += `Content-Type: text/plain; charset=utf-8\r\n`;
+    emailContent += `\r\n`;
+    emailContent += args.body;
+
+    // Base64url encode
+    const encoder = new TextEncoder();
+    const emailBytes = encoder.encode(emailContent);
+    const base64Email = btoa(String.fromCharCode(...emailBytes))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+
+    const response = await fetch(
+      "https://gmail.googleapis.com/gmail/v1/users/me/drafts",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: { raw: base64Email },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[Tools] Gmail draft error: ${response.status} - ${errorText}`);
+      return { success: false, error: `Failed to create draft: ${response.status}` };
+    }
+
+    const data = await response.json();
+    console.log(`[Tools] Created draft: ${data.id}`);
+    return { success: true, draftId: data.id };
+  } catch (error) {
+    console.error(`[Tools] Gmail draft error:`, error);
+    return { success: false, error: "Failed to create draft" };
+  }
+}
+
+// ============= Mark Email Read/Unread =============
+
+interface MarkEmailArgs {
+  message_id: string;
+}
+
+interface MarkEmailResult {
+  success: boolean;
+  message?: string;
+  error?: string;
+}
+
+async function markEmailRead(
+  userId: string,
+  args: MarkEmailArgs
+): Promise<MarkEmailResult> {
+  console.log(`[Tools] mark_email_read: message_id="${args.message_id}"`);
+
+  const accessToken = await getValidToken(userId, "gmail");
+  if (!accessToken) {
+    return { success: false, error: "Gmail is not connected or token expired" };
+  }
+
+  try {
+    const response = await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${args.message_id}/modify`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ removeLabelIds: ["UNREAD"] }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[Tools] Gmail modify error: ${response.status} - ${errorText}`);
+      return { success: false, error: `Failed to mark as read: ${response.status}` };
+    }
+
+    console.log(`[Tools] Marked email as read: ${args.message_id}`);
+    return { success: true, message: "Email marked as read" };
+  } catch (error) {
+    console.error(`[Tools] Gmail modify error:`, error);
+    return { success: false, error: "Failed to mark email as read" };
+  }
+}
+
+async function markEmailUnread(
+  userId: string,
+  args: MarkEmailArgs
+): Promise<MarkEmailResult> {
+  console.log(`[Tools] mark_email_unread: message_id="${args.message_id}"`);
+
+  const accessToken = await getValidToken(userId, "gmail");
+  if (!accessToken) {
+    return { success: false, error: "Gmail is not connected or token expired" };
+  }
+
+  try {
+    const response = await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${args.message_id}/modify`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ addLabelIds: ["UNREAD"] }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[Tools] Gmail modify error: ${response.status} - ${errorText}`);
+      return { success: false, error: `Failed to mark as unread: ${response.status}` };
+    }
+
+    console.log(`[Tools] Marked email as unread: ${args.message_id}`);
+    return { success: true, message: "Email marked as unread" };
+  } catch (error) {
+    console.error(`[Tools] Gmail modify error:`, error);
+    return { success: false, error: "Failed to mark email as unread" };
+  }
+}
+
+// ============= Reply to Email =============
+
+interface ReplyToEmailArgs {
+  message_id: string;
+  body: string;
+}
+
+interface ReplyToEmailResult {
+  success: boolean;
+  messageId?: string;
+  error?: string;
+}
+
+async function replyToEmail(
+  userId: string,
+  args: ReplyToEmailArgs
+): Promise<ReplyToEmailResult> {
+  console.log(`[Tools] reply_to_email: message_id="${args.message_id}"`);
+
+  const accessToken = await getValidToken(userId, "gmail");
+  if (!accessToken) {
+    return { success: false, error: "Gmail is not connected or token expired" };
+  }
+
+  try {
+    // First, get the original message to get thread info and headers
+    const msgUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages/${args.message_id}?format=full`;
+    const msgResponse = await fetch(msgUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!msgResponse.ok) {
+      return { success: false, error: "Original email not found" };
+    }
+
+    const originalMsg = await msgResponse.json();
+    const headers = originalMsg.payload?.headers || [];
+
+    const getHeader = (name: string): string => {
+      const h = headers.find((h: { name: string; value: string }) => 
+        h.name.toLowerCase() === name.toLowerCase()
+      );
+      return h?.value || "";
+    };
+
+    const originalFrom = getHeader("From");
+    const originalSubject = getHeader("Subject");
+    const originalMessageId = getHeader("Message-ID");
+    const threadId = originalMsg.threadId;
+
+    // Build reply subject
+    const replySubject = originalSubject.toLowerCase().startsWith("re:")
+      ? originalSubject
+      : `Re: ${originalSubject}`;
+
+    // Extract email from "Name <email@domain.com>" format
+    const emailMatch = originalFrom.match(/<(.+?)>/) || [null, originalFrom];
+    const replyTo = emailMatch[1] || originalFrom;
+
+    // Fetch signature
+    const signatureData = await fetchGmailSignature(accessToken);
+    
+    let emailBody = args.body;
+    let contentType = "text/plain; charset=utf-8";
+
+    const maiBrandingHtml = `<span style="color: #888; font-size: 12px;">Sent via mai, my AI assistant.</span>`;
+
+    if (signatureData && signatureData.signature) {
+      const htmlBody = args.body.replace(/\n/g, "<br>");
+      emailBody = `${htmlBody}<br><br>${maiBrandingHtml}<br><br>${signatureData.signature}`;
+      contentType = "text/html; charset=utf-8";
+    } else {
+      const htmlBody = args.body.replace(/\n/g, "<br>");
+      emailBody = `${htmlBody}<br><br>${maiBrandingHtml}`;
+      contentType = "text/html; charset=utf-8";
+    }
+
+    // Construct reply email
+    let emailContent = `To: ${replyTo}\r\n`;
+    emailContent += `Subject: ${replySubject}\r\n`;
+    emailContent += `Content-Type: ${contentType}\r\n`;
+    if (originalMessageId) {
+      emailContent += `In-Reply-To: ${originalMessageId}\r\n`;
+      emailContent += `References: ${originalMessageId}\r\n`;
+    }
+    emailContent += `\r\n`;
+    emailContent += emailBody;
+
+    // Base64url encode
+    const encoder = new TextEncoder();
+    const emailBytes = encoder.encode(emailContent);
+    const base64Email = btoa(String.fromCharCode(...emailBytes))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+
+    // Send as reply in same thread
+    const response = await fetch(
+      "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ raw: base64Email, threadId }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[Tools] Gmail reply error: ${response.status} - ${errorText}`);
+      return { success: false, error: `Failed to send reply: ${response.status}` };
+    }
+
+    const data = await response.json();
+    console.log(`[Tools] Sent reply: ${data.id}`);
+    return { success: true, messageId: data.id };
+  } catch (error) {
+    console.error(`[Tools] Gmail reply error:`, error);
+    return { success: false, error: "Failed to send reply" };
+  }
+}
+
+// ============= Forward Email =============
+
+interface ForwardEmailArgs {
+  message_id: string;
+  to: string;
+  body?: string;
+}
+
+interface ForwardEmailResult {
+  success: boolean;
+  messageId?: string;
+  error?: string;
+}
+
+async function forwardEmail(
+  userId: string,
+  args: ForwardEmailArgs
+): Promise<ForwardEmailResult> {
+  console.log(`[Tools] forward_email: message_id="${args.message_id}", to="${args.to}"`);
+
+  const toResult = cleanEmailAddress(args.to);
+  if (!toResult.valid) {
+    return { success: false, error: `Invalid email address: "${args.to}"` };
+  }
+
+  const accessToken = await getValidToken(userId, "gmail");
+  if (!accessToken) {
+    return { success: false, error: "Gmail is not connected or token expired" };
+  }
+
+  try {
+    // Get the original message
+    const msgUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages/${args.message_id}?format=full`;
+    const msgResponse = await fetch(msgUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!msgResponse.ok) {
+      return { success: false, error: "Original email not found" };
+    }
+
+    const originalMsg = await msgResponse.json();
+    const headers = originalMsg.payload?.headers || [];
+
+    const getHeader = (name: string): string => {
+      const h = headers.find((h: { name: string; value: string }) => 
+        h.name.toLowerCase() === name.toLowerCase()
+      );
+      return h?.value || "";
+    };
+
+    const originalFrom = getHeader("From");
+    const originalTo = getHeader("To");
+    const originalSubject = getHeader("Subject");
+    const originalDate = getHeader("Date");
+
+    // Build forward subject
+    const fwdSubject = originalSubject.toLowerCase().startsWith("fwd:")
+      ? originalSubject
+      : `Fwd: ${originalSubject}`;
+
+    // Get original body (snippet for now - full body requires parsing)
+    const originalBody = originalMsg.snippet || "";
+
+    // Build forwarded message content
+    const forwardHeader = `
+---------- Forwarded message ----------
+From: ${originalFrom}
+Date: ${originalDate}
+Subject: ${originalSubject}
+To: ${originalTo}
+
+${originalBody}`;
+
+    const additionalMessage = args.body ? `${args.body}\n\n` : "";
+    const fullBody = additionalMessage + forwardHeader;
+
+    // Fetch signature
+    const signatureData = await fetchGmailSignature(accessToken);
+    
+    let emailBody = fullBody;
+    let contentType = "text/plain; charset=utf-8";
+
+    const maiBrandingHtml = `<span style="color: #888; font-size: 12px;">Sent via mai, my AI assistant.</span>`;
+
+    if (signatureData && signatureData.signature) {
+      const htmlBody = fullBody.replace(/\n/g, "<br>");
+      emailBody = `${htmlBody}<br><br>${maiBrandingHtml}<br><br>${signatureData.signature}`;
+      contentType = "text/html; charset=utf-8";
+    } else {
+      const htmlBody = fullBody.replace(/\n/g, "<br>");
+      emailBody = `${htmlBody}<br><br>${maiBrandingHtml}`;
+      contentType = "text/html; charset=utf-8";
+    }
+
+    // Construct forward email
+    let emailContent = `To: ${toResult.cleaned}\r\n`;
+    emailContent += `Subject: ${fwdSubject}\r\n`;
+    emailContent += `Content-Type: ${contentType}\r\n`;
+    emailContent += `\r\n`;
+    emailContent += emailBody;
+
+    // Base64url encode
+    const encoder = new TextEncoder();
+    const emailBytes = encoder.encode(emailContent);
+    const base64Email = btoa(String.fromCharCode(...emailBytes))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+
+    const response = await fetch(
+      "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ raw: base64Email }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[Tools] Gmail forward error: ${response.status} - ${errorText}`);
+      return { success: false, error: `Failed to forward email: ${response.status}` };
+    }
+
+    const data = await response.json();
+    console.log(`[Tools] Forwarded email: ${data.id}`);
+    return { success: true, messageId: data.id };
+  } catch (error) {
+    console.error(`[Tools] Gmail forward error:`, error);
+    return { success: false, error: "Failed to forward email" };
+  }
+}
+
+// ============= Get Labels =============
+
+interface GmailLabel {
+  id: string;
+  name: string;
+  type: string;
+}
+
+interface GetLabelsResult {
+  success: boolean;
+  labels?: GmailLabel[];
+  error?: string;
+}
+
+async function getLabels(userId: string): Promise<GetLabelsResult> {
+  console.log(`[Tools] get_labels`);
+
+  const accessToken = await getValidToken(userId, "gmail");
+  if (!accessToken) {
+    return { success: false, error: "Gmail is not connected or token expired" };
+  }
+
+  try {
+    const response = await fetch(
+      "https://gmail.googleapis.com/gmail/v1/users/me/labels",
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[Tools] Gmail labels error: ${response.status} - ${errorText}`);
+      return { success: false, error: `Failed to get labels: ${response.status}` };
+    }
+
+    const data = await response.json();
+    const labels: GmailLabel[] = (data.labels || []).map((l: { id: string; name: string; type: string }) => ({
+      id: l.id,
+      name: l.name,
+      type: l.type,
+    }));
+
+    console.log(`[Tools] Found ${labels.length} labels`);
+    return { success: true, labels };
+  } catch (error) {
+    console.error(`[Tools] Gmail labels error:`, error);
+    return { success: false, error: "Failed to get labels" };
+  }
+}
+
+// ============= Apply/Remove Label =============
+
+interface LabelEmailArgs {
+  message_id: string;
+  label_id: string;
+}
+
+interface LabelEmailResult {
+  success: boolean;
+  message?: string;
+  error?: string;
+}
+
+async function applyLabel(
+  userId: string,
+  args: LabelEmailArgs
+): Promise<LabelEmailResult> {
+  console.log(`[Tools] apply_label: message_id="${args.message_id}", label_id="${args.label_id}"`);
+
+  const accessToken = await getValidToken(userId, "gmail");
+  if (!accessToken) {
+    return { success: false, error: "Gmail is not connected or token expired" };
+  }
+
+  try {
+    const response = await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${args.message_id}/modify`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ addLabelIds: [args.label_id] }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[Tools] Gmail label error: ${response.status} - ${errorText}`);
+      return { success: false, error: `Failed to apply label: ${response.status}` };
+    }
+
+    console.log(`[Tools] Applied label ${args.label_id} to ${args.message_id}`);
+    return { success: true, message: "Label applied" };
+  } catch (error) {
+    console.error(`[Tools] Gmail label error:`, error);
+    return { success: false, error: "Failed to apply label" };
+  }
+}
+
+async function removeLabel(
+  userId: string,
+  args: LabelEmailArgs
+): Promise<LabelEmailResult> {
+  console.log(`[Tools] remove_label: message_id="${args.message_id}", label_id="${args.label_id}"`);
+
+  const accessToken = await getValidToken(userId, "gmail");
+  if (!accessToken) {
+    return { success: false, error: "Gmail is not connected or token expired" };
+  }
+
+  try {
+    const response = await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${args.message_id}/modify`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ removeLabelIds: [args.label_id] }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[Tools] Gmail label error: ${response.status} - ${errorText}`);
+      return { success: false, error: `Failed to remove label: ${response.status}` };
+    }
+
+    console.log(`[Tools] Removed label ${args.label_id} from ${args.message_id}`);
+    return { success: true, message: "Label removed" };
+  } catch (error) {
+    console.error(`[Tools] Gmail label error:`, error);
+    return { success: false, error: "Failed to remove label" };
+  }
+}
+
 // ============= User Preferences =============
 
 interface UserPreferencesResult {
@@ -1099,6 +1982,46 @@ export async function executeTool(
       
       case "get_user_preferences":
         result = await getUserPreferences(userId);
+        break;
+
+      case "delete_email":
+        result = await deleteEmail(userId, args);
+        break;
+
+      case "archive_email":
+        result = await archiveEmail(userId, args);
+        break;
+
+      case "create_draft":
+        result = await createDraft(userId, args);
+        break;
+
+      case "mark_email_read":
+        result = await markEmailRead(userId, args);
+        break;
+
+      case "mark_email_unread":
+        result = await markEmailUnread(userId, args);
+        break;
+
+      case "reply_to_email":
+        result = await replyToEmail(userId, args);
+        break;
+
+      case "forward_email":
+        result = await forwardEmail(userId, args);
+        break;
+
+      case "get_labels":
+        result = await getLabels(userId);
+        break;
+
+      case "apply_label":
+        result = await applyLabel(userId, args);
+        break;
+
+      case "remove_label":
+        result = await removeLabel(userId, args);
         break;
       
       // Future tool implementations:
