@@ -896,7 +896,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     },
   },
 },
-// ============= Google Contacts Tools (All Tier A - Read Only) =============
+// ============= Google Contacts Tools =============
+// Tier A - Read Only
 {
   type: "function",
   function: {
@@ -965,6 +966,145 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       type: "object",
       properties: {},
       required: [],
+    },
+  },
+},
+// Tier B - Write Operations (require confirmation)
+{
+  type: "function",
+  function: {
+    name: "contacts_create",
+    description: "Create a new contact in Google Contacts. This is a Tier B action that requires user confirmation before execution.",
+    parameters: {
+      type: "object",
+      properties: {
+        given_name: {
+          type: "string",
+          description: "First name of the contact",
+        },
+        family_name: {
+          type: "string",
+          description: "Last name of the contact",
+        },
+        email: {
+          type: "string",
+          description: "Email address",
+        },
+        phone: {
+          type: "string",
+          description: "Phone number",
+        },
+        organization: {
+          type: "string",
+          description: "Company/organization name",
+        },
+        title: {
+          type: "string",
+          description: "Job title",
+        },
+      },
+      required: [],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "contacts_update",
+    description: "Update an existing contact's details. This is a Tier B action that requires user confirmation before execution. You must first find the contact using contacts_search to get the resource_name.",
+    parameters: {
+      type: "object",
+      properties: {
+        resource_name: {
+          type: "string",
+          description: "The contact's resource name (e.g., 'people/c123456789')",
+        },
+        given_name: {
+          type: "string",
+          description: "New first name (optional)",
+        },
+        family_name: {
+          type: "string",
+          description: "New last name (optional)",
+        },
+        email: {
+          type: "string",
+          description: "New email address (optional)",
+        },
+        phone: {
+          type: "string",
+          description: "New phone number (optional)",
+        },
+        organization: {
+          type: "string",
+          description: "New company/organization name (optional)",
+        },
+        title: {
+          type: "string",
+          description: "New job title (optional)",
+        },
+      },
+      required: ["resource_name"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "contacts_add_to_group",
+    description: "Add a contact to a group/label. This is a Tier B action that requires user confirmation.",
+    parameters: {
+      type: "object",
+      properties: {
+        resource_name: {
+          type: "string",
+          description: "The contact's resource name (e.g., 'people/c123456789')",
+        },
+        group_resource_name: {
+          type: "string",
+          description: "The group's resource name (e.g., 'contactGroups/123')",
+        },
+      },
+      required: ["resource_name", "group_resource_name"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "contacts_remove_from_group",
+    description: "Remove a contact from a group/label. This is a Tier B action that requires user confirmation.",
+    parameters: {
+      type: "object",
+      properties: {
+        resource_name: {
+          type: "string",
+          description: "The contact's resource name (e.g., 'people/c123456789')",
+        },
+        group_resource_name: {
+          type: "string",
+          description: "The group's resource name (e.g., 'contactGroups/123')",
+        },
+      },
+      required: ["resource_name", "group_resource_name"],
+    },
+  },
+},
+// Tier C - Destructive Operations (require 🗑️ confirmation)
+{
+  type: "function",
+  function: {
+    name: "contacts_delete",
+    description: "Delete a contact permanently. This is a Tier C destructive action that requires the user to confirm by responding with 🗑️ or typing 'delete'.",
+    parameters: {
+      type: "object",
+      properties: {
+        resource_name: {
+          type: "string",
+          description: "The contact's resource name (e.g., 'people/c123456789')",
+        },
+      },
+      required: ["resource_name"],
     },
   },
 },
@@ -3371,7 +3511,7 @@ export async function executeTool(
         result = await executeMondayTool(userId, "archive_item", args);
         break;
       
-      // Google Contacts tools
+      // Google Contacts tools - Read
       case "contacts_get_contacts":
         result = await executeContactsTool(userId, "get_contacts", args);
         break;
@@ -3386,6 +3526,27 @@ export async function executeTool(
       
       case "contacts_get_groups":
         result = await executeContactsTool(userId, "get_contact_groups", {});
+        break;
+
+      // Google Contacts tools - Write
+      case "contacts_create":
+        result = await executeContactsTool(userId, "create_contact", args);
+        break;
+
+      case "contacts_update":
+        result = await executeContactsTool(userId, "update_contact", args);
+        break;
+
+      case "contacts_delete":
+        result = await executeContactsTool(userId, "delete_contact", args);
+        break;
+
+      case "contacts_add_to_group":
+        result = await executeContactsTool(userId, "add_to_group", args);
+        break;
+
+      case "contacts_remove_from_group":
+        result = await executeContactsTool(userId, "remove_from_group", args);
         break;
       
       default:
