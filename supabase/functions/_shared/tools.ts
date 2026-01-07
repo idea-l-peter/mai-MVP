@@ -1190,6 +1190,89 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     },
   },
 },
+{
+  type: "function",
+  function: {
+    name: "followup_get_overdue",
+    description: "Get all contacts with follow-ups due today or overdue. Use this proactively to remind user about pending follow-ups.",
+    parameters: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "followup_snooze",
+    description: "Snooze a follow-up reminder by N days. Use when user wants to delay a follow-up.",
+    parameters: {
+      type: "object",
+      properties: {
+        google_contact_id: {
+          type: "string",
+          description: "The Google Contact resource name",
+        },
+        days: {
+          type: "number",
+          description: "Number of days to snooze (e.g., 3 for 3 days)",
+        },
+      },
+      required: ["google_contact_id", "days"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "followup_complete",
+    description: "Mark a follow-up as complete. Updates last_contact_date to now. Optionally set the next follow-up.",
+    parameters: {
+      type: "object",
+      properties: {
+        google_contact_id: {
+          type: "string",
+          description: "The Google Contact resource name",
+        },
+        next_followup_days: {
+          type: "number",
+          description: "Optionally set next follow-up in N days from now. If not provided, clears the follow-up.",
+        },
+      },
+      required: ["google_contact_id"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "intelligence_get_cold_contacts",
+    description: "Get Tier 1-2 contacts that haven't been contacted in 30+ days. Use to warn user about relationships going cold.",
+    parameters: {
+      type: "object",
+      properties: {
+        days_since_contact: {
+          type: "number",
+          description: "Number of days without contact to consider cold (default 30)",
+        },
+      },
+      required: [],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "get_daily_briefing",
+    description: "Get a comprehensive daily briefing including: follow-ups due, contacts going cold, and summary counts. Use when user says 'good morning', 'what's on today', or asks for a briefing.",
+    parameters: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
+},
 // Tier B - Write Operations (require confirmation)
 {
   type: "function",
@@ -3793,6 +3876,26 @@ export async function executeTool(
 
       case "intelligence_get_followups_due":
         result = await executeIntelligenceTool(userId, "get_followups_due", args);
+        break;
+
+      case "followup_get_overdue":
+        result = await executeIntelligenceTool(userId, "get_overdue_followups", {});
+        break;
+
+      case "followup_snooze":
+        result = await executeIntelligenceTool(userId, "snooze_followup", args);
+        break;
+
+      case "followup_complete":
+        result = await executeIntelligenceTool(userId, "complete_followup", args);
+        break;
+
+      case "intelligence_get_cold_contacts":
+        result = await executeIntelligenceTool(userId, "get_cold_contacts", args);
+        break;
+
+      case "get_daily_briefing":
+        result = await executeIntelligenceTool(userId, "get_daily_briefing", {});
         break;
 
       // Contact Intelligence tools - Write

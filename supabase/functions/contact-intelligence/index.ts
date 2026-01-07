@@ -433,6 +433,170 @@ async function getFollowupsDue(
   }));
 }
 
+// Get overdue followups (today and past)
+async function getOverdueFollowups(userId: string): Promise<ContactProfile[]> {
+  console.log(`[ContactIntelligence] Getting overdue followups`);
+  const supabase = getSupabaseClient();
+  
+  const today = new Date();
+  today.setHours(23, 59, 59, 999); // End of today
+  
+  const { data: profiles, error } = await supabase
+    .from('contact_profiles')
+    .select(`
+      *,
+      contact_profile_tags (
+        contact_tags (
+          id, name, color
+        )
+      )
+    `)
+    .eq('user_id', userId)
+    .not('next_followup_date', 'is', null)
+    .lte('next_followup_date', today.toISOString())
+    .order('next_followup_date', { ascending: true });
+  
+  if (error) throw error;
+  
+  return (profiles || []).map((p: ContactProfile & { contact_profile_tags?: { contact_tags: Tag }[] }) => ({
+    ...p,
+    tags: p.contact_profile_tags?.map((pt) => pt.contact_tags) || [],
+    contact_profile_tags: undefined,
+  }));
+}
+
+// Snooze a followup by N days
+async function snoozeFollowup(
+  userId: string,
+  googleContactId: string,
+  days: number
+): Promise<ContactProfile> {
+  console.log(`[ContactIntelligence] Snoozing followup for ${googleContactId} by ${days} days`);
+  const supabase = getSupabaseClient();
+  
+  const { data: profile, error: fetchError } = await supabase
+    .from('contact_profiles')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('google_contact_id', googleContactId)
+    .maybeSingle();
+  
+  if (fetchError) throw fetchError;
+  if (!profile) throw new Error('Contact profile not found');
+  
+  const newDate = new Date();
+  newDate.setDate(newDate.getDate() + days);
+  
+  const { data: updated, error } = await supabase
+    .from('contact_profiles')
+    .update({ next_followup_date: newDate.toISOString() })
+    .eq('id', profile.id)
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return updated as ContactProfile;
+}
+
+// Complete a followup and optionally set next one
+async function completeFollowup(
+  userId: string,
+  googleContactId: string,
+  nextFollowupDays?: number
+): Promise<ContactProfile> {
+  console.log(`[ContactIntelligence] Completing followup for ${googleContactId}`);
+  const supabase = getSupabaseClient();
+  
+  const { data: profile, error: fetchError } = await supabase
+    .from('contact_profiles')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('google_contact_id', googleContactId)
+    .maybeSingle();
+  
+  if (fetchError) throw fetchError;
+  if (!profile) throw new Error('Contact profile not found');
+  
+  let nextFollowupDate: string | null = null;
+  if (nextFollowupDays && nextFollowupDays > 0) {
+    const newDate = new Date();
+    newDate.setDate(newDate.getDate() + nextFollowupDays);
+    nextFollowupDate = newDate.toISOString();
+  }
+  
+  const { data: updated, error } = await supabase
+    .from('contact_profiles')
+    .update({ 
+      next_followup_date: nextFollowupDate,
+      last_contact_date: new Date().toISOString()
+    })
+    .eq('id', profile.id)
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return updated as ContactProfile;
+}
+
+// Get cold contacts (Tier 1-2 not contacted in X days)
+async function getColdContacts(
+  userId: string,
+  daysSinceContact: number = 30
+): Promise<ContactProfile[]> {
+  console.log(`[ContactIntelligence] Getting cold contacts (${daysSinceContact}+ days)`);
+  const supabase = getSupabaseClient();
+  
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - daysSinceContact);
+  
+  const { data: profiles, error } = await supabase
+    .from('contact_profiles')
+    .select(`
+      *,
+      contact_profile_tags (
+        contact_tags (
+          id, name, color
+        )
+      )
+    `)
+    .eq('user_id', userId)
+    .in('tier', [1, 2])
+    .or(`last_contact_date.is.null,last_contact_date.lt.${cutoffDate.toISOString()}`)
+    .order('last_contact_date', { ascending: true, nullsFirst: true });
+  
+  if (error) throw error;
+  
+  return (profiles || []).map((p: ContactProfile & { contact_profile_tags?: { contact_tags: Tag }[] }) => ({
+    ...p,
+    tags: p.contact_profile_tags?.map((pt) => pt.contact_tags) || [],
+    contact_profile_tags: undefined,
+  }));
+}
+
+// Get daily briefing summary
+async function getDailyBriefing(userId: string): Promise<{
+  followupsDue: ContactProfile[];
+  coldContacts: ContactProfile[];
+  summary: {
+    followupsCount: number;
+    coldContactsCount: number;
+  };
+}> {
+  console.log(`[ContactIntelligence] Getting daily briefing`);
+  
+  const followupsDue = await getOverdueFollowups(userId);
+  const coldContacts = await getColdContacts(userId, 30);
+  
+  return {
+    followupsDue,
+    coldContacts,
+    summary: {
+      followupsCount: followupsDue.length,
+      coldContactsCount: coldContacts.length,
+    },
+  };
+}
+
 // ============= Main Handler =============
 
 serve(async (req) => {
@@ -567,6 +731,43 @@ serve(async (req) => {
           user_id, 
           (params.days_ahead as number) || 7
         );
+        break;
+
+      case 'get_overdue_followups':
+        result = await getOverdueFollowups(user_id);
+        break;
+
+      case 'snooze_followup':
+        if (!params.google_contact_id || params.days === undefined) {
+          throw new Error('google_contact_id and days are required');
+        }
+        result = await snoozeFollowup(
+          user_id,
+          params.google_contact_id as string,
+          params.days as number
+        );
+        break;
+
+      case 'complete_followup':
+        if (!params.google_contact_id) {
+          throw new Error('google_contact_id is required');
+        }
+        result = await completeFollowup(
+          user_id,
+          params.google_contact_id as string,
+          params.next_followup_days as number | undefined
+        );
+        break;
+
+      case 'get_cold_contacts':
+        result = await getColdContacts(
+          user_id,
+          (params.days_since_contact as number) || 30
+        );
+        break;
+
+      case 'get_daily_briefing':
+        result = await getDailyBriefing(user_id);
         break;
 
       default:
