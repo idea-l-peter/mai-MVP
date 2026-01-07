@@ -32,3 +32,6 @@ verify_jwt = false
 
 [functions.get-user-by-email]
 verify_jwt = false
+
+[functions.google-contacts]
+verify_jwt = false

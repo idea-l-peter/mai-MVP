@@ -55,6 +55,20 @@ const INTEGRATION_CONFIGS: IntegrationConfig[] = [
     ],
   },
   {
+    id: "google-contacts",
+    title: "Google Contacts",
+    description: "Let mai access your contacts for context and insights",
+    icon: <img src={googleCalendarIcon} alt="Google Contacts" className="h-6 w-6" />,
+    defaultStatus: "not_connected",
+    showConnectButton: true,
+    provider: "google-contacts",
+    scopes: [
+      "https://www.googleapis.com/auth/contacts.readonly",
+      "https://www.googleapis.com/auth/userinfo.email",
+      "https://www.googleapis.com/auth/userinfo.profile",
+    ],
+  },
+  {
     id: "monday",
     title: "monday.com",
     description: "Sync tasks and projects with monday.com",
