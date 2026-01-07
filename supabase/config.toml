@@ -21,6 +21,9 @@ verify_jwt = false
 [functions.monday-oauth-callback]
 verify_jwt = false
 
+[functions.monday-api]
+verify_jwt = false
+
 [functions.ai-assistant]
 verify_jwt = false
 
