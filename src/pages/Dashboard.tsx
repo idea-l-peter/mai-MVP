@@ -12,7 +12,9 @@ import { TestChatContent } from "@/components/TestChatContent";
 import { TestMondayContent } from "@/components/TestMondayContent";
 import { ConversationsContent } from "@/components/ConversationsContent";
 import { SettingsContent } from "@/components/SettingsContent";
+import { DashboardContent } from "@/components/dashboard/DashboardContent";
 import Admin from "@/pages/Admin";
+
 const Dashboard = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -56,7 +58,7 @@ const Dashboard = () => {
   const getPageTitle = () => {
     switch (location.pathname) {
       case "/dashboard":
-        return "Welcome to mai";
+        return "Dashboard";
       case "/conversations":
         return "Conversations";
       case "/contacts":
@@ -74,7 +76,7 @@ const Dashboard = () => {
       case "/test-monday":
         return "Monday.com API Test";
       default:
-        return "Welcome to mai";
+        return "Dashboard";
     }
   };
 
@@ -92,14 +94,10 @@ const Dashboard = () => {
             <h1 className="text-2xl md:text-3xl font-bold text-foreground mb-2">
               {getPageTitle()}
             </h1>
-            {location.pathname === "/dashboard" && (
-              <p className="text-muted-foreground text-sm md:text-base">
-                Logged in as: {user.email}
-              </p>
-            )}
 
             {/* Page-specific content */}
             <div className="mt-4 md:mt-6">
+              {location.pathname === "/dashboard" && <DashboardContent />}
               {location.pathname === "/conversations" && <ConversationsContent />}
               {location.pathname === "/admin" && <Admin />}
               {location.pathname === "/integrations" && <IntegrationsContent />}
