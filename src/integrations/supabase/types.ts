@@ -128,6 +128,54 @@ export type Database = {
         }
         Relationships: []
       }
+      email_tracking: {
+        Row: {
+          contact_tier: number | null
+          created_at: string
+          from_email: string
+          from_name: string | null
+          gmail_message_id: string
+          gmail_thread_id: string | null
+          id: string
+          received_at: string
+          responded: boolean
+          response_due_by: string | null
+          subject: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          contact_tier?: number | null
+          created_at?: string
+          from_email: string
+          from_name?: string | null
+          gmail_message_id: string
+          gmail_thread_id?: string | null
+          id?: string
+          received_at: string
+          responded?: boolean
+          response_due_by?: string | null
+          subject?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          contact_tier?: number | null
+          created_at?: string
+          from_email?: string
+          from_name?: string | null
+          gmail_message_id?: string
+          gmail_thread_id?: string | null
+          id?: string
+          received_at?: string
+          responded?: boolean
+          response_due_by?: string | null
+          subject?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       encrypted_integration_tokens: {
         Row: {
           created_at: string | null

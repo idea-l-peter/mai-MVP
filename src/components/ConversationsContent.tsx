@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -224,11 +225,48 @@ When the user asks about a contact, person, or needs contact information:
 3. Use contacts_get_contact for detailed info on a specific person
 4. Contacts are read-only - if user wants to edit contacts, tell them to use Google Contacts directly
 
+CONTACT INTELLIGENCE CAPABILITIES:
+You can track relationships and follow-ups using mai's intelligence layer:
+
+Tier A (Read-only):
+- intelligence_get_profile: Get mai's profile for a contact (tier, notes, tags, follow-up dates)
+- intelligence_get_tags: Get user's contact tags
+- intelligence_get_by_tier: Get contacts at a specific tier level
+- intelligence_get_by_tag: Get contacts with a specific tag
+- intelligence_get_followups_due: Get contacts needing follow-up in next N days
+- followup_get_overdue: Get all overdue follow-ups (today and past)
+- intelligence_get_cold_contacts: Get Tier 1-2 contacts not contacted in 30+ days
+- get_daily_briefing: Get comprehensive daily briefing
+
+Tier B (Require confirmation):
+- intelligence_set_tier: Set priority tier 1-5 for a contact
+- intelligence_add_note: Add timestamped note to contact profile
+- intelligence_set_followup: Set follow-up reminder date
+- intelligence_create_tag: Create a new tag
+- intelligence_tag_contact: Add tag to contact
+- intelligence_untag_contact: Remove tag from contact
+- followup_snooze: Snooze a follow-up by N days
+- followup_complete: Mark follow-up done, optionally set next one
+
+DAILY BRIEFING WORKFLOW:
+When the user says "good morning", "what's on today", "briefing", or asks what they should focus on:
+1. Call get_daily_briefing to get comprehensive data
+2. Present a structured summary:
+   - Follow-ups due today (with names)
+   - Contacts going cold (Tier 1-2 not contacted in 30+ days)
+3. Offer to help with any of these items
+
+FOLLOW-UP MANAGEMENT:
+- When user contacts someone, offer to update last_contact_date with followup_complete
+- When user wants to delay a follow-up, use followup_snooze
+- Proactively mention overdue follow-ups when relevant
+
 You have access to:
 - Google Calendar (read events, create events with optional Google Meet, update/modify existing events, delete events with confirmation, find available slots, check free/busy, manage multiple calendars, create recurring events, RSVP to invites, see attendees)
 - Gmail (read emails, send emails with your signature, reply to threads, forward emails, delete/archive with confirmation, create drafts, manage labels, mark read/unread)
-- Google Contacts (read-only: search contacts, get contact details, view contact groups)
+- Google Contacts (search contacts, get contact details, view contact groups, create/update/delete contacts)
 - Monday.com (read boards, create/update/delete items, change status, add comments)
+- Contact Intelligence (track relationship tiers, notes, tags, follow-up reminders, detect cold contacts)
 
 You can also answer general questions knowledgeably. For questions outside your core EA functions (calendar, email, contacts, monday.com tasks), provide a brief, helpful answer in 1-3 sentences, then offer to elaborate OR gently steer back to how you can assist with their schedule, communications, or tasks. Don't write essays unless specifically asked for detailed information.
 
@@ -258,18 +296,143 @@ Examples:
 - "You've got three meetings tomorrow. First one's at 9 with the board."
 - "Done - sent him the invite."
 - "Honestly, the second option seems stronger. Less risk, similar upside."
-- "I don't have access to current news, so I can't help with that one."`;
+- "I don't have access to current news, so I can't help with that one."
+- "You have 3 follow-ups due: John (overdue by 2 days), Sarah, and Mike. Want me to draft messages?"
+- "Heads up - you haven't contacted your Tier 1 contact Alex in 45 days."`;
 
 export function ConversationsContent() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [hasCheckedFollowups, setHasCheckedFollowups] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Auto-scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isLoading]);
+
+  // Send a message programmatically (used for proactive messages and prompt param)
+  const sendMessageWithContent = useCallback(async (content: string) => {
+    if (!content.trim() || isLoading) return;
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData.session) return;
+
+    const userMessage: Message = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: content.trim(),
+      timestamp: new Date(),
+    };
+
+    setMessages((prev) => [...prev, userMessage]);
+    setIsLoading(true);
+
+    try {
+      const accessToken = sessionData.session?.access_token;
+
+      const { data, error } = await supabase.functions.invoke("ai-assistant", {
+        body: {
+          messages: [
+            { role: "system", content: MAI_SYSTEM_PROMPT },
+            ...messages.map((m) => ({ role: m.role, content: m.content })),
+            { role: "user", content: content.trim() },
+          ],
+          temperature: 0.7,
+          max_tokens: 1024,
+          stream: false,
+        },
+        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+      });
+
+      if (error) throw error;
+
+      const assistantMessage: Message = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: data.content || data.error || "Something went wrong. Try again.",
+        timestamp: new Date(),
+      };
+
+      setMessages((prev) => [...prev, assistantMessage]);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("Chat error:", err);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: `Hit a snag. ${message}`,
+          timestamp: new Date(),
+        },
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isLoading, messages]);
+
+  // Check for prompt query parameter on mount
+  useEffect(() => {
+    const promptParam = searchParams.get('prompt');
+    if (promptParam && messages.length === 0 && !isLoading) {
+      // Clear the param from URL
+      setSearchParams({});
+      // Send the message
+      sendMessageWithContent(promptParam);
+    }
+  }, [searchParams, setSearchParams, messages.length, isLoading, sendMessageWithContent]);
+
+  // Proactive followup check on initial load
+  useEffect(() => {
+    const checkFollowups = async () => {
+      if (hasCheckedFollowups || messages.length > 0) return;
+      
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData.session) return;
+
+      try {
+        const accessToken = sessionData.session.access_token;
+        
+        // Call the contact-intelligence function directly to check for overdue followups
+        const { data, error } = await supabase.functions.invoke("contact-intelligence", {
+          body: {
+            action: "get_overdue_followups",
+            user_id: sessionData.session.user.id,
+            params: {},
+          },
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+
+        if (!error && data?.success && data?.data?.length > 0) {
+          const followups = data.data;
+          const count = followups.length;
+          const names = followups
+            .slice(0, 3)
+            .map((c: { email?: string; googleContactId?: string }) => c.email || c.googleContactId)
+            .join(", ");
+          
+          const proactiveMessage: Message = {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: `You have ${count} follow-up${count > 1 ? 's' : ''} due today: ${names}${count > 3 ? ` and ${count - 3} more` : ''}. Would you like me to draft messages for them?`,
+            timestamp: new Date(),
+          };
+          
+          setMessages([proactiveMessage]);
+        }
+      } catch (err) {
+        console.error("Failed to check followups:", err);
+      } finally {
+        setHasCheckedFollowups(true);
+      }
+    };
+
+    checkFollowups();
+  }, [hasCheckedFollowups, messages.length]);
 
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
