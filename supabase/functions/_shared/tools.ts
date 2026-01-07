@@ -154,6 +154,236 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 {
   type: "function",
   function: {
+    name: "get_calendars",
+    description: "Get list of user's calendars (work, personal, etc.). Use this when the user asks about their different calendars or wants to create an event on a specific calendar.",
+    parameters: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "get_free_busy",
+    description: "Check free/busy status for a time range across calendars. Use this to check availability before scheduling meetings.",
+    parameters: {
+      type: "object",
+      properties: {
+        start_time: {
+          type: "string",
+          description: "Start time in ISO 8601 format",
+        },
+        end_time: {
+          type: "string",
+          description: "End time in ISO 8601 format",
+        },
+        calendar_ids: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional array of calendar IDs to check. Defaults to primary calendar.",
+        },
+      },
+      required: ["start_time", "end_time"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "find_available_slots",
+    description: "Find available meeting slots within a date range. Use this when the user asks when they're free or wants to find time for a meeting.",
+    parameters: {
+      type: "object",
+      properties: {
+        duration_minutes: {
+          type: "number",
+          description: "Duration of the meeting in minutes",
+        },
+        start_date: {
+          type: "string",
+          description: "Start date in YYYY-MM-DD format",
+        },
+        end_date: {
+          type: "string",
+          description: "End date in YYYY-MM-DD format",
+        },
+        preferred_times: {
+          type: "string",
+          description: "Optional preference: 'morning' (9am-12pm), 'afternoon' (12pm-5pm), or 'evening' (5pm-8pm)",
+        },
+      },
+      required: ["duration_minutes", "start_date", "end_date"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "create_event_on_calendar",
+    description: "Create an event on a specific calendar (not just primary). Use this when the user wants to add an event to a specific calendar like their work or personal calendar.",
+    parameters: {
+      type: "object",
+      properties: {
+        calendar_id: {
+          type: "string",
+          description: "The calendar ID to create the event on",
+        },
+        summary: {
+          type: "string",
+          description: "Title of the event",
+        },
+        start_time: {
+          type: "string",
+          description: "Start time in ISO 8601 format",
+        },
+        end_time: {
+          type: "string",
+          description: "End time in ISO 8601 format",
+        },
+        description: {
+          type: "string",
+          description: "Description/notes for the event",
+        },
+        location: {
+          type: "string",
+          description: "Location of the event",
+        },
+        attendees: {
+          type: "array",
+          items: { type: "string" },
+          description: "List of attendee email addresses",
+        },
+        add_video_call: {
+          type: "boolean",
+          description: "If true, adds a Google Meet video call link",
+        },
+      },
+      required: ["calendar_id", "summary", "start_time", "end_time"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "rsvp_to_event",
+    description: "Respond to a calendar invite (accept, decline, or tentative).",
+    parameters: {
+      type: "object",
+      properties: {
+        event_id: {
+          type: "string",
+          description: "The ID of the event to respond to",
+        },
+        response: {
+          type: "string",
+          description: "Your response: 'accepted', 'declined', or 'tentative'",
+        },
+      },
+      required: ["event_id", "response"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "get_event_attendees",
+    description: "Get list of attendees and their RSVP status for an event.",
+    parameters: {
+      type: "object",
+      properties: {
+        event_id: {
+          type: "string",
+          description: "The ID of the event",
+        },
+      },
+      required: ["event_id"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "create_recurring_event",
+    description: "Create a recurring event series (daily, weekly, monthly).",
+    parameters: {
+      type: "object",
+      properties: {
+        summary: {
+          type: "string",
+          description: "Title of the event",
+        },
+        start_time: {
+          type: "string",
+          description: "Start time in ISO 8601 format",
+        },
+        end_time: {
+          type: "string",
+          description: "End time in ISO 8601 format",
+        },
+        recurrence_rule: {
+          type: "string",
+          description: "Recurrence pattern: 'daily', 'weekly', 'monthly', or a custom RRULE string",
+        },
+        description: {
+          type: "string",
+          description: "Description/notes for the event",
+        },
+        attendees: {
+          type: "array",
+          items: { type: "string" },
+          description: "List of attendee email addresses",
+        },
+        location: {
+          type: "string",
+          description: "Location of the event",
+        },
+        add_video_call: {
+          type: "boolean",
+          description: "If true, adds a Google Meet video call link",
+        },
+      },
+      required: ["summary", "start_time", "end_time", "recurrence_rule"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "update_single_occurrence",
+    description: "Modify a single occurrence of a recurring event without affecting the series.",
+    parameters: {
+      type: "object",
+      properties: {
+        event_id: {
+          type: "string",
+          description: "The ID of the recurring event series",
+        },
+        instance_date: {
+          type: "string",
+          description: "The date of the specific occurrence to modify (YYYY-MM-DD format)",
+        },
+        new_start_time: {
+          type: "string",
+          description: "New start time in ISO 8601 format",
+        },
+        new_end_time: {
+          type: "string",
+          description: "New end time in ISO 8601 format",
+        },
+        new_summary: {
+          type: "string",
+          description: "New title for this occurrence",
+        },
+      },
+      required: ["event_id", "instance_date"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
     name: "get_emails",
     description: "Get emails from the user's Gmail inbox. Use this when the user asks about their emails, inbox, or messages.",
     parameters: {
@@ -884,6 +1114,730 @@ async function deleteCalendarEvent(
   } catch (error) {
     console.error(`[Tools] Calendar delete error:`, error);
     return { success: false, error: "Failed to delete calendar event" };
+  }
+}
+
+// ============= Get Calendars =============
+
+interface CalendarInfo {
+  id: string;
+  summary: string;
+  description?: string;
+  primary: boolean;
+  accessRole: string;
+  backgroundColor?: string;
+}
+
+interface GetCalendarsResult {
+  success: boolean;
+  calendars?: CalendarInfo[];
+  error?: string;
+}
+
+async function getCalendars(userId: string): Promise<GetCalendarsResult> {
+  console.log(`[Tools] get_calendars`);
+
+  const accessToken = await getValidToken(userId, "google");
+  if (!accessToken) {
+    return { success: false, error: "Google Calendar is not connected or token expired" };
+  }
+
+  try {
+    const response = await fetch(
+      "https://www.googleapis.com/calendar/v3/users/me/calendarList",
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[Tools] Calendar list error: ${response.status} - ${errorText}`);
+      return { success: false, error: `Failed to get calendars: ${response.status}` };
+    }
+
+    const data = await response.json();
+    const calendars: CalendarInfo[] = (data.items || []).map((c: {
+      id: string;
+      summary: string;
+      description?: string;
+      primary?: boolean;
+      accessRole: string;
+      backgroundColor?: string;
+    }) => ({
+      id: c.id,
+      summary: c.summary,
+      description: c.description,
+      primary: !!c.primary,
+      accessRole: c.accessRole,
+      backgroundColor: c.backgroundColor,
+    }));
+
+    console.log(`[Tools] Found ${calendars.length} calendars`);
+    return { success: true, calendars };
+  } catch (error) {
+    console.error(`[Tools] Calendar list error:`, error);
+    return { success: false, error: "Failed to get calendars" };
+  }
+}
+
+// ============= Get Free/Busy =============
+
+interface FreeBusyArgs {
+  start_time: string;
+  end_time: string;
+  calendar_ids?: string[];
+}
+
+interface BusyPeriod {
+  start: string;
+  end: string;
+}
+
+interface FreeBusyResult {
+  success: boolean;
+  calendars?: Record<string, { busy: BusyPeriod[] }>;
+  error?: string;
+}
+
+async function getFreeBusy(
+  userId: string,
+  args: FreeBusyArgs
+): Promise<FreeBusyResult> {
+  console.log(`[Tools] get_free_busy: start=${args.start_time}, end=${args.end_time}`);
+
+  const accessToken = await getValidToken(userId, "google");
+  if (!accessToken) {
+    return { success: false, error: "Google Calendar is not connected or token expired" };
+  }
+
+  try {
+    const calendarIds = args.calendar_ids || ["primary"];
+    const items = calendarIds.map((id) => ({ id }));
+
+    const response = await fetch(
+      "https://www.googleapis.com/calendar/v3/freeBusy",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          timeMin: args.start_time,
+          timeMax: args.end_time,
+          items,
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[Tools] FreeBusy error: ${response.status} - ${errorText}`);
+      return { success: false, error: `Failed to check availability: ${response.status}` };
+    }
+
+    const data = await response.json();
+    console.log(`[Tools] Got free/busy data for ${Object.keys(data.calendars || {}).length} calendars`);
+    return { success: true, calendars: data.calendars };
+  } catch (error) {
+    console.error(`[Tools] FreeBusy error:`, error);
+    return { success: false, error: "Failed to check availability" };
+  }
+}
+
+// ============= Find Available Slots =============
+
+interface FindAvailableSlotsArgs {
+  duration_minutes: number;
+  start_date: string;
+  end_date: string;
+  preferred_times?: "morning" | "afternoon" | "evening";
+}
+
+interface AvailableSlot {
+  start: string;
+  end: string;
+  date: string;
+  time_of_day: string;
+}
+
+interface FindAvailableSlotsResult {
+  success: boolean;
+  slots?: AvailableSlot[];
+  error?: string;
+}
+
+async function findAvailableSlots(
+  userId: string,
+  args: FindAvailableSlotsArgs
+): Promise<FindAvailableSlotsResult> {
+  console.log(`[Tools] find_available_slots: duration=${args.duration_minutes}min, ${args.start_date} to ${args.end_date}`);
+
+  const accessToken = await getValidToken(userId, "google");
+  if (!accessToken) {
+    return { success: false, error: "Google Calendar is not connected or token expired" };
+  }
+
+  try {
+    // Define time ranges based on preferences
+    const timeRanges = {
+      morning: { start: 9, end: 12 },
+      afternoon: { start: 12, end: 17 },
+      evening: { start: 17, end: 20 },
+    };
+
+    // Parse dates
+    const startDate = new Date(args.start_date + "T00:00:00");
+    const endDate = new Date(args.end_date + "T23:59:59");
+    
+    // Fetch all events in the range
+    const url = new URL("https://www.googleapis.com/calendar/v3/calendars/primary/events");
+    url.searchParams.set("timeMin", startDate.toISOString());
+    url.searchParams.set("timeMax", endDate.toISOString());
+    url.searchParams.set("singleEvents", "true");
+    url.searchParams.set("orderBy", "startTime");
+    url.searchParams.set("maxResults", "250");
+
+    const response = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[Tools] Calendar API error: ${response.status} - ${errorText}`);
+      return { success: false, error: "Failed to fetch calendar events" };
+    }
+
+    const data = await response.json();
+    const events = (data.items || []).filter((e: { start?: { dateTime?: string } }) => e.start?.dateTime);
+
+    // Build busy periods
+    const busyPeriods: { start: Date; end: Date }[] = events.map((e: {
+      start: { dateTime: string };
+      end: { dateTime: string };
+    }) => ({
+      start: new Date(e.start.dateTime),
+      end: new Date(e.end.dateTime),
+    }));
+
+    // Find available slots
+    const slots: AvailableSlot[] = [];
+    const durationMs = args.duration_minutes * 60 * 1000;
+    const currentDate = new Date(startDate);
+
+    while (currentDate <= endDate && slots.length < 5) {
+      // Skip weekends
+      const dayOfWeek = currentDate.getDay();
+      if (dayOfWeek === 0 || dayOfWeek === 6) {
+        currentDate.setDate(currentDate.getDate() + 1);
+        continue;
+      }
+
+      // Determine which time ranges to check
+      const rangesToCheck = args.preferred_times
+        ? [timeRanges[args.preferred_times]]
+        : [timeRanges.morning, timeRanges.afternoon, timeRanges.evening];
+
+      for (const range of rangesToCheck) {
+        if (slots.length >= 5) break;
+
+        const slotStart = new Date(currentDate);
+        slotStart.setHours(range.start, 0, 0, 0);
+        const rangeEnd = new Date(currentDate);
+        rangeEnd.setHours(range.end, 0, 0, 0);
+
+        // Check each 30-minute window
+        while (slotStart.getTime() + durationMs <= rangeEnd.getTime() && slots.length < 5) {
+          const slotEnd = new Date(slotStart.getTime() + durationMs);
+          
+          // Skip if in the past
+          if (slotStart < new Date()) {
+            slotStart.setTime(slotStart.getTime() + 30 * 60 * 1000);
+            continue;
+          }
+
+          // Check if this slot conflicts with any busy period
+          const hasConflict = busyPeriods.some(
+            (busy) => slotStart < busy.end && slotEnd > busy.start
+          );
+
+          if (!hasConflict) {
+            const hour = slotStart.getHours();
+            let timeOfDay = "morning";
+            if (hour >= 12 && hour < 17) timeOfDay = "afternoon";
+            else if (hour >= 17) timeOfDay = "evening";
+
+            slots.push({
+              start: slotStart.toISOString(),
+              end: slotEnd.toISOString(),
+              date: slotStart.toISOString().split("T")[0],
+              time_of_day: timeOfDay,
+            });
+          }
+
+          slotStart.setTime(slotStart.getTime() + 30 * 60 * 1000);
+        }
+      }
+
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    console.log(`[Tools] Found ${slots.length} available slots`);
+    return { success: true, slots };
+  } catch (error) {
+    console.error(`[Tools] Find slots error:`, error);
+    return { success: false, error: "Failed to find available slots" };
+  }
+}
+
+// ============= Create Event on Specific Calendar =============
+
+interface CreateEventOnCalendarArgs {
+  calendar_id: string;
+  summary: string;
+  start_time: string;
+  end_time: string;
+  description?: string;
+  location?: string;
+  attendees?: string[];
+  add_video_call?: boolean;
+}
+
+async function createEventOnCalendar(
+  userId: string,
+  args: CreateEventOnCalendarArgs
+): Promise<CreatedEventResult> {
+  console.log(`[Tools] create_event_on_calendar: calendar=${args.calendar_id}, summary="${args.summary}"`);
+
+  const accessToken = await getValidToken(userId, "google");
+  if (!accessToken) {
+    return { success: false, error: "Google Calendar is not connected or token expired" };
+  }
+
+  try {
+    const eventBody: Record<string, unknown> = {
+      summary: args.summary,
+      start: { dateTime: args.start_time },
+      end: { dateTime: args.end_time },
+    };
+
+    if (args.description) eventBody.description = args.description;
+    if (args.location) eventBody.location = args.location;
+    if (args.attendees?.length) {
+      eventBody.attendees = args.attendees.map((email) => ({ email }));
+    }
+    if (args.add_video_call) {
+      eventBody.conferenceData = {
+        createRequest: {
+          requestId: crypto.randomUUID(),
+          conferenceSolutionKey: { type: "hangoutsMeet" },
+        },
+      };
+    }
+
+    const calendarId = encodeURIComponent(args.calendar_id);
+    const apiUrl = args.add_video_call
+      ? `https://www.googleapis.com/calendar/v3/calendars/${calendarId}/events?conferenceDataVersion=1`
+      : `https://www.googleapis.com/calendar/v3/calendars/${calendarId}/events`;
+
+    const response = await fetch(apiUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(eventBody),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[Tools] Calendar API error: ${response.status} - ${errorText}`);
+      return { success: false, error: `Failed to create event: ${response.status}` };
+    }
+
+    const data = await response.json();
+    console.log(`[Tools] Created event on calendar ${args.calendar_id}: ${data.id}`);
+
+    const meetLink = data.conferenceData?.entryPoints?.find(
+      (ep: { entryPointType: string; uri: string }) => ep.entryPointType === "video"
+    )?.uri;
+
+    return {
+      success: true,
+      event: {
+        id: data.id,
+        summary: data.summary,
+        start: data.start?.dateTime || data.start?.date || "",
+        end: data.end?.dateTime || data.end?.date || "",
+        htmlLink: data.htmlLink,
+        meetLink,
+      },
+    };
+  } catch (error) {
+    console.error(`[Tools] Calendar create error:`, error);
+    return { success: false, error: "Failed to create calendar event" };
+  }
+}
+
+// ============= RSVP to Event =============
+
+interface RSVPToEventArgs {
+  event_id: string;
+  response: "accepted" | "declined" | "tentative";
+}
+
+interface RSVPToEventResult {
+  success: boolean;
+  message?: string;
+  error?: string;
+}
+
+async function rsvpToEvent(
+  userId: string,
+  args: RSVPToEventArgs
+): Promise<RSVPToEventResult> {
+  console.log(`[Tools] rsvp_to_event: event_id="${args.event_id}", response="${args.response}"`);
+
+  const accessToken = await getValidToken(userId, "google");
+  if (!accessToken) {
+    return { success: false, error: "Google Calendar is not connected or token expired" };
+  }
+
+  try {
+    // Get current user's email
+    const profileResponse = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!profileResponse.ok) {
+      return { success: false, error: "Failed to get user info" };
+    }
+    const profile = await profileResponse.json();
+    const userEmail = profile.email;
+
+    // Get the event
+    const getUrl = `https://www.googleapis.com/calendar/v3/calendars/primary/events/${args.event_id}`;
+    const getResponse = await fetch(getUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!getResponse.ok) {
+      return { success: false, error: "Event not found" };
+    }
+
+    const event = await getResponse.json();
+    
+    // Update the attendee's response status
+    const attendees = event.attendees || [];
+    const updatedAttendees = attendees.map((a: { email: string; responseStatus?: string }) => {
+      if (a.email.toLowerCase() === userEmail.toLowerCase()) {
+        return { ...a, responseStatus: args.response };
+      }
+      return a;
+    });
+
+    // Patch the event
+    const patchResponse = await fetch(getUrl, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ attendees: updatedAttendees }),
+    });
+
+    if (!patchResponse.ok) {
+      const errorText = await patchResponse.text();
+      console.error(`[Tools] RSVP error: ${patchResponse.status} - ${errorText}`);
+      return { success: false, error: `Failed to RSVP: ${patchResponse.status}` };
+    }
+
+    console.log(`[Tools] RSVP'd ${args.response} to event ${args.event_id}`);
+    return { success: true, message: `Response "${args.response}" sent` };
+  } catch (error) {
+    console.error(`[Tools] RSVP error:`, error);
+    return { success: false, error: "Failed to RSVP" };
+  }
+}
+
+// ============= Get Event Attendees =============
+
+interface GetEventAttendeesArgs {
+  event_id: string;
+}
+
+interface AttendeeInfo {
+  email: string;
+  displayName?: string;
+  responseStatus: string;
+  organizer: boolean;
+  self: boolean;
+}
+
+interface GetEventAttendeesResult {
+  success: boolean;
+  attendees?: AttendeeInfo[];
+  eventSummary?: string;
+  error?: string;
+}
+
+async function getEventAttendees(
+  userId: string,
+  args: GetEventAttendeesArgs
+): Promise<GetEventAttendeesResult> {
+  console.log(`[Tools] get_event_attendees: event_id="${args.event_id}"`);
+
+  const accessToken = await getValidToken(userId, "google");
+  if (!accessToken) {
+    return { success: false, error: "Google Calendar is not connected or token expired" };
+  }
+
+  try {
+    const getUrl = `https://www.googleapis.com/calendar/v3/calendars/primary/events/${args.event_id}`;
+    const response = await fetch(getUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!response.ok) {
+      return { success: false, error: "Event not found" };
+    }
+
+    const event = await response.json();
+    const attendees: AttendeeInfo[] = (event.attendees || []).map((a: {
+      email: string;
+      displayName?: string;
+      responseStatus?: string;
+      organizer?: boolean;
+      self?: boolean;
+    }) => ({
+      email: a.email,
+      displayName: a.displayName,
+      responseStatus: a.responseStatus || "needsAction",
+      organizer: !!a.organizer,
+      self: !!a.self,
+    }));
+
+    console.log(`[Tools] Found ${attendees.length} attendees for event ${args.event_id}`);
+    return { success: true, attendees, eventSummary: event.summary };
+  } catch (error) {
+    console.error(`[Tools] Get attendees error:`, error);
+    return { success: false, error: "Failed to get attendees" };
+  }
+}
+
+// ============= Create Recurring Event =============
+
+interface CreateRecurringEventArgs {
+  summary: string;
+  start_time: string;
+  end_time: string;
+  recurrence_rule: string;
+  description?: string;
+  attendees?: string[];
+  location?: string;
+  add_video_call?: boolean;
+}
+
+async function createRecurringEvent(
+  userId: string,
+  args: CreateRecurringEventArgs
+): Promise<CreatedEventResult> {
+  console.log(`[Tools] create_recurring_event: summary="${args.summary}", recurrence="${args.recurrence_rule}"`);
+
+  const accessToken = await getValidToken(userId, "google");
+  if (!accessToken) {
+    return { success: false, error: "Google Calendar is not connected or token expired" };
+  }
+
+  try {
+    // Convert simple recurrence to RRULE
+    let rrule = args.recurrence_rule;
+    if (!rrule.startsWith("RRULE:")) {
+      const ruleMap: Record<string, string> = {
+        daily: "RRULE:FREQ=DAILY",
+        weekly: "RRULE:FREQ=WEEKLY",
+        monthly: "RRULE:FREQ=MONTHLY",
+        yearly: "RRULE:FREQ=YEARLY",
+      };
+      rrule = ruleMap[rrule.toLowerCase()] || `RRULE:${rrule}`;
+    }
+
+    const eventBody: Record<string, unknown> = {
+      summary: args.summary,
+      start: { dateTime: args.start_time },
+      end: { dateTime: args.end_time },
+      recurrence: [rrule],
+    };
+
+    if (args.description) eventBody.description = args.description;
+    if (args.location) eventBody.location = args.location;
+    if (args.attendees?.length) {
+      eventBody.attendees = args.attendees.map((email) => ({ email }));
+    }
+    if (args.add_video_call) {
+      eventBody.conferenceData = {
+        createRequest: {
+          requestId: crypto.randomUUID(),
+          conferenceSolutionKey: { type: "hangoutsMeet" },
+        },
+      };
+    }
+
+    const apiUrl = args.add_video_call
+      ? "https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1"
+      : "https://www.googleapis.com/calendar/v3/calendars/primary/events";
+
+    const response = await fetch(apiUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(eventBody),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[Tools] Calendar API error: ${response.status} - ${errorText}`);
+      return { success: false, error: `Failed to create recurring event: ${response.status}` };
+    }
+
+    const data = await response.json();
+    console.log(`[Tools] Created recurring event: ${data.id}`);
+
+    const meetLink = data.conferenceData?.entryPoints?.find(
+      (ep: { entryPointType: string; uri: string }) => ep.entryPointType === "video"
+    )?.uri;
+
+    return {
+      success: true,
+      event: {
+        id: data.id,
+        summary: data.summary,
+        start: data.start?.dateTime || data.start?.date || "",
+        end: data.end?.dateTime || data.end?.date || "",
+        htmlLink: data.htmlLink,
+        meetLink,
+      },
+    };
+  } catch (error) {
+    console.error(`[Tools] Recurring event error:`, error);
+    return { success: false, error: "Failed to create recurring event" };
+  }
+}
+
+// ============= Update Single Occurrence =============
+
+interface UpdateSingleOccurrenceArgs {
+  event_id: string;
+  instance_date: string;
+  new_start_time?: string;
+  new_end_time?: string;
+  new_summary?: string;
+}
+
+interface UpdateSingleOccurrenceResult {
+  success: boolean;
+  event?: {
+    id: string;
+    summary: string;
+    start: string;
+    end: string;
+  };
+  error?: string;
+}
+
+async function updateSingleOccurrence(
+  userId: string,
+  args: UpdateSingleOccurrenceArgs
+): Promise<UpdateSingleOccurrenceResult> {
+  console.log(`[Tools] update_single_occurrence: event_id="${args.event_id}", instance_date="${args.instance_date}"`);
+
+  const accessToken = await getValidToken(userId, "google");
+  if (!accessToken) {
+    return { success: false, error: "Google Calendar is not connected or token expired" };
+  }
+
+  try {
+    // Get the specific instance for this date
+    const instanceDate = new Date(args.instance_date);
+    const instanceId = `${args.event_id}_${instanceDate.toISOString().replace(/[-:]/g, "").split(".")[0]}Z`;
+
+    // Try to get the instance directly
+    let getUrl = `https://www.googleapis.com/calendar/v3/calendars/primary/events/${instanceId}`;
+    let response = await fetch(getUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    // If direct lookup fails, try listing instances
+    if (!response.ok) {
+      const instancesUrl = new URL(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${args.event_id}/instances`);
+      instancesUrl.searchParams.set("timeMin", new Date(args.instance_date + "T00:00:00").toISOString());
+      instancesUrl.searchParams.set("timeMax", new Date(args.instance_date + "T23:59:59").toISOString());
+      instancesUrl.searchParams.set("maxResults", "1");
+
+      const instancesResponse = await fetch(instancesUrl.toString(), {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      if (!instancesResponse.ok) {
+        return { success: false, error: "Could not find event instance" };
+      }
+
+      const instancesData = await instancesResponse.json();
+      if (!instancesData.items || instancesData.items.length === 0) {
+        return { success: false, error: "No instance found for this date" };
+      }
+
+      getUrl = `https://www.googleapis.com/calendar/v3/calendars/primary/events/${instancesData.items[0].id}`;
+      response = await fetch(getUrl, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+    }
+
+    if (!response.ok) {
+      return { success: false, error: "Event instance not found" };
+    }
+
+    const instance = await response.json();
+
+    // Build update
+    const updateBody: Record<string, unknown> = {
+      summary: args.new_summary ?? instance.summary,
+      start: args.new_start_time ? { dateTime: args.new_start_time } : instance.start,
+      end: args.new_end_time ? { dateTime: args.new_end_time } : instance.end,
+    };
+
+    const patchResponse = await fetch(getUrl, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(updateBody),
+    });
+
+    if (!patchResponse.ok) {
+      const errorText = await patchResponse.text();
+      console.error(`[Tools] Update instance error: ${patchResponse.status} - ${errorText}`);
+      return { success: false, error: `Failed to update instance: ${patchResponse.status}` };
+    }
+
+    const data = await patchResponse.json();
+    console.log(`[Tools] Updated single occurrence: ${data.id}`);
+
+    return {
+      success: true,
+      event: {
+        id: data.id,
+        summary: data.summary,
+        start: data.start?.dateTime || data.start?.date || "",
+        end: data.end?.dateTime || data.end?.date || "",
+      },
+    };
+  } catch (error) {
+    console.error(`[Tools] Update occurrence error:`, error);
+    return { success: false, error: "Failed to update occurrence" };
   }
 }
 
@@ -1970,6 +2924,38 @@ export async function executeTool(
 
       case "delete_calendar_event":
         result = await deleteCalendarEvent(userId, args);
+        break;
+
+      case "get_calendars":
+        result = await getCalendars(userId);
+        break;
+
+      case "get_free_busy":
+        result = await getFreeBusy(userId, args);
+        break;
+
+      case "find_available_slots":
+        result = await findAvailableSlots(userId, args);
+        break;
+
+      case "create_event_on_calendar":
+        result = await createEventOnCalendar(userId, args);
+        break;
+
+      case "rsvp_to_event":
+        result = await rsvpToEvent(userId, args);
+        break;
+
+      case "get_event_attendees":
+        result = await getEventAttendees(userId, args);
+        break;
+
+      case "create_recurring_event":
+        result = await createRecurringEvent(userId, args);
+        break;
+
+      case "update_single_occurrence":
+        result = await updateSingleOccurrence(userId, args);
         break;
       
       case "get_emails":
