@@ -35,6 +35,99 @@ export type Database = {
         }
         Relationships: []
       }
+      contact_profile_tags: {
+        Row: {
+          contact_profile_id: string
+          tag_id: string
+        }
+        Insert: {
+          contact_profile_id: string
+          tag_id: string
+        }
+        Update: {
+          contact_profile_id?: string
+          tag_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contact_profile_tags_contact_profile_id_fkey"
+            columns: ["contact_profile_id"]
+            isOneToOne: false
+            referencedRelation: "contact_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_profile_tags_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "contact_tags"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contact_profiles: {
+        Row: {
+          created_at: string
+          email: string | null
+          google_contact_id: string
+          id: string
+          last_contact_date: string | null
+          next_followup_date: string | null
+          notes: string | null
+          tier: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          google_contact_id: string
+          id?: string
+          last_contact_date?: string | null
+          next_followup_date?: string | null
+          notes?: string | null
+          tier?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          google_contact_id?: string
+          id?: string
+          last_contact_date?: string | null
+          next_followup_date?: string | null
+          notes?: string | null
+          tier?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      contact_tags: {
+        Row: {
+          color: string
+          created_at: string
+          id: string
+          name: string
+          user_id: string
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          id?: string
+          name: string
+          user_id: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          id?: string
+          name?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       encrypted_integration_tokens: {
         Row: {
           created_at: string | null
@@ -169,6 +262,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      create_default_contact_tags: {
+        Args: { p_user_id: string }
+        Returns: undefined
+      }
       delete_integration_token: {
         Args: { p_secret_id: string; p_user_id: string }
         Returns: undefined
