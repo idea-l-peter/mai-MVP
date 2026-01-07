@@ -1108,6 +1108,231 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     },
   },
 },
+// ============= Contact Intelligence Tools (mai's relationship layer) =============
+// Tier A - Read Operations
+{
+  type: "function",
+  function: {
+    name: "intelligence_get_profile",
+    description: "Get mai's intelligence profile for a contact, including tier, notes, tags, and follow-up dates. Use this to understand the relationship context with a contact.",
+    parameters: {
+      type: "object",
+      properties: {
+        google_contact_id: {
+          type: "string",
+          description: "The Google Contact resource name (e.g., 'people/c123456789')",
+        },
+      },
+      required: ["google_contact_id"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "intelligence_get_tags",
+    description: "Get the user's contact tags/labels for categorizing contacts (e.g., 'VIP Client', 'Family', 'Responds Slowly').",
+    parameters: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "intelligence_get_by_tier",
+    description: "Get all contacts at a specific tier level (1=highest priority, 5=lowest). Use to find important contacts.",
+    parameters: {
+      type: "object",
+      properties: {
+        tier: {
+          type: "number",
+          description: "Tier level 1-5 (1=highest priority)",
+        },
+      },
+      required: ["tier"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "intelligence_get_by_tag",
+    description: "Get all contacts with a specific tag. Use to find contacts in a category.",
+    parameters: {
+      type: "object",
+      properties: {
+        tag_id: {
+          type: "string",
+          description: "The tag ID",
+        },
+      },
+      required: ["tag_id"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "intelligence_get_followups_due",
+    description: "Get contacts that need follow-up within the next N days. Use to help user stay on top of relationships.",
+    parameters: {
+      type: "object",
+      properties: {
+        days_ahead: {
+          type: "number",
+          description: "Number of days to look ahead (default 7)",
+        },
+      },
+      required: [],
+    },
+  },
+},
+// Tier B - Write Operations (require confirmation)
+{
+  type: "function",
+  function: {
+    name: "intelligence_set_tier",
+    description: "Set the priority tier (1-5) for a contact. Tier 1 is highest priority (VIPs), Tier 5 is lowest. This is a Tier B action.",
+    parameters: {
+      type: "object",
+      properties: {
+        google_contact_id: {
+          type: "string",
+          description: "The Google Contact resource name",
+        },
+        tier: {
+          type: "number",
+          description: "Tier level 1-5",
+        },
+        email: {
+          type: "string",
+          description: "Contact's email for quick lookup (optional)",
+        },
+      },
+      required: ["google_contact_id", "tier"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "intelligence_add_note",
+    description: "Add a note to a contact's intelligence profile. Notes are timestamped and appended. This is a Tier B action.",
+    parameters: {
+      type: "object",
+      properties: {
+        google_contact_id: {
+          type: "string",
+          description: "The Google Contact resource name",
+        },
+        note: {
+          type: "string",
+          description: "The note to add",
+        },
+        email: {
+          type: "string",
+          description: "Contact's email for quick lookup (optional)",
+        },
+      },
+      required: ["google_contact_id", "note"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "intelligence_set_followup",
+    description: "Set a follow-up reminder date for a contact. Mai will remind the user when it's due. This is a Tier B action.",
+    parameters: {
+      type: "object",
+      properties: {
+        google_contact_id: {
+          type: "string",
+          description: "The Google Contact resource name",
+        },
+        followup_date: {
+          type: "string",
+          description: "The follow-up date in ISO 8601 format",
+        },
+        email: {
+          type: "string",
+          description: "Contact's email for quick lookup (optional)",
+        },
+      },
+      required: ["google_contact_id", "followup_date"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "intelligence_create_tag",
+    description: "Create a new tag/label for categorizing contacts. This is a Tier B action.",
+    parameters: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "Tag name (e.g., 'Key Decision Maker')",
+        },
+        color: {
+          type: "string",
+          description: "Hex color for the tag (e.g., '#3B82F6')",
+        },
+      },
+      required: ["name"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "intelligence_tag_contact",
+    description: "Add a tag to a contact. Use to categorize contacts. This is a Tier B action.",
+    parameters: {
+      type: "object",
+      properties: {
+        google_contact_id: {
+          type: "string",
+          description: "The Google Contact resource name",
+        },
+        tag_id: {
+          type: "string",
+          description: "The tag ID to add",
+        },
+        email: {
+          type: "string",
+          description: "Contact's email for quick lookup (optional)",
+        },
+      },
+      required: ["google_contact_id", "tag_id"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
+    name: "intelligence_untag_contact",
+    description: "Remove a tag from a contact. This is a Tier B action.",
+    parameters: {
+      type: "object",
+      properties: {
+        google_contact_id: {
+          type: "string",
+          description: "The Google Contact resource name",
+        },
+        tag_id: {
+          type: "string",
+          description: "The tag ID to remove",
+        },
+      },
+      required: ["google_contact_id", "tag_id"],
+    },
+  },
+},
 ];
 
 // ============= Tool Call Types =============
@@ -3548,6 +3773,52 @@ export async function executeTool(
       case "contacts_remove_from_group":
         result = await executeContactsTool(userId, "remove_from_group", args);
         break;
+
+      // Contact Intelligence tools - Read
+      case "intelligence_get_profile":
+        result = await executeIntelligenceTool(userId, "get_contact_profile", args);
+        break;
+
+      case "intelligence_get_tags":
+        result = await executeIntelligenceTool(userId, "get_tags", {});
+        break;
+
+      case "intelligence_get_by_tier":
+        result = await executeIntelligenceTool(userId, "get_contacts_by_tier", args);
+        break;
+
+      case "intelligence_get_by_tag":
+        result = await executeIntelligenceTool(userId, "get_contacts_by_tag", args);
+        break;
+
+      case "intelligence_get_followups_due":
+        result = await executeIntelligenceTool(userId, "get_followups_due", args);
+        break;
+
+      // Contact Intelligence tools - Write
+      case "intelligence_set_tier":
+        result = await executeIntelligenceTool(userId, "set_contact_tier", args);
+        break;
+
+      case "intelligence_add_note":
+        result = await executeIntelligenceTool(userId, "add_contact_note", args);
+        break;
+
+      case "intelligence_set_followup":
+        result = await executeIntelligenceTool(userId, "set_followup", args);
+        break;
+
+      case "intelligence_create_tag":
+        result = await executeIntelligenceTool(userId, "create_tag", args);
+        break;
+
+      case "intelligence_tag_contact":
+        result = await executeIntelligenceTool(userId, "add_tag_to_contact", args);
+        break;
+
+      case "intelligence_untag_contact":
+        result = await executeIntelligenceTool(userId, "remove_tag_from_contact", args);
+        break;
       
       default:
         result = { success: false, error: `Unknown tool: ${name}` };
@@ -3659,6 +3930,45 @@ async function executeContactsTool(
     return { 
       success: false, 
       error: error instanceof Error ? error.message : 'Failed to execute Google Contacts action' 
+    };
+  }
+}
+
+// ============= Contact Intelligence Tool Executor =============
+
+async function executeIntelligenceTool(
+  userId: string, 
+  action: string, 
+  params: Record<string, unknown>
+): Promise<unknown> {
+  console.log(`[Tools] Executing Contact Intelligence action: ${action}`);
+  
+  try {
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/contact-intelligence`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      },
+      body: JSON.stringify({
+        action,
+        user_id: userId,
+        params,
+      }),
+    });
+
+    const data = await response.json();
+    
+    if (!response.ok || !data.success) {
+      return { success: false, error: data.error || 'Contact Intelligence API request failed' };
+    }
+
+    return { success: true, ...data.data };
+  } catch (error) {
+    console.error(`[Tools] Contact Intelligence tool error:`, error);
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Failed to execute Contact Intelligence action' 
     };
   }
 }
