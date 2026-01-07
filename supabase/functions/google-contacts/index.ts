@@ -320,6 +320,235 @@ function parseContact(person: unknown): Contact {
   };
 }
 
+// ============= Write Operations =============
+
+interface CreateContactInput {
+  given_name?: string;
+  family_name?: string;
+  email?: string;
+  phone?: string;
+  organization?: string;
+  title?: string;
+}
+
+async function createContact(token: string, input: CreateContactInput): Promise<Contact> {
+  console.log(`[GoogleContacts] Creating contact:`, input);
+  
+  const personData: Record<string, unknown> = {};
+  
+  if (input.given_name || input.family_name) {
+    personData.names = [{
+      givenName: input.given_name,
+      familyName: input.family_name,
+    }];
+  }
+  
+  if (input.email) {
+    personData.emailAddresses = [{ value: input.email }];
+  }
+  
+  if (input.phone) {
+    personData.phoneNumbers = [{ value: input.phone }];
+  }
+  
+  if (input.organization || input.title) {
+    personData.organizations = [{
+      name: input.organization,
+      title: input.title,
+    }];
+  }
+
+  const response = await fetch(`${PEOPLE_API_URL}/people:createContact`, {
+    method: 'POST',
+    headers: { 
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(personData),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`[GoogleContacts] Create contact error:`, errorText);
+    throw new Error(`Failed to create contact: ${response.status}`);
+  }
+
+  const data = await response.json();
+  console.log(`[GoogleContacts] Contact created: ${data.resourceName}`);
+  return parseContact(data);
+}
+
+interface UpdateContactInput {
+  resource_name: string;
+  given_name?: string;
+  family_name?: string;
+  email?: string;
+  phone?: string;
+  organization?: string;
+  title?: string;
+}
+
+async function updateContact(token: string, input: UpdateContactInput): Promise<Contact> {
+  console.log(`[GoogleContacts] Updating contact: ${input.resource_name}`);
+  
+  // First, get the current contact to get etag
+  const normalizedName = input.resource_name.startsWith('people/') 
+    ? input.resource_name 
+    : `people/${input.resource_name}`;
+  
+  const getUrl = new URL(`${PEOPLE_API_URL}/${normalizedName}`);
+  getUrl.searchParams.set('personFields', PERSON_FIELDS);
+  
+  const getResponse = await fetch(getUrl.toString(), {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  
+  if (!getResponse.ok) {
+    throw new Error(`Contact not found: ${getResponse.status}`);
+  }
+  
+  const existingContact = await getResponse.json();
+  const etag = existingContact.etag;
+  
+  // Build update fields
+  const updateMask: string[] = [];
+  const personData: Record<string, unknown> = { etag };
+  
+  if (input.given_name !== undefined || input.family_name !== undefined) {
+    personData.names = [{
+      givenName: input.given_name ?? existingContact.names?.[0]?.givenName,
+      familyName: input.family_name ?? existingContact.names?.[0]?.familyName,
+    }];
+    updateMask.push('names');
+  }
+  
+  if (input.email !== undefined) {
+    personData.emailAddresses = [{ value: input.email }];
+    updateMask.push('emailAddresses');
+  }
+  
+  if (input.phone !== undefined) {
+    personData.phoneNumbers = [{ value: input.phone }];
+    updateMask.push('phoneNumbers');
+  }
+  
+  if (input.organization !== undefined || input.title !== undefined) {
+    personData.organizations = [{
+      name: input.organization ?? existingContact.organizations?.[0]?.name,
+      title: input.title ?? existingContact.organizations?.[0]?.title,
+    }];
+    updateMask.push('organizations');
+  }
+
+  const updateUrl = new URL(`${PEOPLE_API_URL}/${normalizedName}:updateContact`);
+  updateUrl.searchParams.set('updatePersonFields', updateMask.join(','));
+
+  const response = await fetch(updateUrl.toString(), {
+    method: 'PATCH',
+    headers: { 
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(personData),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`[GoogleContacts] Update contact error:`, errorText);
+    throw new Error(`Failed to update contact: ${response.status}`);
+  }
+
+  const data = await response.json();
+  console.log(`[GoogleContacts] Contact updated: ${data.resourceName}`);
+  return parseContact(data);
+}
+
+async function deleteContact(token: string, resourceName: string): Promise<{ deleted: boolean }> {
+  console.log(`[GoogleContacts] Deleting contact: ${resourceName}`);
+  
+  const normalizedName = resourceName.startsWith('people/') 
+    ? resourceName 
+    : `people/${resourceName}`;
+
+  const response = await fetch(`${PEOPLE_API_URL}/${normalizedName}:deleteContact`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`[GoogleContacts] Delete contact error:`, errorText);
+    throw new Error(`Failed to delete contact: ${response.status}`);
+  }
+
+  console.log(`[GoogleContacts] Contact deleted`);
+  return { deleted: true };
+}
+
+async function addContactToGroup(
+  token: string, 
+  resourceName: string, 
+  groupResourceName: string
+): Promise<{ success: boolean }> {
+  console.log(`[GoogleContacts] Adding contact ${resourceName} to group ${groupResourceName}`);
+  
+  const normalizedContactName = resourceName.startsWith('people/') 
+    ? resourceName 
+    : `people/${resourceName}`;
+
+  const response = await fetch(`${PEOPLE_API_URL}/${groupResourceName}/members:modify`, {
+    method: 'POST',
+    headers: { 
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      resourceNamesToAdd: [normalizedContactName],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`[GoogleContacts] Add to group error:`, errorText);
+    throw new Error(`Failed to add contact to group: ${response.status}`);
+  }
+
+  console.log(`[GoogleContacts] Contact added to group`);
+  return { success: true };
+}
+
+async function removeContactFromGroup(
+  token: string, 
+  resourceName: string, 
+  groupResourceName: string
+): Promise<{ success: boolean }> {
+  console.log(`[GoogleContacts] Removing contact ${resourceName} from group ${groupResourceName}`);
+  
+  const normalizedContactName = resourceName.startsWith('people/') 
+    ? resourceName 
+    : `people/${resourceName}`;
+
+  const response = await fetch(`${PEOPLE_API_URL}/${groupResourceName}/members:modify`, {
+    method: 'POST',
+    headers: { 
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      resourceNamesToRemove: [normalizedContactName],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`[GoogleContacts] Remove from group error:`, errorText);
+    throw new Error(`Failed to remove contact from group: ${response.status}`);
+  }
+
+  console.log(`[GoogleContacts] Contact removed from group`);
+  return { success: true };
+}
+
 // ============= Main Handler =============
 
 serve(async (req) => {
@@ -386,6 +615,62 @@ serve(async (req) => {
 
       case 'get_contact_groups':
         result = await getContactGroups(token);
+        break;
+
+      // Write operations
+      case 'create_contact':
+        result = await createContact(token, {
+          given_name: params.given_name as string | undefined,
+          family_name: params.family_name as string | undefined,
+          email: params.email as string | undefined,
+          phone: params.phone as string | undefined,
+          organization: params.organization as string | undefined,
+          title: params.title as string | undefined,
+        });
+        break;
+
+      case 'update_contact':
+        if (!params.resource_name) {
+          throw new Error('resource_name is required');
+        }
+        result = await updateContact(token, {
+          resource_name: params.resource_name as string,
+          given_name: params.given_name as string | undefined,
+          family_name: params.family_name as string | undefined,
+          email: params.email as string | undefined,
+          phone: params.phone as string | undefined,
+          organization: params.organization as string | undefined,
+          title: params.title as string | undefined,
+        });
+        break;
+
+      case 'delete_contact':
+        if (!params.resource_name) {
+          throw new Error('resource_name is required');
+        }
+        result = await deleteContact(token, params.resource_name as string);
+        break;
+
+      case 'add_to_group':
+        if (!params.resource_name || !params.group_resource_name) {
+          throw new Error('resource_name and group_resource_name are required');
+        }
+        result = await addContactToGroup(
+          token, 
+          params.resource_name as string, 
+          params.group_resource_name as string
+        );
+        break;
+
+      case 'remove_from_group':
+        if (!params.resource_name || !params.group_resource_name) {
+          throw new Error('resource_name and group_resource_name are required');
+        }
+        result = await removeContactFromGroup(
+          token, 
+          params.resource_name as string, 
+          params.group_resource_name as string
+        );
         break;
 
       default:
