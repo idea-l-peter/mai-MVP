@@ -34,6 +34,7 @@ const INTEGRATION_CONFIGS: IntegrationConfig[] = [
     scopes: [
       "https://www.googleapis.com/auth/calendar.readonly",
       "https://www.googleapis.com/auth/calendar.events",
+      "https://www.googleapis.com/auth/contacts",
       "https://www.googleapis.com/auth/userinfo.email",
       "https://www.googleapis.com/auth/userinfo.profile",
     ],
@@ -49,7 +50,9 @@ const INTEGRATION_CONFIGS: IntegrationConfig[] = [
     scopes: [
       "https://www.googleapis.com/auth/gmail.readonly",
       "https://www.googleapis.com/auth/gmail.send",
+      "https://www.googleapis.com/auth/gmail.modify",
       "https://www.googleapis.com/auth/gmail.settings.basic",
+      "https://www.googleapis.com/auth/contacts",
       "https://www.googleapis.com/auth/userinfo.email",
       "https://www.googleapis.com/auth/userinfo.profile",
     ],
@@ -63,7 +66,7 @@ const INTEGRATION_CONFIGS: IntegrationConfig[] = [
     showConnectButton: true,
     provider: "google-contacts",
     scopes: [
-      "https://www.googleapis.com/auth/contacts.readonly",
+      "https://www.googleapis.com/auth/contacts",
       "https://www.googleapis.com/auth/userinfo.email",
       "https://www.googleapis.com/auth/userinfo.profile",
     ],
