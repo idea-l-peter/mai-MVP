@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -51,22 +51,57 @@ const Auth = () => {
   const [googleLoading, setGoogleLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const domainCheckDone = useRef(false);
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session) {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      // Only process SIGNED_IN events and prevent duplicate checks
+      if (event === 'SIGNED_IN' && session?.user?.email && !domainCheckDone.current) {
+        domainCheckDone.current = true;
+        
+        // Check domain for OAuth signins (email/password already checked before signup)
+        const isAllowed = await checkDomainAllowed(session.user.email);
+        if (!isAllowed) {
+          // Sign out user and show error
+          await supabase.auth.signOut();
+          toast({
+            title: "Access Denied",
+            description: "Your email domain is not authorized. Contact your administrator for access.",
+            variant: "destructive",
+          });
+          domainCheckDone.current = false;
+          return;
+        }
+        
         navigate("/dashboard");
+      } else if (event === 'SIGNED_OUT') {
+        domainCheckDone.current = false;
       }
     });
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session?.user?.email && !domainCheckDone.current) {
+        domainCheckDone.current = true;
+        
+        // Verify domain on page load too (in case user bookmarked with active session)
+        const isAllowed = await checkDomainAllowed(session.user.email);
+        if (!isAllowed) {
+          await supabase.auth.signOut();
+          toast({
+            title: "Access Denied",
+            description: "Your email domain is not authorized.",
+            variant: "destructive",
+          });
+          domainCheckDone.current = false;
+          return;
+        }
+        
         navigate("/dashboard");
       }
     });
 
     return () => subscription.unsubscribe();
-  }, [navigate]);
+  }, [navigate, toast]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

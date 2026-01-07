@@ -5,6 +5,44 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Simple email validation regex (RFC 5322 simplified)
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAX_EMAIL_LENGTH = 320;
+
+// In-memory rate limiting
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+const RATE_LIMIT_MAX = 20; // 20 requests per window
+const RATE_LIMIT_WINDOW_MS = 3600000; // 1 hour
+
+function getClientIp(req: Request): string {
+  return req.headers.get("cf-connecting-ip") ||
+         req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+         "unknown";
+}
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const limit = rateLimitMap.get(ip);
+  
+  // Cleanup old entries periodically (1% chance)
+  if (Math.random() < 0.01) {
+    for (const [key, val] of rateLimitMap.entries()) {
+      if (val.resetAt < now) rateLimitMap.delete(key);
+    }
+  }
+  
+  if (limit && limit.resetAt > now) {
+    if (limit.count >= RATE_LIMIT_MAX) {
+      return false; // Rate limit exceeded
+    }
+    limit.count++;
+  } else {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+  }
+  
+  return true;
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
@@ -12,11 +50,39 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { email } = await req.json();
+    // Rate limiting
+    const clientIp = getClientIp(req);
+    if (!checkRateLimit(clientIp)) {
+      console.log(`[Domain Check] Rate limit exceeded for IP: ${clientIp}`);
+      return new Response(
+        JSON.stringify({ error: "Rate limit exceeded. Try again later.", allowed: false }),
+        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const body = await req.json();
+    const { email } = body;
     
-    if (!email) {
+    // Validate email is present
+    if (!email || typeof email !== "string") {
       return new Response(
         JSON.stringify({ error: "Email is required", allowed: false }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Validate email length
+    if (email.length > MAX_EMAIL_LENGTH) {
+      return new Response(
+        JSON.stringify({ error: "Email too long", allowed: false }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Validate email format
+    if (!EMAIL_REGEX.test(email)) {
+      return new Response(
+        JSON.stringify({ error: "Invalid email format", allowed: false }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -35,7 +101,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log("Checking if domain is allowed:", domain);
+    console.log(`[Domain Check] IP: ${clientIp}, domain: ${domain}`);
 
     // Check if domain is in allowed_domains table
     const { data, error } = await supabase
@@ -53,7 +119,7 @@ Deno.serve(async (req) => {
     }
 
     const allowed = !!data;
-    console.log(`Domain ${domain} allowed:`, allowed);
+    console.log(`[Domain Check] Domain ${domain} allowed: ${allowed}`);
 
     return new Response(
       JSON.stringify({ allowed, domain }),

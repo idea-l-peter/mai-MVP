@@ -5,6 +5,10 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Simple email validation regex (RFC 5322 simplified)
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAX_EMAIL_LENGTH = 320;
+
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
@@ -56,11 +60,30 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Parse request body
-    const { email } = await req.json();
-    if (!email) {
+    // Parse and validate request body
+    const body = await req.json();
+    const { email } = body;
+    
+    // Validate email is present and is a string
+    if (!email || typeof email !== "string") {
       return new Response(
         JSON.stringify({ error: "Email is required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Validate email length
+    if (email.length > MAX_EMAIL_LENGTH) {
+      return new Response(
+        JSON.stringify({ error: "Email too long" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Validate email format
+    if (!EMAIL_REGEX.test(email)) {
+      return new Response(
+        JSON.stringify({ error: "Invalid email format" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
