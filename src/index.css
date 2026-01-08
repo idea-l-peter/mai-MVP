@@ -154,4 +154,9 @@
   .focus-ring {
     @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background;
   }
+
+  /* Theme transition utility */
+  .theme-transition {
+    @apply transition-colors duration-200;
+  }
 }

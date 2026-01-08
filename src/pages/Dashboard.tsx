@@ -90,14 +90,14 @@ const Dashboard = () => {
 
   return (
     <SidebarProvider>
-      <div className="min-h-screen flex w-full">
+      <div className="min-h-screen flex w-full transition-colors duration-200">
         {/* Desktop Sidebar */}
         {!isMobile && <DashboardSidebar />}
         
-        <SidebarInset className="bg-background flex-1 min-w-0">
+        <SidebarInset className="bg-background flex-1 min-w-0 transition-colors duration-200">
           {/* Mobile Header - only show on non-fullscreen routes */}
           {isMobile && !isFullScreenRoute && (
-            <header className="sticky top-0 z-40 flex h-14 items-center border-b border-border bg-card px-4">
+            <header className="sticky top-0 z-40 flex h-14 items-center border-b border-border bg-card px-4 transition-colors duration-200">
               <button onClick={() => navigate("/dashboard")} className="focus:outline-none">
                 <img src={maiLogo} alt="mai" className="h-8 w-auto" />
               </button>
