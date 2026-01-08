@@ -362,6 +362,33 @@ export type Database = {
         }
         Relationships: []
       }
+      verification_codes: {
+        Row: {
+          action_type: string
+          code_hash: string
+          created_at: string
+          expires_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          action_type: string
+          code_hash: string
+          created_at?: string
+          expires_at: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          action_type?: string
+          code_hash?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

@@ -2,6 +2,15 @@ import { serve } from "jsr:@std/http@0.224.0/server";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { routeLLMRequest, TOOL_DEFINITIONS, type LLMMessage } from "../_shared/llm-router.ts";
 import { executeTool, type ToolResult } from "../_shared/tools.ts";
+import {
+  getEffectiveTier,
+  ACTION_DEFAULTS,
+  TIER_3_CONFIRMATIONS,
+  TIER_4_POSITIVE_RESPONSES,
+  type SecurityTier,
+} from "../_shared/security-tiers.ts";
+import { TOOL_TO_ACTION_MAP, BLOCKED_ACTIONS, getAdjustedActionId } from "../_shared/tool-action-map.ts";
+import { checkRateLimit } from "../_shared/two-factor.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -10,9 +19,82 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 // Maximum tool calls per request to prevent runaway costs
 const MAX_TOOL_CALLS = 5;
+
+// Platform display names for prompt generation
+const PLATFORM_NAMES: Record<string, string> = {
+  gmail: 'Gmail',
+  calendar: 'Calendar',
+  contacts: 'Contacts',
+  monday: 'Monday.com',
+  contact_intelligence: 'Contact Intelligence',
+  whatsapp: 'WhatsApp',
+  account: 'Account',
+};
+
+// Generate security tier instructions for the AI
+function generateSecurityTierPrompt(
+  overrides: Record<string, SecurityTier> | null | undefined,
+  emojiEnabled: boolean,
+  securityPhraseSet: boolean
+): string {
+  let prompt = `## SECURITY TIER SYSTEM - MANDATORY
+
+Before executing ANY action, you MUST check its security tier and request the appropriate confirmation. This is non-negotiable.
+
+### Tier Behaviors:
+- **Tier 1 (Critical)**: Say "This requires 2FA verification. A code has been sent to your email. Please enter the 6-digit code to proceed."
+- **Tier 2 (High Security)**: Say "${securityPhraseSet ? 'Please confirm with your security phrase to proceed.' : 'Security phrase not set. Please set one in Settings first.'}"${emojiEnabled ? ' (user can also reply with their security emoji)' : ''}
+- **Tier 3 (Confirm Action)**: Say "To [action], please reply with '[keyword]'${emojiEnabled ? " or [emoji]" : ''}" - ONLY accept exact match
+- **Tier 4 (Quick Confirm)**: Say "Should I proceed?" - Accept: yes, ok, go, sure, yalla, do it, confirmed, 👍, ✅
+- **Tier 5 (No Confirmation)**: Execute immediately without asking
+- **BLOCKED**: Say "This action is blocked for security reasons and cannot be performed."
+
+### CRITICAL RULES:
+1. NEVER reveal the user's security phrase
+2. NEVER skip or downgrade tier requirements
+3. After 3 failed confirmation attempts, the user will be locked out for 15 minutes
+4. Always wait for valid confirmation before executing tier 1-4 actions
+
+### Action Tiers:\n`;
+
+  // Group by platform
+  const actionsByPlatform: Record<string, { id: string; tier: SecurityTier; keyword?: string; emoji?: string }[]> = {};
+  
+  for (const [actionId, config] of Object.entries(ACTION_DEFAULTS)) {
+    const platform = actionId.split('.')[0];
+    if (!actionsByPlatform[platform]) {
+      actionsByPlatform[platform] = [];
+    }
+    const effectiveTier = overrides?.[actionId] ?? config.tier;
+    actionsByPlatform[platform].push({
+      id: actionId,
+      tier: effectiveTier,
+      keyword: config.keyword,
+      emoji: config.emoji,
+    });
+  }
+
+  for (const [platform, actions] of Object.entries(actionsByPlatform)) {
+    const platformName = PLATFORM_NAMES[platform] || platform;
+    prompt += `\n**${platformName}:**\n`;
+    
+    for (const action of actions) {
+      const tierLabel = action.tier === 'blocked' ? 'BLOCKED' : `Tier ${action.tier}`;
+      const actionName = action.id.split('.')[1].replace(/_/g, ' ');
+      let confirmInfo = '';
+      if (action.tier === 3 && action.keyword) {
+        confirmInfo = ` → confirm: "${action.keyword}"${emojiEnabled && action.emoji ? ` or ${action.emoji}` : ''}`;
+      }
+      prompt += `- ${actionName}: ${tierLabel}${confirmInfo}\n`;
+    }
+  }
+
+  return prompt;
+}
 
 function decodeJwtClaims(
   authHeader: string
@@ -153,11 +235,59 @@ serve(async (req) => {
       );
     }
 
-    // Convert to LLMMessage format
+    // Fetch user preferences for security tier enforcement
+    let userPreferences: {
+      emoji_confirmations_enabled: boolean;
+      security_phrase_color: string | null;
+      security_phrase_object: string | null;
+      security_phrase_emoji: string | null;
+      action_security_overrides: Record<string, SecurityTier> | null;
+    } | null = null;
+    
+    if (userId) {
+      const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+      const { data: prefs } = await supabase
+        .from('user_preferences')
+        .select('emoji_confirmations_enabled, security_phrase_color, security_phrase_object, security_phrase_emoji, action_security_overrides')
+        .eq('user_id', userId)
+        .single();
+      
+      userPreferences = prefs;
+      
+      // Check rate limiting
+      const rateLimit = await checkRateLimit(userId);
+      if (rateLimit.isLocked) {
+        const lockoutEnd = new Date(rateLimit.lockoutUntil!);
+        const minutesLeft = Math.ceil((lockoutEnd.getTime() - Date.now()) / 60000);
+        return new Response(
+          JSON.stringify({ 
+            error: `Security lockout active. Too many failed confirmation attempts. Try again in ${minutesLeft} minutes.` 
+          }),
+          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
+    // Generate security tier system prompt
+    const securitySystemPrompt = generateSecurityTierPrompt(
+      userPreferences?.action_security_overrides,
+      userPreferences?.emoji_confirmations_enabled ?? true,
+      !!(userPreferences?.security_phrase_color && userPreferences?.security_phrase_object)
+    );
+
+    // Convert to LLMMessage format and inject security instructions
     let messages: LLMMessage[] = inputMessages.map((m: { role: string; content: string }) => ({
       role: m.role as LLMMessage["role"],
       content: m.content,
     }));
+    
+    // Inject security tier instructions into the first system message or add one
+    const systemMsgIndex = messages.findIndex(m => m.role === 'system');
+    if (systemMsgIndex >= 0) {
+      messages[systemMsgIndex].content = securitySystemPrompt + '\n\n' + messages[systemMsgIndex].content;
+    } else {
+      messages.unshift({ role: 'system', content: securitySystemPrompt });
+    }
 
     console.log(`[AI Assistant] Received ${messages.length} messages, stream=${stream}, tools_enabled=${!!userId}, tools_count=${userId ? TOOL_DEFINITIONS.length : 0}`);
 
