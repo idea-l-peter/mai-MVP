@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, RefreshCw, Shield, Smile } from "lucide-react";
 import { HolidayPreferencesCard } from "@/components/settings/HolidayPreferencesCard";
 import { ActionSecurityCard } from "@/components/settings/ActionSecurityCard";
+import { AppearanceCard } from "@/components/settings/AppearanceCard";
 import type { SecurityTier } from "@/lib/security-tiers";
 
 const PHRASE_OPTIONS = [
@@ -243,6 +244,9 @@ export function SettingsContent() {
 
   return (
     <div className="space-y-6 max-w-4xl">
+      {/* Appearance Card */}
+      <AppearanceCard />
+
       {/* Emoji Confirmations Card */}
       <Card>
         <CardHeader>

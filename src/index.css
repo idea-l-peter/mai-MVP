@@ -107,6 +107,8 @@
     padding-top: env(safe-area-inset-top);
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
+    /* Smooth theme transitions */
+    transition: background-color 0.2s ease, color 0.2s ease;
   }
 
   /* PWA standalone mode adjustments */
