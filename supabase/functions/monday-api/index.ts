@@ -116,20 +116,47 @@ async function getMe(token: string) {
 }
 
 async function getBoards(token: string) {
-  const query = `query {
-    boards(limit: 50) {
-      id
-      name
-      description
-      state
-      board_kind
-      workspace {
+  const allBoards: unknown[] = [];
+  let page = 1;
+  const limit = 100; // Max allowed by Monday.com API
+  
+  console.log(`[MondayAPI] Fetching all boards with pagination (limit: ${limit})`);
+  
+  while (true) {
+    const query = `query($limit: Int!, $page: Int!) {
+      boards(limit: $limit, page: $page) {
         id
         name
+        description
+        state
+        board_kind
+        workspace {
+          id
+          name
+        }
       }
+    }`;
+    
+    const result = await mondayGraphQL(token, query, { limit, page }) as { boards: unknown[] };
+    const boards = result.boards || [];
+    
+    console.log(`[MondayAPI] Page ${page}: fetched ${boards.length} boards`);
+    
+    if (boards.length === 0) {
+      break; // No more boards to fetch
     }
-  }`;
-  return await mondayGraphQL(token, query);
+    
+    allBoards.push(...boards);
+    
+    if (boards.length < limit) {
+      break; // Last page (fewer items than limit means no more pages)
+    }
+    
+    page++;
+  }
+  
+  console.log(`[MondayAPI] Total boards fetched: ${allBoards.length}`);
+  return { boards: allBoards };
 }
 
 async function getBoard(token: string, boardId: string) {
