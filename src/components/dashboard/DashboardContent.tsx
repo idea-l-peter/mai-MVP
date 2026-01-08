@@ -8,11 +8,19 @@ import { RecentEmailsCard } from './RecentEmailsCard';
 import { PriorityContactsCard } from './PriorityContactsCard';
 import { UpcomingOccasionsCard } from './UpcomingOccasionsCard';
 import { QuickActions } from './QuickActions';
+import { ChatFAB } from './ChatFAB';
+import { PullToRefresh } from '@/components/ui/pull-to-refresh';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 export function DashboardContent() {
   const { data, loading, error, refresh } = useDashboardData();
+  const isMobile = useIsMobile();
 
-  return (
+  const handleRefresh = async () => {
+    await refresh();
+  };
+
+  const content = (
     <div className="space-y-6">
       {/* Header with refresh */}
       <div className="flex items-center justify-between">
@@ -27,7 +35,7 @@ export function DashboardContent() {
           size="sm" 
           onClick={refresh}
           disabled={loading}
-          className="gap-2"
+          className="gap-2 hidden md:flex"
         >
           <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           Refresh
@@ -35,7 +43,7 @@ export function DashboardContent() {
       </div>
 
       {error && (
-        <div className="bg-destructive/10 text-destructive text-sm p-3 rounded-lg">
+        <div className="bg-destructive/10 text-destructive text-sm p-3 rounded-lg animate-fade-in">
           {error}
         </div>
       )}
@@ -65,5 +73,20 @@ export function DashboardContent() {
         <QuickActions />
       </div>
     </div>
+  );
+
+  return (
+    <>
+      {isMobile ? (
+        <PullToRefresh onRefresh={handleRefresh} className="min-h-[calc(100dvh-12rem)]">
+          {content}
+        </PullToRefresh>
+      ) : (
+        content
+      )}
+      
+      {/* Floating Action Button for mobile */}
+      {isMobile && <ChatFAB />}
+    </>
   );
 }

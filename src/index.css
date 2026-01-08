@@ -128,3 +128,28 @@
     }
   }
 }
+
+/* Custom utilities */
+@layer utilities {
+  /* Pulsing skeleton effect */
+  .skeleton-pulse {
+    @apply animate-pulse-soft bg-muted;
+  }
+
+  /* Smooth page transitions */
+  .page-transition {
+    @apply animate-fade-in;
+  }
+
+  /* Card hover effect for desktop */
+  @media (hover: hover) {
+    .card-hover:hover {
+      @apply shadow-md transition-shadow duration-200;
+    }
+  }
+
+  /* Focus visible styles for accessibility */
+  .focus-ring {
+    @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+  }
+}
