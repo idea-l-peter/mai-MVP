@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback } from 'react';
 import { cn } from '@/lib/utils';
-import maiLogo from '@/assets/mai-logo-white.png';
+import maiAvatar from '@/assets/mai-avatar.png';
 
 export type VoiceState = 'idle' | 'listening' | 'processing' | 'speaking';
 
@@ -24,14 +24,14 @@ export function AudioVisualizer({ state, audioLevel = 0, className, onClick }: A
     if (!ctx) return;
 
     const dpr = window.devicePixelRatio || 1;
-    const size = 200;
+    const size = 280;
     canvas.width = size * dpr;
     canvas.height = size * dpr;
     ctx.scale(dpr, dpr);
 
     const centerX = size / 2;
     const centerY = size / 2;
-    const baseRadius = 60;
+    const baseRadius = 85;
 
     // Clear canvas
     ctx.clearRect(0, 0, size, size);
@@ -168,21 +168,18 @@ export function AudioVisualizer({ state, audioLevel = 0, className, onClick }: A
     >
       <canvas
         ref={canvasRef}
-        className="w-[200px] h-[200px]"
-        style={{ width: 200, height: 200 }}
+        className="w-[280px] h-[280px]"
+        style={{ width: 280, height: 280 }}
       />
       
-      {/* Logo and state indicator */}
-      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none gap-1">
-        {/* Show logo when idle or processing */}
-        {(state === 'idle' || state === 'processing') && (
-          <img 
-            src={maiLogo} 
-            alt="" 
-            className="w-12 h-12 opacity-90"
-          />
-        )}
-        <span className="text-white/90 text-sm font-medium">
+      {/* Avatar and state indicator */}
+      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+        <img 
+          src={maiAvatar} 
+          alt="mai" 
+          className="w-36 h-36 rounded-full"
+        />
+        <span className="text-white/90 text-sm font-medium mt-2">
           {stateLabels[state]}
         </span>
       </div>
