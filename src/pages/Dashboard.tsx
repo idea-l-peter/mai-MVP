@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 import { DashboardSidebar } from "@/components/DashboardSidebar";
-import { MobileNav } from "@/components/MobileNav";
+import { MobileBottomNav } from "@/components/MobileBottomNav";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { IntegrationsContent } from "@/components/IntegrationsContent";
@@ -14,6 +14,7 @@ import { ConversationsContent } from "@/components/ConversationsContent";
 import { SettingsContent } from "@/components/SettingsContent";
 import { DashboardContent } from "@/components/dashboard/DashboardContent";
 import Admin from "@/pages/Admin";
+import maiLogo from "@/assets/mai-logo.png";
 
 const Dashboard = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -45,7 +46,10 @@ const Dashboard = () => {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-muted-foreground">Loading...</div>
+        <div className="flex flex-col items-center gap-3">
+          <img src={maiLogo} alt="mai" className="h-12 w-auto animate-pulse-soft" />
+          <p className="text-muted-foreground text-sm">Loading...</p>
+        </div>
       </div>
     );
   }
@@ -60,7 +64,7 @@ const Dashboard = () => {
       case "/dashboard":
         return "Dashboard";
       case "/conversations":
-        return "Conversations";
+        return "Chat";
       case "/contacts":
         return "Contacts";
       case "/integrations":
@@ -80,6 +84,10 @@ const Dashboard = () => {
     }
   };
 
+  // Check if current route should hide bottom nav (full-screen chat)
+  const isFullScreenRoute = location.pathname === "/conversations";
+  const showMobileBottomNav = isMobile && !isFullScreenRoute;
+
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full">
@@ -87,16 +95,31 @@ const Dashboard = () => {
         {!isMobile && <DashboardSidebar />}
         
         <SidebarInset className="bg-background flex-1 min-w-0">
-          {/* Mobile Header */}
-          {isMobile && <MobileNav />}
+          {/* Mobile Header - only show on non-fullscreen routes */}
+          {isMobile && !isFullScreenRoute && (
+            <header className="sticky top-0 z-40 flex h-14 items-center border-b border-border bg-card px-4">
+              <button onClick={() => navigate("/dashboard")} className="focus:outline-none">
+                <img src={maiLogo} alt="mai" className="h-8 w-auto" />
+              </button>
+            </header>
+          )}
           
-          <main className="flex-1 px-4 py-4 md:px-8 md:py-8 overflow-x-hidden">
-            <h1 className="text-2xl md:text-3xl font-bold text-foreground mb-2">
-              {getPageTitle()}
-            </h1>
+          <main 
+            className={`flex-1 overflow-x-hidden animate-fade-in ${
+              isFullScreenRoute 
+                ? '' 
+                : 'px-4 py-4 md:px-8 md:py-8'
+            } ${showMobileBottomNav ? 'pb-20' : ''}`}
+          >
+            {/* Page title - only show on non-fullscreen routes */}
+            {!isFullScreenRoute && (
+              <h1 className="text-2xl md:text-3xl font-bold text-foreground mb-2">
+                {getPageTitle()}
+              </h1>
+            )}
 
             {/* Page-specific content */}
-            <div className="mt-4 md:mt-6">
+            <div className={isFullScreenRoute ? '' : 'mt-4 md:mt-6'}>
               {location.pathname === "/dashboard" && <DashboardContent />}
               {location.pathname === "/conversations" && <ConversationsContent />}
               {location.pathname === "/admin" && <Admin />}
@@ -107,6 +130,9 @@ const Dashboard = () => {
               {location.pathname === "/test-monday" && <TestMondayContent />}
             </div>
           </main>
+
+          {/* Mobile Bottom Navigation */}
+          {showMobileBottomNav && <MobileBottomNav />}
         </SidebarInset>
       </div>
     </SidebarProvider>

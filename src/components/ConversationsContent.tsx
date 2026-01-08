@@ -1,11 +1,14 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send } from "lucide-react";
+import { Send, ArrowLeft } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import maiLogo from "@/assets/mai-logo.png";
+import { QuickActionChips } from "@/components/chat/QuickActionChips";
+import { VoiceInputButton } from "@/components/chat/VoiceInputButton";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface Message {
   id: string;
@@ -302,12 +305,14 @@ Examples:
 
 export function ConversationsContent() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [hasCheckedFollowups, setHasCheckedFollowups] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const isMobile = useIsMobile();
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -525,31 +530,63 @@ export function ConversationsContent() {
     e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
   };
 
+  const handleQuickAction = (prompt: string) => {
+    setInput(prompt);
+    // Auto-focus the textarea after selecting
+    textareaRef.current?.focus();
+  };
+
+  const handleVoiceTranscript = (transcript: string) => {
+    setInput((prev) => prev + (prev ? " " : "") + transcript);
+    textareaRef.current?.focus();
+  };
+
 
   return (
     <div className="flex flex-col h-[100dvh] md:h-[calc(100dvh-4rem)] w-full max-w-[800px] mx-auto">
+      {/* Mobile header with back button */}
+      {isMobile && (
+        <header className="sticky top-0 z-40 flex h-14 items-center gap-3 border-b border-border bg-card/95 backdrop-blur-md px-4">
+          <button 
+            onClick={() => navigate("/dashboard")} 
+            className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-muted transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            aria-label="Go back"
+          >
+            <ArrowLeft className="h-5 w-5 text-foreground" />
+          </button>
+          <div className="flex items-center gap-2">
+            <img src={maiLogo} alt="mai" className="h-7 w-auto" />
+            <span className="font-semibold text-foreground">Chat</span>
+          </div>
+        </header>
+      )}
+
       {/* Messages area with bottom padding for input on mobile */}
-      <div className="flex-1 overflow-y-auto py-4 pb-28 md:pb-4 flex flex-col px-3 md:px-4">
+      <div className="flex-1 overflow-y-auto py-4 pb-36 md:pb-4 flex flex-col px-3 md:px-4">
         <div className="flex flex-col flex-1">
           <div className="flex-1 min-h-0" />
           
           {messages.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
+            <div className="flex flex-col items-center justify-center py-12 text-center animate-fade-in">
               <div className="flex items-center justify-center mb-4">
                 <img src={maiLogo} alt="mai" className="h-16 w-auto" />
               </div>
-              <p className="text-muted-foreground text-lg">
+              <p className="text-muted-foreground text-lg mb-2">
                 What do you need?
+              </p>
+              <p className="text-muted-foreground/70 text-sm max-w-xs">
+                Try saying "Show me my calendar" or "What emails need my attention?"
               </p>
             </div>
           )}
 
           {messages.length > 0 && (
             <div className="space-y-4">
-              {messages.map((msg) => (
+              {messages.map((msg, idx) => (
                 <div
                   key={msg.id}
-                  className={`flex gap-2 md:gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                  className={`flex gap-2 md:gap-3 animate-fade-in ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                  style={{ animationDelay: `${Math.min(idx * 0.05, 0.3)}s` }}
                 >
                   {msg.role === "assistant" && (
                     <div className="flex-shrink-0 w-7 h-7 md:w-8 md:h-8 flex items-center justify-center ml-1 md:ml-2">
@@ -557,7 +594,7 @@ export function ConversationsContent() {
                     </div>
                   )}
                   <div
-                    className={`max-w-[80%] rounded-2xl px-3 py-2 md:px-4 md:py-2.5 break-words ${
+                    className={`max-w-[80%] rounded-2xl px-3 py-2 md:px-4 md:py-2.5 break-words transition-all ${
                       msg.role === "user"
                         ? "bg-primary text-primary-foreground rounded-br-md mr-1 md:mr-2"
                         : "bg-muted rounded-bl-md"
@@ -577,14 +614,14 @@ export function ConversationsContent() {
           )}
 
           {isLoading && (
-            <div className="flex gap-2 md:gap-3 justify-start mt-4">
+            <div className="flex gap-2 md:gap-3 justify-start mt-4 animate-fade-in">
               <div className="flex-shrink-0 w-7 h-7 md:w-8 md:h-8 flex items-center justify-center ml-1 md:ml-2">
-                <img src={maiLogo} alt="mai" className="h-7 md:h-8 w-auto" />
+                <img src={maiLogo} alt="mai" className="h-7 md:h-8 w-auto animate-pulse-soft" />
               </div>
               <div className="bg-muted rounded-2xl rounded-bl-md px-3 py-2.5 md:px-4 md:py-3">
                 <div className="flex gap-1">
-                  <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce [animation-delay:-0.3s]" />
-                  <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce [animation-delay:-0.15s]" />
+                  <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "-0.3s" }} />
+                  <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: "-0.15s" }} />
                   <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" />
                 </div>
               </div>
@@ -597,16 +634,22 @@ export function ConversationsContent() {
 
       {/* Input area - fixed on mobile with keyboard-aware positioning */}
       <div 
-        className="fixed bottom-0 left-0 right-0 md:static border-t bg-background z-50"
+        className="fixed bottom-0 left-0 right-0 md:static border-t bg-background/95 backdrop-blur-md z-50"
         style={{
           paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))',
-          paddingTop: '0.75rem',
+          paddingTop: '0.5rem',
           paddingLeft: 'calc(0.75rem + env(safe-area-inset-left))',
           paddingRight: 'calc(0.75rem + env(safe-area-inset-right))',
         }}
       >
-        <div className="w-full max-w-[800px] mx-auto">
+        <div className="w-full max-w-[800px] mx-auto space-y-2">
+          {/* Quick action chips - only show when no messages */}
+          {messages.length === 0 && (
+            <QuickActionChips onSelect={handleQuickAction} disabled={isLoading} />
+          )}
+          
           <div className="flex gap-2 items-end">
+            <VoiceInputButton onTranscript={handleVoiceTranscript} disabled={isLoading} />
             <Textarea
               ref={textareaRef}
               value={input}
