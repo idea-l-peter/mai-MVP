@@ -298,10 +298,13 @@ export type Database = {
       }
       user_preferences: {
         Row: {
+          action_security_overrides: Json | null
           created_at: string
           emoji_confirmations_enabled: boolean
+          failed_security_attempts: number | null
           id: string
           observed_holidays: string[] | null
+          security_lockout_until: string | null
           security_phrase_color: string | null
           security_phrase_emoji: string | null
           security_phrase_object: string | null
@@ -309,10 +312,13 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          action_security_overrides?: Json | null
           created_at?: string
           emoji_confirmations_enabled?: boolean
+          failed_security_attempts?: number | null
           id?: string
           observed_holidays?: string[] | null
+          security_lockout_until?: string | null
           security_phrase_color?: string | null
           security_phrase_emoji?: string | null
           security_phrase_object?: string | null
@@ -320,10 +326,13 @@ export type Database = {
           user_id: string
         }
         Update: {
+          action_security_overrides?: Json | null
           created_at?: string
           emoji_confirmations_enabled?: boolean
+          failed_security_attempts?: number | null
           id?: string
           observed_holidays?: string[] | null
+          security_lockout_until?: string | null
           security_phrase_color?: string | null
           security_phrase_emoji?: string | null
           security_phrase_object?: string | null
