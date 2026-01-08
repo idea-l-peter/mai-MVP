@@ -100,8 +100,9 @@ export default {
         "fade-out": "fade-out 0.3s ease-out",
         "scale-in": "scale-in 0.2s ease-out",
         "slide-up": "slide-up 0.3s ease-out",
-        "pulse-soft": "pulse-soft 1.5s ease-in-out infinite",
+      "pulse-soft": "pulse-soft 1.5s ease-in-out infinite",
       },
+    },
   },
   plugins: [require("tailwindcss-animate")],
 } satisfies Config;
