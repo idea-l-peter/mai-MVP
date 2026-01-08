@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import type { SecurityTier } from '@/lib/security-tiers';
 
 export interface UserPreferences {
   id: string;
@@ -9,6 +10,9 @@ export interface UserPreferences {
   security_phrase_object: string | null;
   security_phrase_emoji: string | null;
   observed_holidays: string[] | null;
+  action_security_overrides: Record<string, SecurityTier> | null;
+  failed_security_attempts: number;
+  security_lockout_until: string | null;
 }
 
 const DEFAULT_PREFERENCES: Omit<UserPreferences, 'id' | 'user_id'> = {
@@ -17,6 +21,9 @@ const DEFAULT_PREFERENCES: Omit<UserPreferences, 'id' | 'user_id'> = {
   security_phrase_object: null,
   security_phrase_emoji: null,
   observed_holidays: [],
+  action_security_overrides: {},
+  failed_security_attempts: 0,
+  security_lockout_until: null,
 };
 
 export function useUserPreferences() {
