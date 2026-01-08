@@ -76,28 +76,50 @@ export function useDashboardData() {
     setError(null);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError) {
+        console.error('[Dashboard] Auth error:', authError);
+        setError('Authentication error');
+        setLoading(false);
+        return;
+      }
+      
       if (!user) {
+        console.log('[Dashboard] No authenticated user');
         setError('Not authenticated');
         setLoading(false);
         return;
       }
 
+      console.log('[Dashboard] Fetching data for user:', user.id);
+
       const { data: response, error: fetchError } = await supabase.functions.invoke('dashboard-data', {
         body: { user_id: user.id },
       });
 
+      console.log('[Dashboard] Response:', response);
+
       if (fetchError) {
+        console.error('[Dashboard] Fetch error:', fetchError);
         throw fetchError;
       }
 
-      if (!response.success) {
-        throw new Error(response.error || 'Failed to fetch dashboard data');
+      if (!response?.success) {
+        console.error('[Dashboard] API error:', response?.error);
+        throw new Error(response?.error || 'Failed to fetch dashboard data');
       }
+
+      console.log('[Dashboard] Data loaded successfully:', {
+        gmail: response.data.gmail?.connected,
+        calendar: response.data.calendar?.connected,
+        monday: response.data.monday?.connected,
+        followups: response.data.contacts?.followupsDue?.length,
+      });
 
       setData(response.data);
     } catch (err) {
-      console.error('Dashboard data error:', err);
+      console.error('[Dashboard] Error:', err);
       setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
     } finally {
       setLoading(false);
