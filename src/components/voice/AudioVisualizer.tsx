@@ -1,5 +1,6 @@
 import { useRef, useEffect, useCallback } from 'react';
 import { cn } from '@/lib/utils';
+import maiLogo from '@/assets/mai-logo-white.png';
 
 export type VoiceState = 'idle' | 'listening' | 'processing' | 'speaking';
 
@@ -38,33 +39,37 @@ export function AudioVisualizer({ state, audioLevel = 0, className, onClick }: A
     timeRef.current += 0.016; // ~60fps
     const time = timeRef.current;
 
+    // Brand primary blue: HSL(240, 100%, 62.5%) = #4040FF
+    const primaryHue = 240;
+    const primarySat = 100;
+    const primaryLight = 62.5;
+
     // Create gradient
     const gradient = ctx.createRadialGradient(
       centerX, centerY, 0,
       centerX, centerY, baseRadius * 1.5
     );
 
-    // Brand purple colors
-    const primaryHue = 270; // Purple
-    
     if (state === 'idle') {
-      gradient.addColorStop(0, `hsla(${primaryHue}, 60%, 60%, 0.9)`);
-      gradient.addColorStop(0.5, `hsla(${primaryHue}, 50%, 50%, 0.7)`);
-      gradient.addColorStop(1, `hsla(${primaryHue}, 40%, 40%, 0)`);
+      // Subtle breathing with brand blue
+      gradient.addColorStop(0, `hsla(${primaryHue}, ${primarySat}%, ${primaryLight + 15}%, 0.95)`);
+      gradient.addColorStop(0.5, `hsla(${primaryHue}, ${primarySat}%, ${primaryLight}%, 0.8)`);
+      gradient.addColorStop(1, `hsla(${primaryHue}, ${primarySat}%, ${primaryLight - 10}%, 0)`);
     } else if (state === 'listening') {
+      // Reactive to audio - more vibrant
       const intensity = 0.5 + audioLevel * 0.5;
-      gradient.addColorStop(0, `hsla(${primaryHue}, 70%, ${55 + audioLevel * 15}%, ${0.9 + audioLevel * 0.1})`);
-      gradient.addColorStop(0.5, `hsla(${primaryHue}, 60%, 50%, ${0.7 * intensity})`);
-      gradient.addColorStop(1, `hsla(${primaryHue}, 50%, 40%, 0)`);
+      gradient.addColorStop(0, `hsla(${primaryHue}, ${primarySat}%, ${primaryLight + 15 + audioLevel * 10}%, ${0.95 + audioLevel * 0.05})`);
+      gradient.addColorStop(0.5, `hsla(${primaryHue}, ${primarySat}%, ${primaryLight}%, ${0.7 * intensity})`);
+      gradient.addColorStop(1, `hsla(${primaryHue}, ${primarySat}%, ${primaryLight - 15}%, 0)`);
     } else if (state === 'processing') {
-      gradient.addColorStop(0, `hsla(${primaryHue}, 50%, 55%, 0.8)`);
-      gradient.addColorStop(0.5, `hsla(${primaryHue}, 45%, 45%, 0.6)`);
-      gradient.addColorStop(1, `hsla(${primaryHue}, 40%, 35%, 0)`);
+      gradient.addColorStop(0, `hsla(${primaryHue}, ${primarySat}%, ${primaryLight + 10}%, 0.85)`);
+      gradient.addColorStop(0.5, `hsla(${primaryHue}, ${primarySat}%, ${primaryLight}%, 0.7)`);
+      gradient.addColorStop(1, `hsla(${primaryHue}, ${primarySat}%, ${primaryLight - 10}%, 0)`);
     } else if (state === 'speaking') {
       const pulse = 0.5 + Math.sin(time * 4) * 0.25 + audioLevel * 0.25;
-      gradient.addColorStop(0, `hsla(${primaryHue}, 65%, ${50 + pulse * 20}%, 0.95)`);
-      gradient.addColorStop(0.5, `hsla(${primaryHue}, 55%, 45%, ${0.6 + pulse * 0.2})`);
-      gradient.addColorStop(1, `hsla(${primaryHue}, 45%, 35%, 0)`);
+      gradient.addColorStop(0, `hsla(${primaryHue}, ${primarySat}%, ${primaryLight + pulse * 15}%, 0.95)`);
+      gradient.addColorStop(0.5, `hsla(${primaryHue}, ${primarySat}%, ${primaryLight}%, ${0.7 + pulse * 0.2})`);
+      gradient.addColorStop(1, `hsla(${primaryHue}, ${primarySat}%, ${primaryLight - 15}%, 0)`);
     }
 
     // Calculate dynamic radius
@@ -84,14 +89,14 @@ export function AudioVisualizer({ state, audioLevel = 0, className, onClick }: A
       radius += audioLevel * 20 + Math.sin(time * 5) * 6;
     }
 
-    // Draw outer glow rings
+    // Draw outer glow rings with brand color
     for (let i = 3; i >= 0; i--) {
       const ringRadius = radius + i * 15;
-      const alpha = 0.15 - i * 0.03;
+      const alpha = (0.2 - i * 0.04) * (state === 'listening' ? 1 + audioLevel * 0.5 : 1);
       
       ctx.beginPath();
       ctx.arc(centerX, centerY, ringRadius, 0, Math.PI * 2);
-      ctx.fillStyle = `hsla(${primaryHue}, 60%, 50%, ${alpha})`;
+      ctx.fillStyle = `hsla(${primaryHue}, ${primarySat}%, ${primaryLight}%, ${alpha})`;
       ctx.fill();
     }
 
@@ -106,7 +111,7 @@ export function AudioVisualizer({ state, audioLevel = 0, className, onClick }: A
       centerX - radius * 0.3, centerY - radius * 0.3, 0,
       centerX, centerY, radius
     );
-    highlightGradient.addColorStop(0, 'rgba(255, 255, 255, 0.3)');
+    highlightGradient.addColorStop(0, 'rgba(255, 255, 255, 0.35)');
     highlightGradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.1)');
     highlightGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
     
@@ -115,15 +120,15 @@ export function AudioVisualizer({ state, audioLevel = 0, className, onClick }: A
     ctx.fillStyle = highlightGradient;
     ctx.fill();
 
-    // Processing spinner
+    // Processing spinner with white ring
     if (state === 'processing') {
-      ctx.strokeStyle = `hsla(${primaryHue}, 70%, 70%, 0.8)`;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
       ctx.lineWidth = 3;
       ctx.lineCap = 'round';
       
-      const spinnerRadius = radius + 20;
+      const spinnerRadius = radius + 15;
       const startAngle = time * 3;
-      const arcLength = Math.PI * 0.75;
+      const arcLength = Math.PI * 0.6;
       
       ctx.beginPath();
       ctx.arc(centerX, centerY, spinnerRadius, startAngle, startAngle + arcLength);
@@ -145,19 +150,21 @@ export function AudioVisualizer({ state, audioLevel = 0, className, onClick }: A
     };
   }, [draw]);
 
+  const stateLabels = {
+    idle: 'Tap to speak',
+    listening: 'Listening...',
+    processing: 'Thinking...',
+    speaking: 'Speaking...',
+  };
+
   return (
     <button
       onClick={onClick}
       className={cn(
-        'relative focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-full transition-transform hover:scale-105 active:scale-95',
+        'relative focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-primary rounded-full transition-transform hover:scale-105 active:scale-95',
         className
       )}
-      aria-label={
-        state === 'idle' ? 'Start voice mode' :
-        state === 'listening' ? 'Listening... tap to stop' :
-        state === 'processing' ? 'Processing...' :
-        'Speaking... tap to interrupt'
-      }
+      aria-label={stateLabels[state]}
     >
       <canvas
         ref={canvasRef}
@@ -165,13 +172,18 @@ export function AudioVisualizer({ state, audioLevel = 0, className, onClick }: A
         style={{ width: 200, height: 200 }}
       />
       
-      {/* State indicator text */}
-      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-        <span className="text-white/80 text-sm font-medium">
-          {state === 'idle' && 'Tap to speak'}
-          {state === 'listening' && 'Listening...'}
-          {state === 'processing' && 'Thinking...'}
-          {state === 'speaking' && 'Speaking...'}
+      {/* Logo and state indicator */}
+      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none gap-1">
+        {/* Show logo when idle or processing */}
+        {(state === 'idle' || state === 'processing') && (
+          <img 
+            src={maiLogo} 
+            alt="" 
+            className="w-12 h-12 opacity-90"
+          />
+        )}
+        <span className="text-white/90 text-sm font-medium">
+          {stateLabels[state]}
         </span>
       </div>
     </button>

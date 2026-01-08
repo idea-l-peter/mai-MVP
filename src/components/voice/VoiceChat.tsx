@@ -5,7 +5,7 @@ import { AudioVisualizer, VoiceState } from './AudioVisualizer';
 import { useVoiceService } from '@/hooks/useVoiceService';
 import { useTTS } from '@/hooks/useTTS';
 import { supabase } from '@/integrations/supabase/client';
-import maiLogo from '@/assets/mai-logo.png';
+import maiLogo from '@/assets/mai-logo-white.png';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -33,6 +33,7 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
   const animationFrameRef = useRef<number>(0);
 
   const handleSilenceDetected = useCallback(() => {
+    console.log('[VoiceChat] Silence detected');
     if (state === 'listening') {
       voiceService.stopListening();
     }
@@ -44,8 +45,12 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
   });
 
   const tts = useTTS({
-    onPlayStart: () => setState('speaking'),
+    onPlayStart: () => {
+      console.log('[VoiceChat] TTS playback started');
+      setState('speaking');
+    },
     onPlayEnd: () => {
+      console.log('[VoiceChat] TTS playback ended, resuming listening');
       setState('listening');
       voiceService.startListening();
     },
@@ -54,7 +59,9 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
   // Initialize audio context for mic level visualization
   const initAudioContext = useCallback(async () => {
     try {
+      console.log('[VoiceChat] Initializing audio context...');
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log('[VoiceChat] Microphone permission granted');
       micStreamRef.current = stream;
       
       const audioContext = new AudioContext();
@@ -81,12 +88,14 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
       
       updateAudioLevel();
     } catch (err) {
-      console.error('Failed to init audio context:', err);
+      console.error('[VoiceChat] Failed to init audio context:', err);
+      setError('Microphone access denied. Please allow microphone permissions.');
     }
   }, []);
 
   // Cleanup audio context
   const cleanupAudioContext = useCallback(() => {
+    console.log('[VoiceChat] Cleaning up audio context');
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
     }
@@ -105,11 +114,13 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
   // Process speech and send to AI
   const processTranscript = useCallback(async (transcript: string) => {
     if (!transcript.trim()) {
+      console.log('[VoiceChat] Empty transcript, resuming listening');
       setState('listening');
       voiceService.startListening();
       return;
     }
 
+    console.log('[VoiceChat] Processing transcript:', transcript);
     setState('processing');
     setLastUserMessage(transcript);
     setError(null);
@@ -119,24 +130,30 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
     setLocalHistory(updatedHistory);
 
     try {
+      console.log('[VoiceChat] Calling AI assistant...');
       const { data, error: aiError } = await supabase.functions.invoke('ai-assistant', {
         body: {
           message: transcript,
-          systemPrompt: systemPrompt || 'You are mai, an executive assistant. Keep responses brief and conversational since this is a voice interface.',
+          systemPrompt: systemPrompt || 'You are mai, an executive assistant. Keep responses brief and conversational since this is a voice interface. Limit responses to 2-3 sentences.',
           conversationHistory: [...conversationHistory, ...updatedHistory].slice(-10),
         },
       });
 
-      if (aiError) throw aiError;
+      if (aiError) {
+        console.error('[VoiceChat] AI error:', aiError);
+        throw aiError;
+      }
 
       const assistantContent = data.content || 'I didn\'t catch that. Could you try again?';
+      console.log('[VoiceChat] AI response:', assistantContent);
       setLastAssistantMessage(assistantContent);
       setLocalHistory(prev => [...prev, { role: 'assistant', content: assistantContent }]);
 
       // Speak the response
+      console.log('[VoiceChat] Calling TTS...');
       await tts.speak(assistantContent);
     } catch (err) {
-      console.error('AI error:', err);
+      console.error('[VoiceChat] Error in processTranscript:', err);
       setError('Failed to get response. Please try again.');
       setState('idle');
     }
@@ -145,6 +162,7 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
   // Watch for completed transcript
   useEffect(() => {
     if (!voiceService.isListening && voiceService.transcript && state === 'listening') {
+      console.log('[VoiceChat] Transcript complete:', voiceService.transcript);
       processTranscript(voiceService.transcript);
       voiceService.resetTranscript();
     }
@@ -152,6 +170,7 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
 
   // Handle orb click
   const handleOrbClick = useCallback(() => {
+    console.log('[VoiceChat] Orb clicked, current state:', state);
     if (state === 'idle') {
       setState('listening');
       initAudioContext();
@@ -175,6 +194,7 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
 
   // Handle close
   const handleClose = useCallback(() => {
+    console.log('[VoiceChat] Closing');
     voiceService.stopListening();
     tts.stop();
     cleanupAudioContext();
@@ -196,6 +216,7 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
   // Reset state when opening
   useEffect(() => {
     if (isOpen) {
+      console.log('[VoiceChat] Opening voice chat');
       setState('idle');
       setLocalHistory([]);
       voiceService.resetTranscript();
@@ -207,24 +228,28 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
   const currentTranscript = voiceService.transcript + voiceService.interimTranscript;
 
   return (
-    <div className="fixed inset-0 z-[100] bg-background/95 backdrop-blur-xl flex flex-col animate-fade-in">
-      {/* Header */}
-      <header className="flex items-center justify-between p-4">
-        <div className="flex items-center gap-2">
-          <img src={maiLogo} alt="mai" className="h-8 w-auto" />
-          <span className="font-semibold text-foreground">Voice Mode</span>
-        </div>
+    <div className="fixed inset-0 z-[200] flex flex-col animate-fade-in bg-gradient-to-b from-primary via-primary to-primary/90">
+      {/* Close button - top right */}
+      <div className="absolute top-4 right-4 z-10">
         <Button
           variant="ghost"
           size="icon"
           onClick={handleClose}
-          className="rounded-full"
+          className="rounded-full text-white/80 hover:text-white hover:bg-white/10"
         >
-          <X className="h-5 w-5" />
+          <X className="h-6 w-6" />
         </Button>
+      </div>
+
+      {/* Header with logo */}
+      <header className="flex items-center justify-center pt-12 pb-4">
+        <div className="flex items-center gap-2">
+          <img src={maiLogo} alt="mai" className="h-8 w-auto" />
+          <span className="font-semibold text-white text-lg">Voice Mode</span>
+        </div>
       </header>
 
-      {/* Main content */}
+      {/* Main content - centered orb */}
       <div className="flex-1 flex flex-col items-center justify-center px-6">
         <AudioVisualizer
           state={state}
@@ -234,49 +259,54 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
 
         {/* Error display */}
         {(error || voiceService.error) && (
-          <p className="mt-6 text-destructive text-sm text-center max-w-xs">
+          <p className="mt-8 text-white/80 text-sm text-center max-w-xs bg-white/10 rounded-lg px-4 py-2">
             {error || voiceService.error}
           </p>
         )}
 
         {/* Browser support warning */}
         {!voiceService.isSupported && (
-          <p className="mt-6 text-muted-foreground text-sm text-center max-w-xs">
+          <p className="mt-8 text-white/70 text-sm text-center max-w-xs">
             Voice input is not supported in this browser. Please try Chrome, Safari, or Edge.
           </p>
         )}
+
+        {/* TTS loading indicator */}
+        {tts.isLoading && (
+          <p className="mt-4 text-white/60 text-sm">Generating speech...</p>
+        )}
       </div>
 
-      {/* Transcript area */}
-      <div className="px-6 pb-8 space-y-4 min-h-[160px]">
+      {/* Transcript area at bottom */}
+      <div className="px-6 pb-12 space-y-3 min-h-[140px]">
         {/* Current listening transcript */}
         {state === 'listening' && currentTranscript && (
           <div className="text-center animate-fade-in">
-            <p className="text-sm text-muted-foreground mb-1">You</p>
-            <p className="text-foreground text-lg">{currentTranscript}</p>
+            <p className="text-white/60 text-xs mb-1">You</p>
+            <p className="text-white text-lg font-medium">{currentTranscript}</p>
           </div>
         )}
 
-        {/* Last user message */}
+        {/* Last user message (when not listening) */}
         {state !== 'listening' && lastUserMessage && (
           <div className="text-center animate-fade-in">
-            <p className="text-sm text-muted-foreground mb-1">You said</p>
-            <p className="text-foreground/70 text-sm line-clamp-2">{lastUserMessage}</p>
+            <p className="text-white/60 text-xs mb-1">You said</p>
+            <p className="text-white/80 text-sm line-clamp-2">{lastUserMessage}</p>
           </div>
         )}
 
         {/* Assistant response */}
         {lastAssistantMessage && (state === 'speaking' || state === 'listening') && (
           <div className="text-center animate-fade-in">
-            <p className="text-sm text-muted-foreground mb-1">mai</p>
-            <p className="text-foreground text-lg line-clamp-3">{lastAssistantMessage}</p>
+            <p className="text-white/60 text-xs mb-1">mai</p>
+            <p className="text-white text-lg line-clamp-3">{lastAssistantMessage}</p>
           </div>
         )}
 
         {/* Processing indicator */}
         {state === 'processing' && (
           <div className="text-center animate-fade-in">
-            <p className="text-muted-foreground">Thinking...</p>
+            <p className="text-white/70">Thinking...</p>
           </div>
         )}
       </div>
