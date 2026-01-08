@@ -76,13 +76,28 @@ export function useVoiceService(options: UseVoiceServiceOptions = {}): UseVoiceS
     setInterimTranscript('');
     hasSpokenRef.current = false;
 
+    // Stop any existing recognition first
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.abort();
+        recognitionRef.current = null;
+      } catch {
+        // Ignore abort errors
+      }
+    }
+
     // Request microphone permission
     try {
-      await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Stop the stream immediately - we just needed permission
+      stream.getTracks().forEach(track => track.stop());
     } catch {
       setError('Microphone permission denied. Please allow microphone access to use voice input.');
       return;
     }
+
+    // Small delay to ensure permission is fully processed
+    await new Promise(resolve => setTimeout(resolve, 300));
 
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
@@ -90,12 +105,18 @@ export function useVoiceService(options: UseVoiceServiceOptions = {}): UseVoiceS
       return;
     }
 
+    // Create new recognition instance with settings BEFORE handlers
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = 'en-US';
+    recognition.maxAlternatives = 1;
+
+    // Store reference BEFORE setting up handlers
+    recognitionRef.current = recognition;
 
     recognition.onstart = () => {
+      console.log('[Voice] Recognition started');
       setIsListening(true);
       setError(null);
     };
@@ -115,6 +136,7 @@ export function useVoiceService(options: UseVoiceServiceOptions = {}): UseVoiceS
       }
 
       if (finalTranscript) {
+        console.log('[Voice] Final transcript:', finalTranscript);
         hasSpokenRef.current = true;
         setTranscript(prev => prev + finalTranscript);
         setInterimTranscript('');
@@ -128,31 +150,39 @@ export function useVoiceService(options: UseVoiceServiceOptions = {}): UseVoiceS
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onerror = (event: any) => {
-      console.error('Speech recognition error:', event.error);
+      console.error('[Voice] Recognition error:', event.error);
       if (event.error === 'not-allowed') {
         setError('Microphone access denied. Please enable microphone permissions.');
       } else if (event.error === 'no-speech') {
-        // This is normal, don't show as error
-        startSilenceTimer();
+        // This is normal, don't show as error - just restart if still listening
+        console.log('[Voice] No speech detected, continuing...');
+      } else if (event.error === 'aborted') {
+        // Aborted is usually intentional, don't show error
+        console.log('[Voice] Recognition aborted');
       } else {
         setError(`Speech recognition error: ${event.error}`);
       }
     };
 
     recognition.onend = () => {
+      console.log('[Voice] Recognition ended, isListening was:', isListening);
       setIsListening(false);
       clearSilenceTimer();
     };
 
-    recognitionRef.current = recognition;
-
-    try {
-      recognition.start();
-    } catch (err) {
-      console.error('Failed to start speech recognition:', err);
-      setError('Failed to start speech recognition. Please try again.');
-    }
-  }, [clearSilenceTimer, startSilenceTimer]);
+    // Start recognition with small delay
+    setTimeout(() => {
+      try {
+        if (recognitionRef.current) {
+          console.log('[Voice] Starting recognition...');
+          recognitionRef.current.start();
+        }
+      } catch (err) {
+        console.error('[Voice] Failed to start:', err);
+        setError('Failed to start speech recognition. Please try again.');
+      }
+    }, 100);
+  }, [clearSilenceTimer, startSilenceTimer, isListening]);
 
   const resetTranscript = useCallback(() => {
     setTranscript('');
