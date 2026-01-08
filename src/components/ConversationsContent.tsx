@@ -3,11 +3,12 @@ import { useSearchParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, ArrowLeft } from "lucide-react";
+import { Send, ArrowLeft, Mic } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import maiLogo from "@/assets/mai-logo.png";
 import { QuickActionChips } from "@/components/chat/QuickActionChips";
 import { VoiceInputButton } from "@/components/chat/VoiceInputButton";
+import { VoiceChat } from "@/components/voice/VoiceChat";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 interface Message {
@@ -310,6 +311,7 @@ export function ConversationsContent() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [hasCheckedFollowups, setHasCheckedFollowups] = useState(false);
+  const [isVoiceChatOpen, setIsVoiceChatOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isMobile = useIsMobile();
@@ -541,9 +543,16 @@ export function ConversationsContent() {
     textareaRef.current?.focus();
   };
 
-
   return (
-    <div className="flex flex-col h-[100dvh] md:h-[calc(100dvh-4rem)] w-full max-w-[800px] mx-auto">
+    <>
+      <VoiceChat
+        isOpen={isVoiceChatOpen}
+        onClose={() => setIsVoiceChatOpen(false)}
+        conversationHistory={messages.map(m => ({ role: m.role, content: m.content }))}
+        systemPrompt={MAI_SYSTEM_PROMPT}
+      />
+      
+      <div className="flex flex-col h-[100dvh] md:h-[calc(100dvh-4rem)] w-full max-w-[800px] mx-auto">
       {/* Mobile header with back button */}
       {isMobile && (
         <header className="sticky top-0 z-40 flex h-14 items-center gap-3 border-b border-border bg-card/95 backdrop-blur-md px-4">
@@ -650,6 +659,15 @@ export function ConversationsContent() {
           
           <div className="flex gap-2 items-end">
             <VoiceInputButton onTranscript={handleVoiceTranscript} disabled={isLoading} />
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setIsVoiceChatOpen(true)}
+              className="h-11 w-11 min-w-[44px] rounded-full flex-shrink-0"
+              aria-label="Open voice mode"
+            >
+              <Mic className="h-5 w-5" />
+            </Button>
             <Textarea
               ref={textareaRef}
               value={input}
@@ -677,5 +695,6 @@ export function ConversationsContent() {
         </div>
       </div>
     </div>
+    </>
   );
 }
