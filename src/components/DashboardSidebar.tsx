@@ -82,7 +82,7 @@ export function DashboardSidebar() {
   const isActive = (url: string) => location.pathname === url;
 
   return (
-    <Sidebar className="w-60 border-r-0">
+    <Sidebar className="w-60 border-r-0 transition-colors duration-200">
       <SidebarHeader className="p-6">
         <button onClick={() => navigate("/dashboard")} className="focus:outline-none">
           <img src={maiLogoWhite} alt="mai" className="h-10 w-auto" />
