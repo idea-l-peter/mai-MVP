@@ -7,7 +7,7 @@ import { Send, ArrowLeft, Mic } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import maiLogo from "@/assets/mai-logo.png";
 import { QuickActionChips } from "@/components/chat/QuickActionChips";
-import { VoiceInputButton } from "@/components/chat/VoiceInputButton";
+
 import { VoiceChat } from "@/components/voice/VoiceChat";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -658,7 +658,6 @@ export function ConversationsContent() {
           )}
           
           <div className="flex gap-2 items-end">
-            <VoiceInputButton onTranscript={handleVoiceTranscript} disabled={isLoading} />
             <Button
               variant="ghost"
               size="icon"
