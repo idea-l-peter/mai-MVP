@@ -405,10 +405,10 @@ export function ConversationsContent() {
         const accessToken = sessionData.session.access_token;
         
         // Call the contact-intelligence function directly to check for overdue followups
+        // No need to send user_id - the edge function extracts it from JWT
         const { data, error } = await supabase.functions.invoke("contact-intelligence", {
           body: {
             action: "get_overdue_followups",
-            user_id: sessionData.session.user.id,
             params: {},
           },
           headers: { Authorization: `Bearer ${accessToken}` },

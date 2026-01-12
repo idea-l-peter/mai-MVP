@@ -8,6 +8,7 @@ const corsHeaders = {
 };
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID')!;
 const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET')!;
@@ -436,16 +437,35 @@ serve(async (req) => {
   }
 
   try {
-    const { user_id } = await req.json();
-    
-    if (!user_id) {
+    // Verify authentication
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
       return new Response(
-        JSON.stringify({ success: false, error: 'user_id is required' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        JSON.stringify({ success: false, error: 'Unauthorized: Missing authorization header' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
       );
     }
 
-    console.log(`[Dashboard] Fetching data for user: ${user_id}`);
+    // Create auth client to validate JWT
+    const supabaseAuth = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: authHeader } },
+      auth: { persistSession: false }
+    });
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: claimsData, error: authError } = await supabaseAuth.auth.getClaims(token);
+    
+    if (authError || !claimsData?.claims) {
+      console.error('[Dashboard] Auth error:', authError);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Unauthorized: Invalid or expired token' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      );
+    }
+
+    // Use authenticated user's ID - ignore any user_id from request body
+    const user_id = claimsData.claims.sub as string;
+    console.log(`[Dashboard] Fetching data for authenticated user: ${user_id}`);
 
     // Fetch all data in parallel
     const [googleToken, mondayToken] = await Promise.all([

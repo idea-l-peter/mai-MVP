@@ -10,6 +10,7 @@ const corsHeaders = {
 const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID')!;
 const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET')!;
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 // Token refresh buffer - refresh if expiring within 5 minutes
@@ -21,12 +22,41 @@ serve(async (req) => {
   }
 
   try {
-    const { user_id, provider } = await req.json();
-    
-    console.log(`Getting valid token for provider: ${provider}, user: ${user_id}`);
+    // Verify authentication
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+      return new Response(
+        JSON.stringify({ connected: false, error: 'Unauthorized: Missing authorization header' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      );
+    }
 
-    if (!user_id || !provider) {
-      throw new Error('Missing required parameters: user_id, provider');
+    // Create auth client to validate JWT
+    const supabaseAuth = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: authHeader } },
+      auth: { persistSession: false }
+    });
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: claimsData, error: authError } = await supabaseAuth.auth.getClaims(token);
+    
+    if (authError || !claimsData?.claims) {
+      console.error('[GetValidToken] Auth error:', authError);
+      return new Response(
+        JSON.stringify({ connected: false, error: 'Unauthorized: Invalid or expired token' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      );
+    }
+
+    // Use authenticated user's ID - ignore any user_id from request body
+    const user_id = claimsData.claims.sub as string;
+    
+    const { provider } = await req.json();
+    
+    console.log(`[GetValidToken] Getting valid token for provider: ${provider}, user: ${user_id}`);
+
+    if (!provider) {
+      throw new Error('Missing required parameter: provider');
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
