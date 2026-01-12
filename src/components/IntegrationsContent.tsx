@@ -158,13 +158,15 @@ export function IntegrationsContent() {
     refreshIntegrations();
   }, [searchParams.toString(), setSearchParams, refreshIntegrations, toast]);
 
-  const handleGoogleConnect = () => {
-    initiateGoogleOAuth("google", GOOGLE_WORKSPACE_SCOPES);
+  const handleGoogleConnect = async () => {
+    console.log("1. Connect button clicked");
+    await initiateGoogleOAuth("google", GOOGLE_WORKSPACE_SCOPES);
   };
 
-  const handleGoogleUpdatePermissions = () => {
+  const handleGoogleUpdatePermissions = async () => {
+    console.log("1. Update permissions clicked");
     // Re-initiate OAuth with all scopes - Google will only ask for new ones
-    initiateGoogleOAuth("google", GOOGLE_WORKSPACE_SCOPES);
+    await initiateGoogleOAuth("google", GOOGLE_WORKSPACE_SCOPES);
   };
 
   const handleGoogleDisconnect = async () => {

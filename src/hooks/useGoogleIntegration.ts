@@ -13,7 +13,7 @@ interface Integration {
 interface UseGoogleIntegrationReturn {
   isConnecting: boolean;
   isDisconnecting: boolean;
-  initiateOAuth: (provider: string, scopes: string[]) => void;
+  initiateOAuth: (provider: string, scopes: string[]) => Promise<void>;
   disconnect: (provider: string) => Promise<boolean>;
   getValidToken: (provider: string) => Promise<string | null>;
   checkConnection: (provider: string) => Promise<Integration | null>;
