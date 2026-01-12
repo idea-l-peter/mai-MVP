@@ -74,9 +74,10 @@ export function TestMondayContent() {
       console.log('>>> getValidToken: About to invoke edge function get-valid-token...');
       const startTime = Date.now();
       
+      // No need to send user_id - the edge function extracts it from JWT
       const { data, error } = await withTimeout(
         supabase.functions.invoke('get-valid-token', {
-          body: { user_id: user.id, provider: 'monday' }
+          body: { provider: 'monday' }
         }),
         10000,
         'Edge function timed out after 10 seconds'

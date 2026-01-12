@@ -92,10 +92,11 @@ export function useDashboardData() {
         return;
       }
 
-      console.log('[Dashboard] Fetching data for user:', user.id);
+      console.log('[Dashboard] Fetching data for authenticated user');
 
+      // No need to send user_id - the edge function extracts it from JWT
       const { data: response, error: fetchError } = await supabase.functions.invoke('dashboard-data', {
-        body: { user_id: user.id },
+        body: {},
       });
 
       console.log('[Dashboard] Response:', response);

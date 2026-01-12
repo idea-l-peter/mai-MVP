@@ -133,11 +133,9 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
         throw new Error('User not authenticated');
       }
 
+      // No need to send user_id - the edge function extracts it from JWT
       const { data, error } = await supabase.functions.invoke('get-valid-token', {
-        body: {
-          user_id: user.id,
-          provider,
-        },
+        body: { provider },
       });
 
       if (error) throw error;
