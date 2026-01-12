@@ -37,11 +37,8 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
   const [isConnecting, setIsConnecting] = useState(false);
 
   const initiateOAuth = useCallback(async (provider: string, scopes: string[]) => {
-    console.log('[GoogleOAuth] initiateOAuth called with provider:', provider, 'scopes:', scopes);
+    console.log('1. [GoogleOAuth] initiateOAuth called with provider:', provider, 'scopes:', scopes);
     
-    // This is where the user will be redirected back after the server-side OAuth completes
-    const appRedirectUri = `${window.location.origin}/integrations`;
-
     setIsConnecting(true);
 
     try {
@@ -52,35 +49,40 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
         // ignore
       }
 
-      console.log('[GoogleOAuth] Getting current user...');
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        throw new Error('User not authenticated');
-      }
-      console.log('[GoogleOAuth] User authenticated:', user.id);
-
-      // Call edge function to get OAuth URL
-      console.log('[GoogleOAuth] Calling google-oauth edge function...');
-      const { data, error } = await supabase.functions.invoke('google-oauth', {
-        body: {
-          scopes,
-          app_redirect_uri: appRedirectUri,
-          provider,
+      console.log('2. [GoogleOAuth] About to call signInWithOAuth');
+      
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/integrations`,
+          scopes: scopes.join(' '),
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
         },
       });
+      
+      console.log('3. [GoogleOAuth] signInWithOAuth returned:', { data, error });
 
-      console.log('[GoogleOAuth] Edge function response:', { data, error });
-
-      if (error) throw error;
-      if (data.error) throw new Error(data.error);
-
-      // Redirect to Google OAuth - the callback will happen at the edge function
-      console.log('[GoogleOAuth] Redirecting to:', data.oauth_url);
-      window.location.href = data.oauth_url;
-    } catch (error) {
-      console.error('[GoogleOAuth] Failed to initiate OAuth:', error);
+      if (error) {
+        console.error('[GoogleOAuth] OAuth error:', error);
+        toast({
+          title: 'OAuth Error',
+          description: error.message,
+          variant: 'destructive',
+        });
+        setIsConnecting(false);
+        try {
+          sessionStorage.removeItem(OAUTH_STORAGE_KEY);
+        } catch {
+          // ignore
+        }
+      }
+      // If successful, browser will redirect - no need to setIsConnecting(false)
+    } catch (err) {
+      console.error('4. [GoogleOAuth] Caught exception:', err);
       setIsConnecting(false);
-      // Clear in-progress flag on error
       try {
         sessionStorage.removeItem(OAUTH_STORAGE_KEY);
       } catch {
@@ -88,7 +90,7 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
       }
       toast({
         title: 'OAuth Error',
-        description: error instanceof Error ? error.message : 'Failed to start OAuth flow',
+        description: err instanceof Error ? err.message : 'Failed to start OAuth flow',
         variant: 'destructive',
       });
     }
