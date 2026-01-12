@@ -8,6 +8,7 @@ const corsHeaders = {
 };
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 const MONDAY_API_URL = 'https://api.monday.com/v2';
@@ -15,7 +16,6 @@ const MONDAY_API_VERSION = '2024-01';
 
 interface MondayApiRequest {
   action: string;
-  user_id: string;
   params?: Record<string, unknown>;
 }
 
@@ -391,16 +391,36 @@ serve(async (req) => {
   }
 
   try {
-    const { action, user_id, params = {} } = await req.json() as MondayApiRequest;
-
-    console.log(`[MondayAPI] Action: ${action}, User: ${user_id}`);
-
-    if (!user_id) {
+    // Validate JWT authentication
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
       return new Response(
-        JSON.stringify({ success: false, error: 'user_id is required' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        JSON.stringify({ success: false, error: 'Unauthorized: Missing or invalid authorization header' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
       );
     }
+
+    const supabaseAuth = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: authHeader } },
+      auth: { persistSession: false }
+    });
+
+    const jwtToken = authHeader.replace('Bearer ', '');
+    const { data: claimsData, error: authError } = await supabaseAuth.auth.getClaims(jwtToken);
+
+    if (authError || !claimsData?.claims) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Unauthorized: Invalid token' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      );
+    }
+
+    // Extract user_id from JWT - NEVER trust request body
+    const user_id = claimsData.claims.sub as string;
+    
+    const { action, params = {} } = await req.json() as MondayApiRequest;
+
+    console.log(`[MondayAPI] Action: ${action}, User: ${user_id}`);
 
     // Get the Monday.com token
     const { token, error: tokenError } = await getMondayToken(user_id);

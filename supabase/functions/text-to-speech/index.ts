@@ -1,9 +1,13 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -12,6 +16,32 @@ serve(async (req) => {
   }
 
   try {
+    // Validate JWT authentication
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized: Missing or invalid authorization header' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const supabaseAuth = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: authHeader } },
+      auth: { persistSession: false }
+    });
+
+    const jwtToken = authHeader.replace('Bearer ', '');
+    const { data: claimsData, error: authError } = await supabaseAuth.auth.getClaims(jwtToken);
+
+    if (authError || !claimsData?.claims) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized: Invalid token' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log('Authenticated user for TTS:', claimsData.claims.sub);
+
     const ELEVENLABS_API_KEY = Deno.env.get('ELEVENLABS_API_KEY');
     
     if (!ELEVENLABS_API_KEY) {
