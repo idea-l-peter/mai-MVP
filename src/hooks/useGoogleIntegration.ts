@@ -64,7 +64,6 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
       const { data, error } = await supabase.functions.invoke('google-oauth', {
         body: {
           scopes,
-          user_id: user.id,
           app_redirect_uri: appRedirectUri,
           provider,
         },
