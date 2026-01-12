@@ -80,6 +80,7 @@ export function IntegrationsContent() {
     initiateOAuth: initiateGoogleOAuth,
     disconnect: disconnectGoogle,
     checkConnection: checkGoogleConnection,
+    handleOAuthCallback: handleGoogleOAuthCallback,
   } = useGoogleIntegration();
 
   const {
@@ -128,35 +129,52 @@ export function IntegrationsContent() {
     }
   }, [checkGoogleConnection, checkMondayConnection]);
 
-  // Handle OAuth callback result on mount / URL param changes
+  // Handle OAuth callback on mount - capture provider tokens from session
   useEffect(() => {
-    const connected = searchParams.get("connected");
-    const email = searchParams.get("email");
-    const error = searchParams.get("error");
+    const processOAuthCallback = async () => {
+      console.log('[IntegrationsContent] Checking for OAuth callback...');
+      const handled = await handleGoogleOAuthCallback();
+      if (handled) {
+        console.log('[IntegrationsContent] OAuth callback processed, refreshing integrations...');
+        // Clear any URL params
+        if (searchParams.toString()) {
+          setSearchParams({});
+        }
+        await refreshIntegrations();
+        return;
+      }
+      
+      // If no OAuth callback, check for legacy URL params
+      const connected = searchParams.get("connected");
+      const email = searchParams.get("email");
+      const error = searchParams.get("error");
 
-    if (connected) {
-      toast({
-        title: "Connected!",
-        description: `Successfully connected to ${connected}${email ? ` as ${email}` : ""}`,
-      });
-      setSearchParams({});
+      if (connected) {
+        toast({
+          title: "Connected!",
+          description: `Successfully connected to ${connected}${email ? ` as ${email}` : ""}`,
+        });
+        setSearchParams({});
+        refreshIntegrations();
+        return;
+      }
+
+      if (error) {
+        toast({
+          title: "Connection failed",
+          description: error,
+          variant: "destructive",
+        });
+        setSearchParams({});
+        refreshIntegrations();
+        return;
+      }
+
       refreshIntegrations();
-      return;
-    }
+    };
 
-    if (error) {
-      toast({
-        title: "Connection failed",
-        description: error,
-        variant: "destructive",
-      });
-      setSearchParams({});
-      refreshIntegrations();
-      return;
-    }
-
-    refreshIntegrations();
-  }, [searchParams.toString(), setSearchParams, refreshIntegrations, toast]);
+    processOAuthCallback();
+  }, [handleGoogleOAuthCallback, searchParams, setSearchParams, refreshIntegrations, toast]);
 
   const handleGoogleConnect = async () => {
     console.log("1. Connect button clicked");
