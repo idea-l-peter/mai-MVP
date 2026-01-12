@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -6,6 +7,7 @@ const corsHeaders = {
 };
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -14,13 +16,40 @@ serve(async (req) => {
   }
 
   try {
-    console.log('Starting Google OAuth flow');
+    console.log('[GoogleOAuth] Starting Google OAuth flow');
     
-    const { scopes, user_id, app_redirect_uri, provider } = await req.json();
-    
-    if (!user_id) {
-      throw new Error('user_id is required');
+    // Verify authentication
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+      console.error('[GoogleOAuth] Missing authorization header');
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized: Missing authorization header' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      );
     }
+
+    // Create auth client to validate JWT
+    const supabaseAuth = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: authHeader } },
+      auth: { persistSession: false }
+    });
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: claimsData, error: authError } = await supabaseAuth.auth.getClaims(token);
+    
+    if (authError || !claimsData?.claims) {
+      console.error('[GoogleOAuth] Auth error:', authError);
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized: Invalid or expired token' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      );
+    }
+
+    // Use authenticated user's ID from JWT - ignore any user_id from request body
+    const user_id = claimsData.claims.sub as string;
+    console.log('[GoogleOAuth] Authenticated user:', user_id);
+    
+    const { scopes, app_redirect_uri, provider } = await req.json();
 
     if (!app_redirect_uri) {
       throw new Error('app_redirect_uri is required');
@@ -48,10 +77,10 @@ serve(async (req) => {
     };
     const state = btoa(JSON.stringify(stateData));
 
-    console.log('Building OAuth URL with client ID:', GOOGLE_CLIENT_ID.substring(0, 20) + '...');
-    console.log('Callback URL (redirect_uri):', callbackUrl);
-    console.log('App redirect URI:', app_redirect_uri);
-    console.log('Scopes:', scopes);
+    console.log('[GoogleOAuth] Building OAuth URL with client ID:', GOOGLE_CLIENT_ID.substring(0, 20) + '...');
+    console.log('[GoogleOAuth] Callback URL (redirect_uri):', callbackUrl);
+    console.log('[GoogleOAuth] App redirect URI:', app_redirect_uri);
+    console.log('[GoogleOAuth] Scopes:', scopes);
 
     // Build Google OAuth URL
     const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
@@ -79,7 +108,7 @@ serve(async (req) => {
     authUrl.searchParams.set('state', state);
 
     const oauthUrl = authUrl.toString();
-    console.log('Generated OAuth URL successfully');
+    console.log('[GoogleOAuth] Generated OAuth URL successfully');
 
     return new Response(
       JSON.stringify({ 
@@ -94,7 +123,7 @@ serve(async (req) => {
 
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Failed to initiate OAuth';
-    console.error('Error in google-oauth function:', errorMessage);
+    console.error('[GoogleOAuth] Error:', errorMessage);
     return new Response(
       JSON.stringify({ 
         error: errorMessage 
