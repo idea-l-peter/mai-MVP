@@ -34,9 +34,15 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
     }
   }, []);
 
+  const [isConnecting, setIsConnecting] = useState(false);
+
   const initiateOAuth = useCallback(async (provider: string, scopes: string[]) => {
+    console.log('[GoogleOAuth] initiateOAuth called with provider:', provider, 'scopes:', scopes);
+    
     // This is where the user will be redirected back after the server-side OAuth completes
     const appRedirectUri = `${window.location.origin}/integrations`;
+
+    setIsConnecting(true);
 
     try {
       // Mark OAuth as in-progress (best-effort) so we can avoid stuck UI after redirects
@@ -46,12 +52,15 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
         // ignore
       }
 
+      console.log('[GoogleOAuth] Getting current user...');
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         throw new Error('User not authenticated');
       }
+      console.log('[GoogleOAuth] User authenticated:', user.id);
 
       // Call edge function to get OAuth URL
+      console.log('[GoogleOAuth] Calling google-oauth edge function...');
       const { data, error } = await supabase.functions.invoke('google-oauth', {
         body: {
           scopes,
@@ -61,13 +70,17 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
         },
       });
 
+      console.log('[GoogleOAuth] Edge function response:', { data, error });
+
       if (error) throw error;
       if (data.error) throw new Error(data.error);
 
       // Redirect to Google OAuth - the callback will happen at the edge function
+      console.log('[GoogleOAuth] Redirecting to:', data.oauth_url);
       window.location.href = data.oauth_url;
     } catch (error) {
-      console.error('Failed to initiate OAuth:', error);
+      console.error('[GoogleOAuth] Failed to initiate OAuth:', error);
+      setIsConnecting(false);
       // Clear in-progress flag on error
       try {
         sessionStorage.removeItem(OAUTH_STORAGE_KEY);
@@ -170,7 +183,7 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
   }, []);
 
   return {
-    isConnecting: false,
+    isConnecting,
     isDisconnecting,
     initiateOAuth,
     disconnect,
