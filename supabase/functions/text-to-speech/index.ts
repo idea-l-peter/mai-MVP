@@ -25,11 +25,34 @@ serve(async (req) => {
       );
     }
 
+    const MAX_TEXT_LENGTH = 5000; // Reasonable limit for TTS
+    
     const { text, voice_id } = await req.json();
 
-    if (!text) {
+    // Input validation
+    if (!text || typeof text !== 'string') {
       return new Response(
-        JSON.stringify({ error: 'Text is required' }),
+        JSON.stringify({ error: 'Text must be a non-empty string' }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    if (text.trim().length === 0) {
+      return new Response(
+        JSON.stringify({ error: 'Text cannot be empty or whitespace only' }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    if (text.length > MAX_TEXT_LENGTH) {
+      return new Response(
+        JSON.stringify({ error: `Text too long (max ${MAX_TEXT_LENGTH} characters)` }),
         { 
           status: 400, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
