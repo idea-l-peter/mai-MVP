@@ -76,6 +76,7 @@ export function IntegrationsContent() {
   }, []);
 
   const {
+    isConnecting: isGoogleConnecting,
     initiateOAuth: initiateGoogleOAuth,
     disconnect: disconnectGoogle,
     checkConnection: checkGoogleConnection,
@@ -259,7 +260,7 @@ export function IntegrationsContent() {
         isConnected={googleState.status === "connected"}
         connectedEmail={googleState.providerEmail}
         grantedScopes={googleState.scopes}
-        isLoading={isLoading}
+        isLoading={isGoogleConnecting}
         isDisconnecting={disconnectingId === "google"}
         onConnect={handleGoogleConnect}
         onDisconnect={handleGoogleDisconnect}
