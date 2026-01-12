@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -6,6 +7,7 @@ const corsHeaders = {
 };
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 const MONDAY_CLIENT_ID = Deno.env.get('MONDAY_CLIENT_ID')!;
 const APP_BASE_URL = Deno.env.get('APP_BASE_URL');
 
@@ -19,14 +21,41 @@ serve(async (req) => {
     console.log('monday-oauth function invoked');
     console.log('Request method:', req.method);
     
+    // Validate JWT authentication
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+      console.error('Missing or invalid authorization header');
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized: Missing or invalid authorization header' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      );
+    }
+
+    // Create a Supabase client with the user's auth token to validate JWT
+    const supabaseAuth = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: authHeader } },
+      auth: { persistSession: false }
+    });
+
+    const jwtToken = authHeader.replace('Bearer ', '');
+    const { data: claimsData, error: authError } = await supabaseAuth.auth.getClaims(jwtToken);
+
+    if (authError || !claimsData?.claims) {
+      console.error('Auth error:', authError);
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized: Invalid token' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      );
+    }
+
+    // Extract user_id from authenticated JWT claims
+    const user_id = claimsData.claims.sub as string;
+    console.log('Authenticated user:', user_id);
+    
     const body = await req.json();
     console.log('Request body received:', JSON.stringify(body));
     
-    const { user_id, app_redirect_uri } = body;
-    
-    if (!user_id) {
-      throw new Error('user_id is required');
-    }
+    const { app_redirect_uri } = body;
 
     if (!app_redirect_uri) {
       throw new Error('app_redirect_uri is required');
