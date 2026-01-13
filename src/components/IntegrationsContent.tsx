@@ -1,6 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
 import { IntegrationCard } from "./IntegrationCard";
 import { GoogleWorkspaceCard } from "./GoogleWorkspaceCard";
 import { WhatsAppLogo } from "./icons";
@@ -76,54 +75,11 @@ export function IntegrationsContent() {
     }
   }, []);
 
-  // OAuth debug: verify this page mounts after redirect and inspect session immediately
-  useEffect(() => {
-    console.log("[OAuth Debug] Integrations page mounted");
-    console.log("[OAuth Debug] Current URL:", window.location.href);
-    console.log("[OAuth Debug] Hash:", window.location.hash);
-    console.log("[OAuth Debug] Search:", window.location.search);
-
-    const checkSession = async () => {
-      console.log("[OAuth Debug] Checking session...");
-      const { data: { session }, error } = await supabase.auth.getSession();
-
-      console.log("[OAuth Debug] Session result:", {
-        hasSession: !!session,
-        userId: session?.user?.id,
-        providerToken: session?.provider_token ? "EXISTS" : "MISSING",
-        providerRefreshToken: session?.provider_refresh_token ? "EXISTS" : "MISSING",
-        error: error?.message,
-      });
-    };
-
-    checkSession();
-  }, []);
-
-  // OAuth debug: auth listener visibility
-  useEffect(() => {
-    console.log("[OAuth Debug] Setting up auth state listener (Integrations page)...");
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log("[OAuth Debug] Auth state changed:", event);
-      console.log("[OAuth Debug] Session in event:", {
-        hasSession: !!session,
-        providerToken: session?.provider_token ? "EXISTS" : "MISSING",
-        providerRefreshToken: session?.provider_refresh_token ? "EXISTS" : "MISSING",
-      });
-    });
-
-    return () => {
-      console.log("[OAuth Debug] Cleaning up auth listener (Integrations page)");
-      subscription.unsubscribe();
-    };
-  }, []);
-
   const {
     isConnecting: isGoogleConnecting,
     initiateOAuth: initiateGoogleOAuth,
     disconnect: disconnectGoogle,
     checkConnection: checkGoogleConnection,
-    handleOAuthCallback: handleGoogleOAuthCallback,
   } = useGoogleIntegration();
 
   const {
@@ -132,11 +88,11 @@ export function IntegrationsContent() {
     checkConnection: checkMondayConnection,
   } = useMondayIntegration();
 
-  // Check connection status for all integrations
+  // Check connection status for all integrations from database
   const refreshIntegrations = useCallback(async () => {
     setIsLoading(true);
     try {
-      // Check Google Workspace connection (uses "google" provider)
+      // Check Google Workspace connection
       const googleIntegration = await checkGoogleConnection("google");
       if (googleIntegration?.connected) {
         setGoogleState({
@@ -172,52 +128,32 @@ export function IntegrationsContent() {
     }
   }, [checkGoogleConnection, checkMondayConnection]);
 
-  // Handle OAuth callback on mount - capture provider tokens from session
+  // On mount, check for legacy URL params and refresh integrations
   useEffect(() => {
-    const processOAuthCallback = async () => {
-      console.log('[IntegrationsContent] Checking for OAuth callback...');
-      const handled = await handleGoogleOAuthCallback();
-      if (handled) {
-        console.log('[IntegrationsContent] OAuth callback processed, refreshing integrations...');
-        // Clear any URL params
-        if (searchParams.toString()) {
-          setSearchParams({});
-        }
-        await refreshIntegrations();
-        return;
-      }
-      
-      // If no OAuth callback, check for legacy URL params
-      const connected = searchParams.get("connected");
-      const email = searchParams.get("email");
-      const error = searchParams.get("error");
+    const connected = searchParams.get("connected");
+    const email = searchParams.get("email");
+    const error = searchParams.get("error");
 
-      if (connected) {
-        toast({
-          title: "Connected!",
-          description: `Successfully connected to ${connected}${email ? ` as ${email}` : ""}`,
-        });
-        setSearchParams({});
-        refreshIntegrations();
-        return;
-      }
+    if (connected) {
+      toast({
+        title: "Connected!",
+        description: `Successfully connected to ${connected}${email ? ` as ${email}` : ""}`,
+      });
+      setSearchParams({});
+    }
 
-      if (error) {
-        toast({
-          title: "Connection failed",
-          description: error,
-          variant: "destructive",
-        });
-        setSearchParams({});
-        refreshIntegrations();
-        return;
-      }
+    if (error) {
+      toast({
+        title: "Connection failed",
+        description: error,
+        variant: "destructive",
+      });
+      setSearchParams({});
+    }
 
-      refreshIntegrations();
-    };
-
-    processOAuthCallback();
-  }, [handleGoogleOAuthCallback, searchParams, setSearchParams, refreshIntegrations, toast]);
+    // Always refresh integrations from database
+    refreshIntegrations();
+  }, [searchParams, setSearchParams, refreshIntegrations, toast]);
 
   const handleGoogleConnect = async () => {
     console.log("1. Connect button clicked");
@@ -226,7 +162,6 @@ export function IntegrationsContent() {
 
   const handleGoogleUpdatePermissions = async () => {
     console.log("1. Update permissions clicked");
-    // Re-initiate OAuth with all scopes - Google will only ask for new ones
     await initiateGoogleOAuth("google", GOOGLE_WORKSPACE_SCOPES);
   };
 
