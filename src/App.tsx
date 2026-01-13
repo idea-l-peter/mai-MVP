@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -17,9 +17,14 @@ const queryClient = new QueryClient();
 function OAuthTokenCapture() {
   const { toast } = useToast();
   const tokenHandledRef = useRef(false);
+  const [hasMounted, setHasMounted] = useState(false);
 
   // Log immediately when component function is called (before any hooks)
   console.log('[OAuth Capture] Component rendering, URL:', window.location.href);
+
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
 
   useEffect(() => {
     console.log('[OAuth Capture] Component mounted');
@@ -125,7 +130,13 @@ function OAuthTokenCapture() {
     };
   }, [toast]);
 
-  return null;
+  return hasMounted ? (
+    <div
+      data-testid="oauth-capture-mounted"
+      className="fixed right-3 top-3 z-[9999] h-2.5 w-2.5 rounded-full bg-destructive shadow-sm ring-2 ring-background"
+      title="OAuthTokenCapture mounted"
+    />
+  ) : null;
 }
 
 const App = () => (
