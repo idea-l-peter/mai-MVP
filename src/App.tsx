@@ -18,11 +18,23 @@ function OAuthTokenCapture() {
   const { toast } = useToast();
   const tokenHandledRef = useRef(false);
 
+  // Log immediately when component function is called (before any hooks)
+  console.log('[OAuth Capture] Component rendering, URL:', window.location.href);
+
   useEffect(() => {
     console.log('[OAuth Capture] Component mounted');
     console.log('[OAuth Capture] Current URL:', window.location.href);
     console.log('[OAuth Capture] Hash:', window.location.hash);
     console.log('[OAuth Capture] Search:', window.location.search);
+    
+    // Check if this looks like an OAuth callback
+    const urlParams = new URLSearchParams(window.location.search);
+    const hasCode = urlParams.has('code');
+    const hasError = urlParams.has('error');
+    console.log('[OAuth Capture] URL has code param:', hasCode, 'has error:', hasError);
+    if (hasError) {
+      console.error('[OAuth Capture] OAuth error in URL:', urlParams.get('error'), urlParams.get('error_description'));
+    }
 
     // Check session immediately on mount
     const checkSessionForTokens = async () => {
@@ -33,6 +45,7 @@ function OAuthTokenCapture() {
       console.log('[OAuth Capture] Session check result:', {
         hasSession: !!session,
         userId: session?.user?.id,
+        userEmail: session?.user?.email,
         providerToken: session?.provider_token ? 'EXISTS' : 'MISSING',
         providerRefreshToken: session?.provider_refresh_token ? 'EXISTS' : 'MISSING',
         error: error?.message,
@@ -62,6 +75,9 @@ function OAuthTokenCapture() {
             variant: 'destructive',
           });
         }
+      } else if (hasCode && !session?.provider_token) {
+        // We have a code but no provider token - Supabase may still be processing
+        console.log('[OAuth Capture] Code present but no provider_token yet - waiting for auth state change...');
       }
     };
 
