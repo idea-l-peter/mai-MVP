@@ -150,6 +150,33 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
     }
   }, [toast]);
 
+  // Check for provider tokens immediately on mount - this is critical because
+  // provider_token is only available in the session IMMEDIATELY after OAuth redirect
+  useEffect(() => {
+    const checkExistingSession = async () => {
+      console.log('[GoogleOAuth] Checking existing session for provider tokens on mount...');
+      
+      const { data: { session }, error } = await supabase.auth.getSession();
+      
+      console.log('[GoogleOAuth] Session check on mount:', {
+        hasSession: !!session,
+        userId: session?.user?.id,
+        hasProviderToken: !!session?.provider_token,
+        providerTokenLength: session?.provider_token?.length,
+        hasRefreshToken: !!session?.provider_refresh_token,
+        error: error?.message,
+      });
+      
+      if (session?.provider_token && !callbackHandledRef.current) {
+        console.log('[GoogleOAuth] Found provider token in session on mount, storing...');
+        callbackHandledRef.current = true;
+        await storeTokensFromSession(session);
+      }
+    };
+    
+    checkExistingSession();
+  }, [storeTokensFromSession]);
+
   // Set up auth state change listener to capture provider tokens
   useEffect(() => {
     console.log('[GoogleOAuth] Setting up auth state change listener');
@@ -161,9 +188,11 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
         hasProviderRefreshToken: !!session?.provider_refresh_token,
       });
 
-      // Only handle SIGNED_IN events with provider tokens (OAuth callback)
-      if (event === 'SIGNED_IN' && session?.provider_token && !callbackHandledRef.current) {
-        console.log('[GoogleOAuth] SIGNED_IN with provider token detected');
+      // Handle all relevant events that could have provider tokens
+      const relevantEvents = ['SIGNED_IN', 'TOKEN_REFRESHED', 'INITIAL_SESSION'];
+      
+      if (relevantEvents.includes(event) && session?.provider_token && !callbackHandledRef.current) {
+        console.log(`[GoogleOAuth] ${event} with provider token detected`);
         callbackHandledRef.current = true;
         // Use setTimeout to defer the Supabase call and avoid deadlock
         setTimeout(() => {
