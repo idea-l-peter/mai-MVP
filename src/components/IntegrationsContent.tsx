@@ -6,7 +6,7 @@ import { WhatsAppLogo } from "./icons";
 import { useGoogleIntegration } from "@/hooks/useGoogleIntegration";
 import { useMondayIntegration } from "@/hooks/useMondayIntegration";
 import { useToast } from "@/hooks/use-toast";
-import { storeGoogleTokensFromSession } from "@/lib/integrations/storeGoogleTokens";
+import { supabase } from "@/integrations/supabase/client";
 import mondayLogo from "@/assets/monday-logo.svg";
 
 type IntegrationStatus = "connected" | "not_connected" | "pending";
@@ -193,70 +193,69 @@ export function IntegrationsContent() {
         }
 
         setTokenCaptureStatus("storing...");
-        console.warn("[TokenCapture] Step 4: Calling storeGoogleTokensFromSession...");
+        console.warn("[TokenCapture] Step 4: Calling store-google-tokens edge function...");
 
-        // Build a minimal Session-like object from localStorage data.
-        // storeGoogleTokensFromSession requires: session.user.id and session.provider_token.
-        const sessionLike = {
-          access_token: parsed?.access_token,
-          refresh_token: parsed?.refresh_token,
-          expires_at: parsed?.expires_at,
-          expires_in: parsed?.expires_in,
-          token_type: parsed?.token_type,
-          provider_token: providerToken,
-          provider_refresh_token: providerRefreshToken,
-          user: parsed?.user,
-        };
-
-        console.warn("[TokenCapture] Step 4b: sessionLike summary:", {
-          hasAccessToken: !!sessionLike.access_token,
-          hasRefreshToken: !!sessionLike.refresh_token,
-          hasProviderToken: !!sessionLike.provider_token,
-          providerTokenLength: (sessionLike.provider_token as string | undefined)?.length,
-          hasProviderRefreshToken: !!sessionLike.provider_refresh_token,
-          userId: sessionLike.user?.id,
-          userEmail: sessionLike.user?.email,
-        });
+        // IMPORTANT: We cannot store raw tokens directly in user_integrations (schema stores secret IDs / metadata only).
+        // Also, the Vault-based RPC path is currently failing with a DB crypto permission error.
+        // So we store tokens via an Edge Function using application-level encryption (same pattern as google-oauth-callback).
 
         const STORE_TIMEOUT_MS = 10_000;
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          window.setTimeout(() => reject(new Error("STORE_TIMEOUT")), STORE_TIMEOUT_MS);
-        });
+        const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> =>
+          Promise.race([
+            promise,
+            new Promise<T>((_, reject) => window.setTimeout(() => reject(new Error(`TIMEOUT:${label}`)), ms)),
+          ]);
 
-        console.warn("[TokenCapture] Step 4c: BEFORE storeGoogleTokensFromSession (with timeout)");
-        let result: Awaited<ReturnType<typeof storeGoogleTokensFromSession>>;
+        console.warn("[TokenCapture] Step 4b: BEFORE invoke store-google-tokens");
+        let invokeResult: { data: any; error: any };
         try {
-          result = (await Promise.race([
-            storeGoogleTokensFromSession(sessionLike as any),
-            timeoutPromise,
-          ])) as Awaited<ReturnType<typeof storeGoogleTokensFromSession>>;
+          invokeResult = await withTimeout(
+            supabase.functions.invoke("store-google-tokens", {
+              body: {
+                provider: "google",
+                provider_token: providerToken,
+                provider_refresh_token: providerRefreshToken || null,
+                scopes: GOOGLE_WORKSPACE_SCOPES,
+              },
+            }),
+            STORE_TIMEOUT_MS,
+            "store_google_tokens"
+          );
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
-          if (msg === "STORE_TIMEOUT" || msg.startsWith("TIMEOUT:")) {
-            console.warn(
-              "[TokenCapture] Step 4d: storeGoogleTokensFromSession TIMED OUT (or an inner step timed out):",
-              msg
-            );
+          if (msg.startsWith("TIMEOUT:")) {
+            console.warn("[TokenCapture] Step 4c: store-google-tokens TIMED OUT:", msg);
             setTokenCaptureStatus("store_timeout");
             return;
           }
-
-          console.warn("[TokenCapture] Step 4d: storeGoogleTokensFromSession threw:", err);
+          console.warn("[TokenCapture] Step 4c: store-google-tokens threw:", err);
           setTokenCaptureStatus(`store_failed: ${msg}`);
           return;
         }
 
-        console.warn("[TokenCapture] Step 4e: AFTER storeGoogleTokensFromSession returned:", result);
+        console.warn("[TokenCapture] Step 4d: AFTER invoke store-google-tokens", invokeResult);
 
-        if (!result.success) {
-          const msg = result.error || "Failed to store Google tokens";
+        if (invokeResult.error) {
+          const msg = invokeResult.error?.message || "Edge function error";
+          console.warn("[TokenCapture] Step 4e: store-google-tokens returned error:", invokeResult.error);
           setTokenCaptureStatus(`store_failed: ${msg}`);
           toast({
             title: "Connection Issue",
             description: msg,
             variant: "destructive",
           });
-          console.warn("[TokenCapture] Step 5b: Token storage FAILED:", msg);
+          return;
+        }
+
+        if (!invokeResult.data?.success) {
+          const msg = invokeResult.data?.error || "Failed to store Google tokens";
+          console.warn("[TokenCapture] Step 4f: store-google-tokens returned unsuccessful:", invokeResult.data);
+          setTokenCaptureStatus(`store_failed: ${msg}`);
+          toast({
+            title: "Connection Issue",
+            description: msg,
+            variant: "destructive",
+          });
           return;
         }
 
@@ -264,10 +263,10 @@ export function IntegrationsContent() {
         tokenProcessedRef.current = true;
 
         setTokenCaptureStatus("stored_successfully");
-        console.warn("[TokenCapture] Step 5c: Token storage SUCCESS");
+        console.warn("[TokenCapture] Step 5: Token storage SUCCESS");
         toast({
           title: "Google Connected!",
-          description: `Successfully connected as ${result.userEmail || parsed?.user?.email || "your account"}`,
+          description: `Successfully connected as ${invokeResult.data?.provider_email || parsed?.user?.email || "your account"}`,
         });
 
         // Clear provider tokens from localStorage now that they're stored in DB.
