@@ -67,7 +67,6 @@ export function IntegrationsContent() {
   const [integrationStates, setIntegrationStates] = useState<Record<string, IntegrationState>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
-  const [tokenCaptureStatus, setTokenCaptureStatus] = useState<string>("idle");
   const { toast } = useToast();
   
   // Ref to prevent double processing
@@ -128,76 +127,37 @@ export function IntegrationsContent() {
     }
   }, [checkGoogleConnection, checkMondayConnection]);
 
-  // CRITICAL: Token capture on mount - store provider_token after OAuth redirect
-  // NOTE: We intentionally DO NOT call supabase.auth.getSession() here because it can hang.
+  // Token capture on mount - store provider_token after OAuth redirect
   useEffect(() => {
-    console.warn("=== INTEGRATIONS TOKEN CAPTURE STARTED (localStorage-only) ===");
-    setTokenCaptureStatus("checking localStorage...");
-
-    // NOTE: Do NOT early-return on tokenProcessedRef; always attempt to store if tokens exist.
-    // tokenProcessedRef is only used to avoid duplicate concurrent calls.
     if (tokenProcessedRef.current) {
-      console.warn("[TokenCapture] tokenProcessedRef.current=true (previous attempt happened). Continuing anyway.");
+      return;
     }
 
     const captureToken = async () => {
       try {
-        setTokenCaptureStatus("reading localStorage...");
-        console.warn("[TokenCapture] Step 1: Reading localStorage key:", SUPABASE_AUTH_KEY);
-
         const authData = localStorage.getItem(SUPABASE_AUTH_KEY);
-        console.warn("[TokenCapture] Step 1b: localStorage.getItem result:", {
-          hasValue: !!authData,
-          length: authData?.length,
-        });
-
         if (!authData) {
-          setTokenCaptureStatus("error: no auth data in localStorage");
           return;
         }
 
-        setTokenCaptureStatus("parsing localStorage...");
         let parsed: any;
         try {
           parsed = JSON.parse(authData);
-        } catch (e) {
-          console.warn("[TokenCapture] Step 2: JSON.parse failed:", e);
-          setTokenCaptureStatus("error: failed to parse localStorage");
+        } catch {
           return;
         }
-
-        console.warn("[TokenCapture] Step 2b: Parsed auth object summary:", {
-          keys: Object.keys(parsed || {}),
-          hasProviderToken: !!parsed?.provider_token,
-          providerTokenLength: parsed?.provider_token?.length,
-          hasProviderRefreshToken: !!parsed?.provider_refresh_token,
-          hasUser: !!parsed?.user,
-          userId: parsed?.user?.id,
-          userEmail: parsed?.user?.email,
-        });
 
         const providerToken: string | undefined = parsed?.provider_token;
         const providerRefreshToken: string | undefined = parsed?.provider_refresh_token;
 
         if (!providerToken) {
-          console.warn("[TokenCapture] Step 3: No provider_token found in parsed localStorage");
-          setTokenCaptureStatus("error: no provider_token in localStorage");
           return;
         }
 
         const userId: string | undefined = parsed?.user?.id;
         if (!userId) {
-          console.warn("[TokenCapture] Step 3b: provider_token exists but parsed.user.id is missing");
-          setTokenCaptureStatus("error: provider_token found but no user id");
           return;
         }
-
-        setTokenCaptureStatus("storing...");
-        console.warn("[TokenCapture] Step 4: Calling store-google-tokens edge function...");
-
-        // IMPORTANT: We cannot store raw tokens directly in user_integrations (schema stores secret IDs / metadata only).
-        // Also, the Vault-based RPC path is currently failing with a DB crypto permission error.
-        // So we store tokens via an Edge Function using application-level encryption (same pattern as google-oauth-callback).
 
         const STORE_TIMEOUT_MS = 10_000;
         const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> =>
@@ -206,7 +166,6 @@ export function IntegrationsContent() {
             new Promise<T>((_, reject) => window.setTimeout(() => reject(new Error(`TIMEOUT:${label}`)), ms)),
           ]);
 
-        console.warn("[TokenCapture] Step 4b: BEFORE invoke store-google-tokens");
         let invokeResult: { data: any; error: any };
         try {
           invokeResult = await withTimeout(
@@ -222,54 +181,38 @@ export function IntegrationsContent() {
             "store_google_tokens"
           );
         } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          if (msg.startsWith("TIMEOUT:")) {
-            console.warn("[TokenCapture] Step 4c: store-google-tokens TIMED OUT:", msg);
-            setTokenCaptureStatus("store_timeout");
-            return;
-          }
-          console.warn("[TokenCapture] Step 4c: store-google-tokens threw:", err);
-          setTokenCaptureStatus(`store_failed: ${msg}`);
+          console.error("[TokenCapture] store-google-tokens failed:", err);
           return;
         }
 
-        console.warn("[TokenCapture] Step 4d: AFTER invoke store-google-tokens", invokeResult);
-
         if (invokeResult.error) {
-          const msg = invokeResult.error?.message || "Edge function error";
-          console.warn("[TokenCapture] Step 4e: store-google-tokens returned error:", invokeResult.error);
-          setTokenCaptureStatus(`store_failed: ${msg}`);
+          console.error("[TokenCapture] Edge function error:", invokeResult.error);
           toast({
             title: "Connection Issue",
-            description: msg,
+            description: invokeResult.error?.message || "Edge function error",
             variant: "destructive",
           });
           return;
         }
 
         if (!invokeResult.data?.success) {
-          const msg = invokeResult.data?.error || "Failed to store Google tokens";
-          console.warn("[TokenCapture] Step 4f: store-google-tokens returned unsuccessful:", invokeResult.data);
-          setTokenCaptureStatus(`store_failed: ${msg}`);
+          console.error("[TokenCapture] Token storage failed:", invokeResult.data?.error);
           toast({
             title: "Connection Issue",
-            description: msg,
+            description: invokeResult.data?.error || "Failed to store Google tokens",
             variant: "destructive",
           });
           return;
         }
 
-        // Mark processed only AFTER a successful store.
         tokenProcessedRef.current = true;
 
-        setTokenCaptureStatus("stored_successfully");
-        console.warn("[TokenCapture] Step 5: Token storage SUCCESS");
         toast({
           title: "Google Connected!",
           description: `Successfully connected as ${invokeResult.data?.provider_email || parsed?.user?.email || "your account"}`,
         });
 
-        // Clear provider tokens from localStorage now that they're stored in DB.
+        // Clear provider tokens from localStorage
         try {
           const latestAuthData = localStorage.getItem(SUPABASE_AUTH_KEY);
           if (latestAuthData) {
@@ -277,10 +220,9 @@ export function IntegrationsContent() {
             delete latestParsed.provider_token;
             delete latestParsed.provider_refresh_token;
             localStorage.setItem(SUPABASE_AUTH_KEY, JSON.stringify(latestParsed));
-            console.warn("[TokenCapture] Step 6: Cleared provider tokens from localStorage");
           }
-        } catch (e) {
-          console.warn("[TokenCapture] Step 6b: Failed to clear localStorage provider tokens:", e);
+        } catch {
+          // Ignore cleanup errors
         }
 
         // Clean URL if it has hash from OAuth
@@ -288,14 +230,9 @@ export function IntegrationsContent() {
           window.history.replaceState(null, "", window.location.pathname);
         }
 
-        // Refresh integration status
-        console.warn("[TokenCapture] Step 7: Refreshing integration status...");
         await refreshIntegrations();
-        console.warn("[TokenCapture] Step 7b: refreshIntegrations completed");
       } catch (e) {
-        const msg = e instanceof Error ? e.message : "Unknown error";
-        console.warn("[TokenCapture] Unexpected error (outer catch):", e);
-        setTokenCaptureStatus(`store_failed: ${msg}`);
+        console.error("[TokenCapture] Unexpected error:", e);
       }
     };
 
@@ -314,7 +251,6 @@ export function IntegrationsContent() {
   // Listen for the custom event when Google tokens are stored
   useEffect(() => {
     const handleGoogleConnected = () => {
-      console.log('[IntegrationsContent] Received google-integration-connected event, refreshing...');
       refreshIntegrations();
     };
 
@@ -352,12 +288,10 @@ export function IntegrationsContent() {
   }, [searchParams, setSearchParams, refreshIntegrations, toast]);
 
   const handleGoogleConnect = async () => {
-    console.log("1. Connect button clicked");
     await initiateGoogleOAuth("google", GOOGLE_WORKSPACE_SCOPES);
   };
 
   const handleGoogleUpdatePermissions = async () => {
-    console.log("1. Update permissions clicked");
     await initiateGoogleOAuth("google", GOOGLE_WORKSPACE_SCOPES);
   };
 
@@ -394,8 +328,6 @@ export function IntegrationsContent() {
     const config = OTHER_INTEGRATION_CONFIGS.find((c) => c.id === integrationId);
     if (config?.provider === "monday") {
       initiateMondayOAuth();
-    } else {
-      console.log(`No OAuth configured for ${integrationId}`);
     }
   };
 
@@ -449,11 +381,6 @@ export function IntegrationsContent() {
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      {/* Debug indicator - shows token capture status */}
-      <div className="col-span-full text-xs text-muted-foreground bg-muted/50 p-2 rounded">
-        Token Capture Status: <strong>{tokenCaptureStatus}</strong>
-      </div>
-      
       {/* Google Workspace Card - Primary integration */}
       <GoogleWorkspaceCard
         isConnected={googleState.status === "connected"}
