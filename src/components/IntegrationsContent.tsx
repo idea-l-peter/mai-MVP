@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
 import { IntegrationCard } from "./IntegrationCard";
 import { GoogleWorkspaceCard } from "./GoogleWorkspaceCard";
 import { WhatsAppLogo } from "./icons";
@@ -73,6 +74,48 @@ export function IntegrationsContent() {
     } catch {
       // ignore
     }
+  }, []);
+
+  // OAuth debug: verify this page mounts after redirect and inspect session immediately
+  useEffect(() => {
+    console.log("[OAuth Debug] Integrations page mounted");
+    console.log("[OAuth Debug] Current URL:", window.location.href);
+    console.log("[OAuth Debug] Hash:", window.location.hash);
+    console.log("[OAuth Debug] Search:", window.location.search);
+
+    const checkSession = async () => {
+      console.log("[OAuth Debug] Checking session...");
+      const { data: { session }, error } = await supabase.auth.getSession();
+
+      console.log("[OAuth Debug] Session result:", {
+        hasSession: !!session,
+        userId: session?.user?.id,
+        providerToken: session?.provider_token ? "EXISTS" : "MISSING",
+        providerRefreshToken: session?.provider_refresh_token ? "EXISTS" : "MISSING",
+        error: error?.message,
+      });
+    };
+
+    checkSession();
+  }, []);
+
+  // OAuth debug: auth listener visibility
+  useEffect(() => {
+    console.log("[OAuth Debug] Setting up auth state listener (Integrations page)...");
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log("[OAuth Debug] Auth state changed:", event);
+      console.log("[OAuth Debug] Session in event:", {
+        hasSession: !!session,
+        providerToken: session?.provider_token ? "EXISTS" : "MISSING",
+        providerRefreshToken: session?.provider_refresh_token ? "EXISTS" : "MISSING",
+      });
+    });
+
+    return () => {
+      console.log("[OAuth Debug] Cleaning up auth listener (Integrations page)");
+      subscription.unsubscribe();
+    };
   }, []);
 
   const {
