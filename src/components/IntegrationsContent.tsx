@@ -1,11 +1,13 @@
-import { useEffect, useState, useCallback } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { useSearchParams, useLocation } from "react-router-dom";
 import { IntegrationCard } from "./IntegrationCard";
 import { GoogleWorkspaceCard } from "./GoogleWorkspaceCard";
 import { WhatsAppLogo } from "./icons";
 import { useGoogleIntegration } from "@/hooks/useGoogleIntegration";
 import { useMondayIntegration } from "@/hooks/useMondayIntegration";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { storeGoogleTokensFromSession } from "@/lib/integrations/storeGoogleTokens";
 import mondayLogo from "@/assets/monday-logo.svg";
 
 type IntegrationStatus = "connected" | "not_connected" | "pending";
@@ -18,6 +20,9 @@ const GOOGLE_WORKSPACE_SCOPES = [
   "https://www.googleapis.com/auth/userinfo.email",
   "https://www.googleapis.com/auth/userinfo.profile",
 ];
+
+// Storage key for localStorage
+const SUPABASE_AUTH_KEY = 'sb-vqunxhjgpdgpzkjescvb-auth-token';
 
 interface IntegrationConfig {
   id: string;
@@ -58,22 +63,18 @@ interface IntegrationState {
 
 export function IntegrationsContent() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
   const [googleState, setGoogleState] = useState<IntegrationState>({ status: "not_connected" });
   const [integrationStates, setIntegrationStates] = useState<Record<string, IntegrationState>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
+  const [tokenCaptureStatus, setTokenCaptureStatus] = useState<string>("idle");
   const { toast } = useToast();
+  
+  // Ref to prevent double processing
+  const tokenProcessedRef = useRef(false);
 
   const DISCONNECT_STORAGE_KEY = "disconnect_in_progress_provider";
-
-  // Clear any stale disconnect-in-progress flag on page load
-  useEffect(() => {
-    try {
-      sessionStorage.removeItem(DISCONNECT_STORAGE_KEY);
-    } catch {
-      // ignore
-    }
-  }, []);
 
   const {
     isConnecting: isGoogleConnecting,
@@ -127,6 +128,145 @@ export function IntegrationsContent() {
       setIsLoading(false);
     }
   }, [checkGoogleConnection, checkMondayConnection]);
+
+  // CRITICAL: Token capture on mount - this is where we capture the provider_token after OAuth redirect
+  useEffect(() => {
+    // Immediate logging
+    console.warn('=== INTEGRATIONS TOKEN CAPTURE STARTED ===');
+    setTokenCaptureStatus("checking");
+    
+    // Prevent double processing
+    if (tokenProcessedRef.current) {
+      console.warn('[TokenCapture] Already processed, skipping');
+      setTokenCaptureStatus("already_processed");
+      return;
+    }
+
+    const captureToken = async () => {
+      try {
+        console.warn('[TokenCapture] Step 1: Calling getSession()...');
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        console.warn('[TokenCapture] Step 2: Session result:', {
+          hasSession: !!session,
+          hasError: !!error,
+          userId: session?.user?.id,
+          userEmail: session?.user?.email,
+          hasProviderToken: !!session?.provider_token,
+          providerTokenLength: session?.provider_token?.length,
+          hasProviderRefreshToken: !!session?.provider_refresh_token,
+        });
+
+        if (error) {
+          console.warn('[TokenCapture] getSession error:', error);
+          setTokenCaptureStatus("session_error");
+          return;
+        }
+
+        // Try to get provider_token from session first
+        let providerToken = session?.provider_token;
+        let providerRefreshToken = session?.provider_refresh_token;
+
+        // If not in session, try localStorage directly
+        if (!providerToken) {
+          console.warn('[TokenCapture] Step 3: No provider_token in session, checking localStorage...');
+          try {
+            const storedData = localStorage.getItem(SUPABASE_AUTH_KEY);
+            if (storedData) {
+              const parsed = JSON.parse(storedData);
+              console.warn('[TokenCapture] Step 3b: localStorage data:', {
+                hasProviderToken: !!parsed?.provider_token,
+                providerTokenLength: parsed?.provider_token?.length,
+                hasProviderRefreshToken: !!parsed?.provider_refresh_token,
+                keys: Object.keys(parsed || {}),
+              });
+              providerToken = parsed?.provider_token;
+              providerRefreshToken = parsed?.provider_refresh_token;
+            } else {
+              console.warn('[TokenCapture] Step 3c: No data in localStorage');
+            }
+          } catch (e) {
+            console.warn('[TokenCapture] localStorage parse error:', e);
+          }
+        }
+
+        // If we have a provider token and a session, store it
+        if (providerToken && session) {
+          console.warn('[TokenCapture] Step 4: FOUND provider_token! Length:', providerToken.length);
+          setTokenCaptureStatus("storing");
+          
+          // Mark as processed to prevent duplicates
+          tokenProcessedRef.current = true;
+
+          // Create a session-like object with the tokens
+          const sessionWithTokens = {
+            ...session,
+            provider_token: providerToken,
+            provider_refresh_token: providerRefreshToken,
+          };
+
+          console.warn('[TokenCapture] Step 5: Calling storeGoogleTokensFromSession...');
+          const result = await storeGoogleTokensFromSession(sessionWithTokens);
+          console.warn('[TokenCapture] Step 6: Store result:', result);
+
+          if (result.success) {
+            setTokenCaptureStatus("success");
+            toast({
+              title: "Google Connected!",
+              description: `Successfully connected as ${result.userEmail || session.user?.email}`,
+            });
+
+            // Clear provider_token from localStorage since it's now stored securely
+            try {
+              const storedData = localStorage.getItem(SUPABASE_AUTH_KEY);
+              if (storedData) {
+                const parsed = JSON.parse(storedData);
+                delete parsed.provider_token;
+                delete parsed.provider_refresh_token;
+                localStorage.setItem(SUPABASE_AUTH_KEY, JSON.stringify(parsed));
+                console.warn('[TokenCapture] Cleared provider tokens from localStorage');
+              }
+            } catch (e) {
+              console.warn('[TokenCapture] Failed to clear localStorage:', e);
+            }
+
+            // Clean URL if it has hash from OAuth
+            if (window.location.hash) {
+              window.history.replaceState(null, '', window.location.pathname);
+            }
+
+            // Refresh integration status
+            refreshIntegrations();
+          } else {
+            setTokenCaptureStatus("store_failed");
+            console.warn('[TokenCapture] Store failed:', result.error);
+            toast({
+              title: "Connection Issue",
+              description: result.error || "Failed to store Google tokens",
+              variant: "destructive",
+            });
+          }
+        } else {
+          console.warn('[TokenCapture] No provider_token found anywhere');
+          setTokenCaptureStatus("no_token");
+        }
+      } catch (e) {
+        console.warn('[TokenCapture] Unexpected error:', e);
+        setTokenCaptureStatus("error");
+      }
+    };
+
+    captureToken();
+  }, []); // Empty deps - run once on mount
+
+  // Clear any stale disconnect-in-progress flag on page load
+  useEffect(() => {
+    try {
+      sessionStorage.removeItem(DISCONNECT_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+  }, []);
 
   // Listen for the custom event when Google tokens are stored
   useEffect(() => {
@@ -266,6 +406,11 @@ export function IntegrationsContent() {
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
+      {/* Debug indicator - shows token capture status */}
+      <div className="col-span-full text-xs text-muted-foreground bg-muted/50 p-2 rounded">
+        Token Capture Status: <strong>{tokenCaptureStatus}</strong>
+      </div>
+      
       {/* Google Workspace Card - Primary integration */}
       <GoogleWorkspaceCard
         isConnected={googleState.status === "connected"}
