@@ -27,6 +27,18 @@ function OAuthTokenCapture() {
   }, []);
 
   useEffect(() => {
+    // Hard proof this effect ran (even if logs are filtered)
+    (window as any).__OAUTH_CAPTURE_RAN = true;
+    console.warn('=== OAUTH CAPTURE USEEFFECT STARTED ===');
+    try {
+      if (!(window as any).__OAUTH_CAPTURE_ALERTED) {
+        (window as any).__OAUTH_CAPTURE_ALERTED = true;
+        window.alert('OAuthTokenCapture useEffect ran');
+      }
+    } catch {
+      // ignore alert failures (blocked by browser)
+    }
+
     console.warn('[OAuth Capture] Component mounted');
     console.warn('[OAuth Capture] Current URL:', window.location.href);
     
