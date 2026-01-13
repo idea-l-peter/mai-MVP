@@ -192,7 +192,7 @@ export function IntegrationsContent() {
           return;
         }
 
-        setTokenCaptureStatus("storing token...");
+        setTokenCaptureStatus("storing...");
         console.warn("[TokenCapture] Step 4: Calling storeGoogleTokensFromSession...");
 
         // Build a minimal Session-like object from localStorage data.
@@ -218,10 +218,32 @@ export function IntegrationsContent() {
           userEmail: sessionLike.user?.email,
         });
 
-        console.warn("[TokenCapture] Step 4c: BEFORE await storeGoogleTokensFromSession");
-        const result = await storeGoogleTokensFromSession(sessionLike as any);
-        console.warn("[TokenCapture] Step 4d: AFTER await storeGoogleTokensFromSession");
-        console.warn("[TokenCapture] Step 5: storeGoogleTokensFromSession result:", result);
+        const STORE_TIMEOUT_MS = 10_000;
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          window.setTimeout(() => reject(new Error("STORE_TIMEOUT")), STORE_TIMEOUT_MS);
+        });
+
+        console.warn("[TokenCapture] Step 4c: BEFORE storeGoogleTokensFromSession (with timeout)");
+        let result: Awaited<ReturnType<typeof storeGoogleTokensFromSession>>;
+        try {
+          result = (await Promise.race([
+            storeGoogleTokensFromSession(sessionLike as any),
+            timeoutPromise,
+          ])) as Awaited<ReturnType<typeof storeGoogleTokensFromSession>>;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (msg === "STORE_TIMEOUT") {
+            console.warn("[TokenCapture] Step 4d: storeGoogleTokensFromSession TIMED OUT after", STORE_TIMEOUT_MS, "ms");
+            setTokenCaptureStatus("store_timeout");
+            return;
+          }
+
+          console.warn("[TokenCapture] Step 4d: storeGoogleTokensFromSession threw:", err);
+          setTokenCaptureStatus(`store_failed: ${msg}`);
+          return;
+        }
+
+        console.warn("[TokenCapture] Step 4e: AFTER storeGoogleTokensFromSession returned:", result);
 
         if (!result.success) {
           const msg = result.error || "Failed to store Google tokens";
