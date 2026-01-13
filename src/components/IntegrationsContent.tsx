@@ -134,10 +134,10 @@ export function IntegrationsContent() {
     console.warn("=== INTEGRATIONS TOKEN CAPTURE STARTED (localStorage-only) ===");
     setTokenCaptureStatus("checking localStorage...");
 
+    // NOTE: Do NOT early-return on tokenProcessedRef; always attempt to store if tokens exist.
+    // tokenProcessedRef is only used to avoid duplicate concurrent calls.
     if (tokenProcessedRef.current) {
-      console.warn("[TokenCapture] Already processed, skipping");
-      setTokenCaptureStatus("already_processed");
-      return;
+      console.warn("[TokenCapture] tokenProcessedRef.current=true (previous attempt happened). Continuing anyway.");
     }
 
     const captureToken = async () => {
@@ -193,9 +193,7 @@ export function IntegrationsContent() {
         }
 
         setTokenCaptureStatus("storing token...");
-        console.warn("[TokenCapture] Step 4: About to call storeGoogleTokensFromSession (localStorage-only)");
-
-        tokenProcessedRef.current = true;
+        console.warn("[TokenCapture] Step 4: Calling storeGoogleTokensFromSession...");
 
         // Build a minimal Session-like object from localStorage data.
         // storeGoogleTokensFromSession requires: session.user.id and session.provider_token.
@@ -215,25 +213,33 @@ export function IntegrationsContent() {
           hasRefreshToken: !!sessionLike.refresh_token,
           hasProviderToken: !!sessionLike.provider_token,
           providerTokenLength: (sessionLike.provider_token as string | undefined)?.length,
+          hasProviderRefreshToken: !!sessionLike.provider_refresh_token,
           userId: sessionLike.user?.id,
           userEmail: sessionLike.user?.email,
         });
 
+        console.warn("[TokenCapture] Step 4c: BEFORE await storeGoogleTokensFromSession");
         const result = await storeGoogleTokensFromSession(sessionLike as any);
+        console.warn("[TokenCapture] Step 4d: AFTER await storeGoogleTokensFromSession");
         console.warn("[TokenCapture] Step 5: storeGoogleTokensFromSession result:", result);
 
         if (!result.success) {
           const msg = result.error || "Failed to store Google tokens";
-          setTokenCaptureStatus(`error: ${msg}`);
+          setTokenCaptureStatus(`store_failed: ${msg}`);
           toast({
             title: "Connection Issue",
             description: msg,
             variant: "destructive",
           });
+          console.warn("[TokenCapture] Step 5b: Token storage FAILED:", msg);
           return;
         }
 
-        setTokenCaptureStatus("success!");
+        // Mark processed only AFTER a successful store.
+        tokenProcessedRef.current = true;
+
+        setTokenCaptureStatus("stored_successfully");
+        console.warn("[TokenCapture] Step 5c: Token storage SUCCESS");
         toast({
           title: "Google Connected!",
           description: `Successfully connected as ${result.userEmail || parsed?.user?.email || "your account"}`,
@@ -259,11 +265,13 @@ export function IntegrationsContent() {
         }
 
         // Refresh integration status
-        refreshIntegrations();
+        console.warn("[TokenCapture] Step 7: Refreshing integration status...");
+        await refreshIntegrations();
+        console.warn("[TokenCapture] Step 7b: refreshIntegrations completed");
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Unknown error";
         console.warn("[TokenCapture] Unexpected error (outer catch):", e);
-        setTokenCaptureStatus(`error: ${msg}`);
+        setTokenCaptureStatus(`store_failed: ${msg}`);
       }
     };
 
