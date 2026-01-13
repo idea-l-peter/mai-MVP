@@ -232,8 +232,11 @@ export function IntegrationsContent() {
           ])) as Awaited<ReturnType<typeof storeGoogleTokensFromSession>>;
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
-          if (msg === "STORE_TIMEOUT") {
-            console.warn("[TokenCapture] Step 4d: storeGoogleTokensFromSession TIMED OUT after", STORE_TIMEOUT_MS, "ms");
+          if (msg === "STORE_TIMEOUT" || msg.startsWith("TIMEOUT:")) {
+            console.warn(
+              "[TokenCapture] Step 4d: storeGoogleTokensFromSession TIMED OUT (or an inner step timed out):",
+              msg
+            );
             setTokenCaptureStatus("store_timeout");
             return;
           }
