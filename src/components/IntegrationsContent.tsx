@@ -128,6 +128,19 @@ export function IntegrationsContent() {
     }
   }, [checkGoogleConnection, checkMondayConnection]);
 
+  // Listen for the custom event when Google tokens are stored
+  useEffect(() => {
+    const handleGoogleConnected = () => {
+      console.log('[IntegrationsContent] Received google-integration-connected event, refreshing...');
+      refreshIntegrations();
+    };
+
+    window.addEventListener('google-integration-connected', handleGoogleConnected);
+    return () => {
+      window.removeEventListener('google-integration-connected', handleGoogleConnected);
+    };
+  }, [refreshIntegrations]);
+
   // On mount, check for legacy URL params and refresh integrations
   useEffect(() => {
     const connected = searchParams.get("connected");
