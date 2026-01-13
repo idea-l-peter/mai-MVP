@@ -21,7 +21,11 @@ interface StoreTokensResult {
  * provider_token is only available in the session right after OAuth.
  */
 export async function storeGoogleTokensFromSession(session: Session): Promise<StoreTokensResult> {
-  console.log('[storeGoogleTokens] Starting token storage...');
+  // CRITICAL: Log immediately at function entry
+  console.log('=== [storeGoogleTokens] FUNCTION CALLED ===');
+  console.log('[storeGoogleTokens] Session user:', session.user?.email);
+  console.log('[storeGoogleTokens] provider_token exists:', !!session.provider_token);
+  console.log('[storeGoogleTokens] provider_refresh_token exists:', !!session.provider_refresh_token);
   
   const userId = session.user?.id;
   const userEmail = session.user?.email;
@@ -32,21 +36,14 @@ export async function storeGoogleTokensFromSession(session: Session): Promise<St
   }
 
   if (!session.provider_token) {
-    console.log('[storeGoogleTokens] No provider_token in session');
+    console.log('[storeGoogleTokens] No provider_token in session - nothing to store');
     return { success: false, error: 'No provider token available' };
   }
 
   try {
-    // Log what we're about to send
-    console.log('[storeGoogleTokens] Storing access token with params:', {
-      p_provider: 'google',
-      p_token_type: 'access_token',
-      p_token_value: session.provider_token ? `${session.provider_token.substring(0, 20)}...` : 'MISSING',
-      p_user_id: userId,
-    });
-
-    // Store the access token using RPC
-    const { data: accessTokenData, error: accessTokenError } = await supabase.rpc(
+    // Step 1: Store the new access token
+    console.log('[storeGoogleTokens] Step 1: Storing access token via RPC...');
+    const { data: accessTokenSecretId, error: accessTokenError } = await supabase.rpc(
       'store_integration_token',
       {
         p_provider: 'google',
@@ -57,23 +54,19 @@ export async function storeGoogleTokensFromSession(session: Session): Promise<St
     );
 
     if (accessTokenError) {
-      console.error('[storeGoogleTokens] RPC store_integration_token failed:', {
-        error: accessTokenError,
-        code: accessTokenError.code,
-        message: accessTokenError.message,
-        details: accessTokenError.details,
-        hint: accessTokenError.hint,
-      });
+      console.error('[storeGoogleTokens] RPC store_integration_token failed:', accessTokenError);
       return { success: false, error: accessTokenError.message };
     }
 
-    console.log('[storeGoogleTokens] Access token stored successfully, secret ID:', accessTokenData);
+    console.log('[storeGoogleTokens] ✅ Access token stored, secret ID:', accessTokenSecretId);
 
-    // Store refresh token if available
-    let refreshTokenId = null;
+    // Step 2: Handle refresh token - only store if we have a NEW one
+    let refreshTokenSecretId: string | null = null;
+    
     if (session.provider_refresh_token) {
-      console.log('[storeGoogleTokens] Storing refresh token...');
-      const { data: refreshTokenData, error: refreshTokenError } = await supabase.rpc(
+      // We have a new refresh token - store it
+      console.log('[storeGoogleTokens] Step 2: Storing NEW refresh token via RPC...');
+      const { data: newRefreshTokenId, error: refreshTokenError } = await supabase.rpc(
         'store_integration_token',
         {
           p_provider: 'google',
@@ -84,36 +77,54 @@ export async function storeGoogleTokensFromSession(session: Session): Promise<St
       );
 
       if (refreshTokenError) {
-        console.error('[storeGoogleTokens] Failed to store refresh token:', {
-          error: refreshTokenError,
-          code: refreshTokenError.code,
-          message: refreshTokenError.message,
-        });
+        console.error('[storeGoogleTokens] Failed to store refresh token:', refreshTokenError);
+        // Continue anyway - access token was stored
       } else {
-        refreshTokenId = refreshTokenData;
-        console.log('[storeGoogleTokens] Refresh token stored, secret ID:', refreshTokenId);
+        refreshTokenSecretId = newRefreshTokenId;
+        console.log('[storeGoogleTokens] ✅ Refresh token stored, secret ID:', refreshTokenSecretId);
       }
     } else {
-      console.log('[storeGoogleTokens] No refresh token in session');
+      // No new refresh token - check if we have an existing one in the database
+      console.log('[storeGoogleTokens] Step 2: No new refresh token, checking for existing one...');
+      const { data: existingIntegration, error: fetchError } = await supabase
+        .from('user_integrations')
+        .select('refresh_token_secret_id')
+        .eq('user_id', userId)
+        .eq('provider', 'google')
+        .maybeSingle();
+
+      if (fetchError) {
+        console.error('[storeGoogleTokens] Error fetching existing integration:', fetchError);
+      } else if (existingIntegration?.refresh_token_secret_id) {
+        refreshTokenSecretId = existingIntegration.refresh_token_secret_id;
+        console.log('[storeGoogleTokens] ✅ Found existing refresh token, keeping ID:', refreshTokenSecretId);
+      } else {
+        console.log('[storeGoogleTokens] ⚠️ No existing refresh token found - user may need to re-authorize');
+      }
     }
 
-    // Calculate token expiry (typically 1 hour from now for Google)
+    // Step 3: Calculate token expiry (1 hour for Google access tokens)
     const expiresAt = new Date(Date.now() + 3600 * 1000).toISOString();
 
-    // Log the upsert data
+    // Step 4: Upsert the user_integrations record
     const upsertData = {
       user_id: userId,
       provider: 'google',
       provider_email: userEmail,
-      access_token_secret_id: accessTokenData,
-      refresh_token_secret_id: refreshTokenId,
+      access_token_secret_id: accessTokenSecretId,
+      refresh_token_secret_id: refreshTokenSecretId, // Will be existing ID or new ID or null
       token_expires_at: expiresAt,
       scopes: GOOGLE_SCOPES,
       updated_at: new Date().toISOString(),
     };
-    console.log('[storeGoogleTokens] Upserting user_integrations with:', upsertData);
+    
+    console.log('[storeGoogleTokens] Step 3: Upserting user_integrations...');
+    console.log('[storeGoogleTokens] Upsert data:', {
+      ...upsertData,
+      access_token_secret_id: upsertData.access_token_secret_id ? 'SET' : 'NULL',
+      refresh_token_secret_id: upsertData.refresh_token_secret_id ? 'SET' : 'NULL',
+    });
 
-    // Upsert the user_integrations record
     const { error: upsertError } = await supabase
       .from('user_integrations')
       .upsert(upsertData, { 
@@ -121,25 +132,19 @@ export async function storeGoogleTokensFromSession(session: Session): Promise<St
       });
 
     if (upsertError) {
-      console.error('[storeGoogleTokens] Upsert failed:', {
-        error: upsertError,
-        code: upsertError.code,
-        message: upsertError.message,
-        details: upsertError.details,
-        hint: upsertError.hint,
-      });
+      console.error('[storeGoogleTokens] Upsert failed:', upsertError);
       return { success: false, error: upsertError.message };
     }
 
-    console.log('[storeGoogleTokens] ✅ Integration stored successfully!');
+    console.log('[storeGoogleTokens] ✅✅✅ Integration stored successfully!');
     
-    // Dispatch a custom event so IntegrationsContent can refresh
+    // Dispatch event to notify IntegrationsContent to refresh
     window.dispatchEvent(new CustomEvent('google-integration-connected'));
     console.log('[storeGoogleTokens] Dispatched google-integration-connected event');
     
     return { success: true, userEmail };
   } catch (error) {
-    console.error('[storeGoogleTokens] Token storage error:', error);
+    console.error('[storeGoogleTokens] Unexpected error:', error);
     return { 
       success: false, 
       error: error instanceof Error ? error.message : 'Failed to store tokens' 
