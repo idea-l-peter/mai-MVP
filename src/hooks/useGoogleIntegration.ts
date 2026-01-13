@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -37,47 +38,21 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
     }
   }, []);
 
-  // Handle OAuth callback - store provider tokens in user_integrations
-  const handleOAuthCallback = useCallback(async (): Promise<boolean> => {
-    // Prevent duplicate handling
-    if (callbackHandledRef.current) {
-      console.log('[GoogleOAuth] Callback already handled, skipping');
-      return false;
-    }
-
-    console.log('[GoogleOAuth] Checking for OAuth callback...');
+  // Internal function to store tokens from a session - used by both auth listener and manual check
+  const storeTokensFromSession = useCallback(async (session: Session): Promise<boolean> => {
+    console.log('[GoogleOAuth] Storing tokens from session...');
     
     try {
-      // Get the current session - Supabase should have processed the OAuth return
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      console.log('[GoogleOAuth] Session check:', { 
-        hasSession: !!session, 
-        hasProviderToken: !!session?.provider_token,
-        hasProviderRefreshToken: !!session?.provider_refresh_token,
-        error: sessionError 
-      });
-
-      if (sessionError || !session) {
-        console.log('[GoogleOAuth] No session found');
-        return false;
-      }
-
-      // Check if we have provider tokens (indicates OAuth just completed)
-      if (!session.provider_token) {
-        console.log('[GoogleOAuth] No provider_token in session - not an OAuth callback');
-        return false;
-      }
-
-      callbackHandledRef.current = true;
-      console.log('[GoogleOAuth] Provider tokens found, storing integration...');
-
-      // Get user email from session
       const userEmail = session.user?.email;
       const userId = session.user?.id;
 
       if (!userId) {
         console.error('[GoogleOAuth] No user ID in session');
+        return false;
+      }
+
+      if (!session.provider_token) {
+        console.log('[GoogleOAuth] No provider_token in session');
         return false;
       }
 
@@ -165,7 +140,7 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
 
       return true;
     } catch (error) {
-      console.error('[GoogleOAuth] Callback handling error:', error);
+      console.error('[GoogleOAuth] Token storage error:', error);
       toast({
         title: 'Connection failed',
         description: error instanceof Error ? error.message : 'Failed to store connection',
@@ -175,11 +150,106 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
     }
   }, [toast]);
 
-  // isConnecting state is declared above
+  // Set up auth state change listener to capture provider tokens
+  useEffect(() => {
+    console.log('[GoogleOAuth] Setting up auth state change listener');
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('[GoogleOAuth] Auth state change:', event, {
+        hasSession: !!session,
+        hasProviderToken: !!session?.provider_token,
+        hasProviderRefreshToken: !!session?.provider_refresh_token,
+      });
+
+      // Only handle SIGNED_IN events with provider tokens (OAuth callback)
+      if (event === 'SIGNED_IN' && session?.provider_token && !callbackHandledRef.current) {
+        console.log('[GoogleOAuth] SIGNED_IN with provider token detected');
+        callbackHandledRef.current = true;
+        // Use setTimeout to defer the Supabase call and avoid deadlock
+        setTimeout(() => {
+          storeTokensFromSession(session);
+        }, 0);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [storeTokensFromSession]);
+
+  // Handle OAuth callback - check for hash fragment and process tokens
+  const handleOAuthCallback = useCallback(async (): Promise<boolean> => {
+    // Prevent duplicate handling
+    if (callbackHandledRef.current) {
+      console.log('[GoogleOAuth] Callback already handled, skipping');
+      return false;
+    }
+
+    // Check if we have a hash fragment indicating OAuth callback
+    const hash = window.location.hash;
+    console.log('[GoogleOAuth] Checking for OAuth callback, hash:', hash ? hash.substring(0, 50) + '...' : 'none');
+    
+    // Check if this looks like an OAuth callback
+    const isOAuthCallback = hash.includes('access_token') || hash.includes('error');
+    
+    if (!isOAuthCallback) {
+      console.log('[GoogleOAuth] No OAuth hash fragment detected');
+      
+      // Still check if we have a session with provider tokens (fallback)
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.provider_token) {
+        console.log('[GoogleOAuth] Found session with provider token, processing...');
+        callbackHandledRef.current = true;
+        return await storeTokensFromSession(session);
+      }
+      
+      return false;
+    }
+
+    console.log('[GoogleOAuth] OAuth callback detected in hash, waiting for Supabase to process...');
+    
+    // Wait a moment for Supabase to process the hash fragment
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Get the session which should now have provider tokens
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    
+    console.log('[GoogleOAuth] Session after hash processing:', { 
+      hasSession: !!session, 
+      hasProviderToken: !!session?.provider_token,
+      hasProviderRefreshToken: !!session?.provider_refresh_token,
+      error: sessionError 
+    });
+
+    if (sessionError || !session) {
+      console.error('[GoogleOAuth] No session found after OAuth callback');
+      toast({
+        title: 'Connection failed',
+        description: 'Failed to get session after Google login',
+        variant: 'destructive',
+      });
+      return false;
+    }
+
+    if (!session.provider_token) {
+      console.error('[GoogleOAuth] No provider_token in session after OAuth callback');
+      toast({
+        title: 'Connection failed', 
+        description: 'No Google access token received. Please try again.',
+        variant: 'destructive',
+      });
+      return false;
+    }
+
+    callbackHandledRef.current = true;
+    return await storeTokensFromSession(session);
+  }, [toast, storeTokensFromSession]);
 
   const initiateOAuth = useCallback(async (provider: string, scopes: string[]) => {
     console.log('1. [GoogleOAuth] initiateOAuth called with provider:', provider, 'scopes:', scopes);
     
+    // Reset the callback handled ref for new OAuth flow
+    callbackHandledRef.current = false;
     setIsConnecting(true);
 
     try {
