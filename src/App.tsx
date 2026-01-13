@@ -54,10 +54,13 @@ function OAuthTokenCapture() {
     // Check session immediately on mount
     const checkSessionForTokens = async () => {
       console.warn('[OAuth Capture] Step 1: Checking supabase.auth.getSession()...');
-      
+
       const { data: { session }, error } = await supabase.auth.getSession();
-      
-      console.warn('[OAuth Capture] Step 2: getSession result:', {
+
+      console.warn('[OAuth Capture] Step 1b: getSession raw session object:', session);
+      console.warn('[OAuth Capture] Step 1c: getSession raw error object:', error);
+
+      console.warn('[OAuth Capture] Step 2: getSession summary:', {
         hasSession: !!session,
         userId: session?.user?.id,
         userEmail: session?.user?.email,
@@ -69,58 +72,91 @@ function OAuthTokenCapture() {
       let providerToken = session?.provider_token;
       let providerRefreshToken = session?.provider_refresh_token;
 
+      console.warn('[OAuth Capture] Step 2b: provider_token in session?', {
+        found: !!providerToken,
+        length: providerToken?.length,
+      });
+
       // If provider_token not in session, try reading directly from localStorage
       if (!providerToken) {
         console.warn('[OAuth Capture] Step 3: provider_token not in session, checking localStorage...');
         try {
           const storageKey = 'sb-vqunxhjgpdgpzkjescvb-auth-token';
+          console.warn('[OAuth Capture] Step 3a: Reading localStorage key:', storageKey);
+
           const storedData = localStorage.getItem(storageKey);
-          console.warn('[OAuth Capture] localStorage raw data exists:', !!storedData);
-          
+          console.warn('[OAuth Capture] Step 3b: localStorage raw data exists:', !!storedData);
+
           if (storedData) {
             const parsed = JSON.parse(storedData);
-            console.warn('[OAuth Capture] localStorage parsed:', {
+            console.warn('[OAuth Capture] Step 3c: localStorage parsed keys:', Object.keys(parsed ?? {}));
+            console.warn('[OAuth Capture] Step 3d: localStorage parsed token presence:', {
               hasProviderToken: !!parsed?.provider_token,
               providerTokenLength: parsed?.provider_token?.length,
               hasProviderRefreshToken: !!parsed?.provider_refresh_token,
             });
+
             providerToken = parsed?.provider_token;
             providerRefreshToken = parsed?.provider_refresh_token;
           }
         } catch (e) {
-          console.error('[OAuth Capture] Error reading localStorage:', e);
+          console.warn('[OAuth Capture] Step 3e: Error reading/parsing localStorage:', e);
         }
       }
 
+      console.warn('[OAuth Capture] Step 3f: provider_token after localStorage fallback?', {
+        found: !!providerToken,
+        length: providerToken?.length,
+      });
+
       // If we have provider token and haven't handled it yet, store it
       if (providerToken && !tokenHandledRef.current) {
-        console.warn('[OAuth Capture] Step 4: Found provider token, calling storeGoogleTokensFromSession...');
+        console.warn('[OAuth Capture] Step 4: About to call storeGoogleTokensFromSession');
         tokenHandledRef.current = true;
-        
+
         // Create a session-like object with the tokens
         const sessionWithTokens = {
           ...session,
           provider_token: providerToken,
           provider_refresh_token: providerRefreshToken,
         };
-        
-        const result = await storeGoogleTokensFromSession(sessionWithTokens);
-        console.warn('[OAuth Capture] Step 5: storeGoogleTokensFromSession result:', result);
-        
-        if (result.success) {
-          toast({
-            title: 'Connected!',
-            description: `Successfully connected Google Workspace${result.userEmail ? ` as ${result.userEmail}` : ''}`,
-          });
-          
-          // Clean up URL (remove OAuth params)
-          if (window.location.hash || window.location.search) {
-            window.history.replaceState(null, '', window.location.pathname);
+
+        console.warn('[OAuth Capture] Step 4b: sessionWithTokens summary:', {
+          hasUser: !!sessionWithTokens?.user,
+          userId: (sessionWithTokens as any)?.user?.id,
+          userEmail: (sessionWithTokens as any)?.user?.email,
+          providerToken: (sessionWithTokens as any)?.provider_token
+            ? `EXISTS (${(sessionWithTokens as any).provider_token.length} chars)`
+            : 'MISSING',
+          providerRefreshToken: (sessionWithTokens as any)?.provider_refresh_token ? 'EXISTS' : 'MISSING',
+        });
+
+        try {
+          const result = await storeGoogleTokensFromSession(sessionWithTokens as any);
+          console.warn('[OAuth Capture] Step 5: storeGoogleTokensFromSession result:', result);
+
+          if (result.success) {
+            toast({
+              title: 'Connected!',
+              description: `Successfully connected Google Workspace${result.userEmail ? ` as ${result.userEmail}` : ''}`,
+            });
+
+            // Clean up URL (remove OAuth params)
+            if (window.location.hash || window.location.search) {
+              window.history.replaceState(null, '', window.location.pathname);
+            }
+          } else {
+            toast({
+              title: 'Connection failed',
+              description: result.error || 'Failed to store connection',
+              variant: 'destructive',
+            });
           }
-        } else {
+        } catch (e) {
+          console.warn('[OAuth Capture] Step 5b: storeGoogleTokensFromSession THREW:', e);
           toast({
             title: 'Connection failed',
-            description: result.error || 'Failed to store connection',
+            description: e instanceof Error ? e.message : 'Failed to store connection',
             variant: 'destructive',
           });
         }
