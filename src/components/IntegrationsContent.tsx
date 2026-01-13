@@ -132,22 +132,35 @@ export function IntegrationsContent() {
   // CRITICAL: Token capture on mount - this is where we capture the provider_token after OAuth redirect
   useEffect(() => {
     // Immediate logging
-    console.warn('=== INTEGRATIONS TOKEN CAPTURE STARTED ===');
+    console.warn("=== INTEGRATIONS TOKEN CAPTURE STARTED ===");
     setTokenCaptureStatus("checking");
-    
+
     // Prevent double processing
     if (tokenProcessedRef.current) {
-      console.warn('[TokenCapture] Already processed, skipping');
+      console.warn("[TokenCapture] Already processed, skipping");
       setTokenCaptureStatus("already_processed");
       return;
     }
 
     const captureToken = async () => {
+      // Catch absolutely everything in this async flow
       try {
-        console.warn('[TokenCapture] Step 1: Calling getSession()...');
-        const { data: { session }, error } = await supabase.auth.getSession();
-        
-        console.warn('[TokenCapture] Step 2: Session result:', {
+        setTokenCaptureStatus("getting session...");
+        console.warn("[TokenCapture] Step 1: Calling supabase.auth.getSession()...");
+
+        // Protect against a hung getSession() so the UI doesn't stay stuck on "checking"
+        const sessionResult = await Promise.race([
+          supabase.auth.getSession(),
+          new Promise<{ data: { session: null }; error: Error }>((_, reject) =>
+            window.setTimeout(() => reject(new Error("getSession() timeout after 10s")), 10000)
+          ),
+        ]);
+
+        // Type narrowing for the Promise.race result
+        const { data, error } = sessionResult as Awaited<ReturnType<typeof supabase.auth.getSession>>;
+        const session = data.session;
+
+        console.warn("[TokenCapture] Step 1b: getSession result:", {
           hasSession: !!session,
           hasError: !!error,
           userId: session?.user?.id,
@@ -158,59 +171,85 @@ export function IntegrationsContent() {
         });
 
         if (error) {
-          console.warn('[TokenCapture] getSession error:', error);
-          setTokenCaptureStatus("session_error");
+          console.warn("[TokenCapture] Step 1c: getSession error:", error);
+          setTokenCaptureStatus(`error: ${error.message || "getSession failed"}`);
           return;
         }
 
-        // Try to get provider_token from session first
+        // If provider token isn't present in the returned session, IMMEDIATELY check localStorage
+        setTokenCaptureStatus("checking localStorage...");
+        console.warn("[TokenCapture] Step 2: Checking provider_token (session first, then localStorage)...");
+
         let providerToken = session?.provider_token;
         let providerRefreshToken = session?.provider_refresh_token;
 
-        // If not in session, try localStorage directly
         if (!providerToken) {
-          console.warn('[TokenCapture] Step 3: No provider_token in session, checking localStorage...');
+          console.warn("[TokenCapture] Step 2b: No provider_token in session; reading localStorage key:", SUPABASE_AUTH_KEY);
+
           try {
             const storedData = localStorage.getItem(SUPABASE_AUTH_KEY);
+            console.warn("[TokenCapture] Step 2c: localStorage getItem result:", {
+              hasValue: !!storedData,
+              length: storedData?.length,
+            });
+
             if (storedData) {
               const parsed = JSON.parse(storedData);
-              console.warn('[TokenCapture] Step 3b: localStorage data:', {
+              console.warn("[TokenCapture] Step 2d: Parsed localStorage auth object:", {
+                keys: Object.keys(parsed || {}),
                 hasProviderToken: !!parsed?.provider_token,
                 providerTokenLength: parsed?.provider_token?.length,
                 hasProviderRefreshToken: !!parsed?.provider_refresh_token,
-                keys: Object.keys(parsed || {}),
               });
+
               providerToken = parsed?.provider_token;
               providerRefreshToken = parsed?.provider_refresh_token;
-            } else {
-              console.warn('[TokenCapture] Step 3c: No data in localStorage');
             }
           } catch (e) {
-            console.warn('[TokenCapture] localStorage parse error:', e);
+            console.warn("[TokenCapture] Step 2e: localStorage parse/read error:", e);
           }
+        } else {
+          console.warn("[TokenCapture] Step 2f: provider_token was present in session (no localStorage needed)");
         }
 
-        // If we have a provider token and a session, store it
-        if (providerToken && session) {
-          console.warn('[TokenCapture] Step 4: FOUND provider_token! Length:', providerToken.length);
-          setTokenCaptureStatus("storing");
-          
-          // Mark as processed to prevent duplicates
-          tokenProcessedRef.current = true;
+        // If we have a provider token, we still NEED a session w/ user_id to store it.
+        if (!providerToken) {
+          console.warn("[TokenCapture] Step 3: No provider_token found in session or localStorage");
+          setTokenCaptureStatus("error: no provider_token found");
+          return;
+        }
 
-          // Create a session-like object with the tokens
-          const sessionWithTokens = {
-            ...session,
-            provider_token: providerToken,
-            provider_refresh_token: providerRefreshToken,
-          };
+        if (!session?.user?.id) {
+          console.warn("[TokenCapture] Step 3b: provider_token exists, but session/user is missing:", {
+            hasSession: !!session,
+            hasUser: !!session?.user,
+            providerTokenLength: providerToken.length,
+          });
+          setTokenCaptureStatus("error: provider_token found but no session user");
+          return;
+        }
 
-          console.warn('[TokenCapture] Step 5: Calling storeGoogleTokensFromSession...');
+        console.warn("[TokenCapture] Step 4: FOUND provider_token! Length:", providerToken.length);
+        setTokenCaptureStatus("storing token...");
+
+        // Mark as processed to prevent duplicates
+        tokenProcessedRef.current = true;
+
+        // Create a session-like object with the tokens
+        const sessionWithTokens = {
+          ...session,
+          provider_token: providerToken,
+          provider_refresh_token: providerRefreshToken,
+        };
+
+        console.warn("[TokenCapture] Step 5: About to call storeGoogleTokensFromSession");
+
+        try {
           const result = await storeGoogleTokensFromSession(sessionWithTokens);
-          console.warn('[TokenCapture] Step 6: Store result:', result);
+          console.warn("[TokenCapture] Step 6: storeGoogleTokensFromSession result:", result);
 
           if (result.success) {
-            setTokenCaptureStatus("success");
+            setTokenCaptureStatus("success!");
             toast({
               title: "Google Connected!",
               description: `Successfully connected as ${result.userEmail || session.user?.email}`,
@@ -224,40 +263,43 @@ export function IntegrationsContent() {
                 delete parsed.provider_token;
                 delete parsed.provider_refresh_token;
                 localStorage.setItem(SUPABASE_AUTH_KEY, JSON.stringify(parsed));
-                console.warn('[TokenCapture] Cleared provider tokens from localStorage');
+                console.warn("[TokenCapture] Cleared provider tokens from localStorage");
               }
             } catch (e) {
-              console.warn('[TokenCapture] Failed to clear localStorage:', e);
+              console.warn("[TokenCapture] Failed to clear localStorage:", e);
             }
 
             // Clean URL if it has hash from OAuth
             if (window.location.hash) {
-              window.history.replaceState(null, '', window.location.pathname);
+              window.history.replaceState(null, "", window.location.pathname);
             }
 
             // Refresh integration status
             refreshIntegrations();
           } else {
-            setTokenCaptureStatus("store_failed");
-            console.warn('[TokenCapture] Store failed:', result.error);
+            const msg = result.error || "Failed to store Google tokens";
+            setTokenCaptureStatus(`error: ${msg}`);
+            console.warn("[TokenCapture] Store failed:", msg);
             toast({
               title: "Connection Issue",
-              description: result.error || "Failed to store Google tokens",
+              description: msg,
               variant: "destructive",
             });
           }
-        } else {
-          console.warn('[TokenCapture] No provider_token found anywhere');
-          setTokenCaptureStatus("no_token");
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "Unknown error";
+          console.warn("[TokenCapture] storeGoogleTokensFromSession THREW:", e);
+          setTokenCaptureStatus(`error: ${msg}`);
         }
       } catch (e) {
-        console.warn('[TokenCapture] Unexpected error:', e);
-        setTokenCaptureStatus("error");
+        const msg = e instanceof Error ? e.message : "Unknown error";
+        console.warn("[TokenCapture] Unexpected error (outer catch):", e);
+        setTokenCaptureStatus(`error: ${msg}`);
       }
     };
 
     captureToken();
-  }, []); // Empty deps - run once on mount
+  }, [refreshIntegrations, toast]);
 
   // Clear any stale disconnect-in-progress flag on page load
   useEffect(() => {
