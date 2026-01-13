@@ -20,48 +20,80 @@ function OAuthTokenCapture() {
   const [hasMounted, setHasMounted] = useState(false);
 
   // Log immediately when component function is called (before any hooks)
-  console.log('[OAuth Capture] Component rendering, URL:', window.location.href);
+  console.warn('[OAuth Capture] Component rendering, URL:', window.location.href);
 
   useEffect(() => {
     setHasMounted(true);
   }, []);
 
   useEffect(() => {
-    console.log('[OAuth Capture] Component mounted');
-    console.log('[OAuth Capture] Current URL:', window.location.href);
-    console.log('[OAuth Capture] Hash:', window.location.hash);
-    console.log('[OAuth Capture] Search:', window.location.search);
+    console.warn('[OAuth Capture] Component mounted');
+    console.warn('[OAuth Capture] Current URL:', window.location.href);
     
     // Check if this looks like an OAuth callback
     const urlParams = new URLSearchParams(window.location.search);
     const hasCode = urlParams.has('code');
     const hasError = urlParams.has('error');
-    console.log('[OAuth Capture] URL has code param:', hasCode, 'has error:', hasError);
+    console.warn('[OAuth Capture] URL has code param:', hasCode, 'has error:', hasError);
     if (hasError) {
       console.error('[OAuth Capture] OAuth error in URL:', urlParams.get('error'), urlParams.get('error_description'));
     }
 
     // Check session immediately on mount
     const checkSessionForTokens = async () => {
-      console.log('[OAuth Capture] Checking session for provider tokens...');
+      console.warn('[OAuth Capture] Step 1: Checking supabase.auth.getSession()...');
       
       const { data: { session }, error } = await supabase.auth.getSession();
       
-      console.log('[OAuth Capture] Session check result:', {
+      console.warn('[OAuth Capture] Step 2: getSession result:', {
         hasSession: !!session,
         userId: session?.user?.id,
         userEmail: session?.user?.email,
-        providerToken: session?.provider_token ? 'EXISTS' : 'MISSING',
+        providerToken: session?.provider_token ? `EXISTS (${session.provider_token.length} chars)` : 'MISSING',
         providerRefreshToken: session?.provider_refresh_token ? 'EXISTS' : 'MISSING',
         error: error?.message,
       });
 
-      // If we have provider tokens and haven't handled them yet, store them
-      if (session?.provider_token && !tokenHandledRef.current) {
-        console.log('[OAuth Capture] Found provider token on mount, storing...');
+      let providerToken = session?.provider_token;
+      let providerRefreshToken = session?.provider_refresh_token;
+
+      // If provider_token not in session, try reading directly from localStorage
+      if (!providerToken) {
+        console.warn('[OAuth Capture] Step 3: provider_token not in session, checking localStorage...');
+        try {
+          const storageKey = 'sb-vqunxhjgpdgpzkjescvb-auth-token';
+          const storedData = localStorage.getItem(storageKey);
+          console.warn('[OAuth Capture] localStorage raw data exists:', !!storedData);
+          
+          if (storedData) {
+            const parsed = JSON.parse(storedData);
+            console.warn('[OAuth Capture] localStorage parsed:', {
+              hasProviderToken: !!parsed?.provider_token,
+              providerTokenLength: parsed?.provider_token?.length,
+              hasProviderRefreshToken: !!parsed?.provider_refresh_token,
+            });
+            providerToken = parsed?.provider_token;
+            providerRefreshToken = parsed?.provider_refresh_token;
+          }
+        } catch (e) {
+          console.error('[OAuth Capture] Error reading localStorage:', e);
+        }
+      }
+
+      // If we have provider token and haven't handled it yet, store it
+      if (providerToken && !tokenHandledRef.current) {
+        console.warn('[OAuth Capture] Step 4: Found provider token, calling storeGoogleTokensFromSession...');
         tokenHandledRef.current = true;
         
-        const result = await storeGoogleTokensFromSession(session);
+        // Create a session-like object with the tokens
+        const sessionWithTokens = {
+          ...session,
+          provider_token: providerToken,
+          provider_refresh_token: providerRefreshToken,
+        };
+        
+        const result = await storeGoogleTokensFromSession(sessionWithTokens);
+        console.warn('[OAuth Capture] Step 5: storeGoogleTokensFromSession result:', result);
         
         if (result.success) {
           toast({
@@ -80,9 +112,10 @@ function OAuthTokenCapture() {
             variant: 'destructive',
           });
         }
-      } else if (hasCode && !session?.provider_token) {
-        // We have a code but no provider token - Supabase may still be processing
-        console.log('[OAuth Capture] Code present but no provider_token yet - waiting for auth state change...');
+      } else if (!providerToken) {
+        console.warn('[OAuth Capture] No provider_token found in session or localStorage');
+      } else if (tokenHandledRef.current) {
+        console.warn('[OAuth Capture] Token already handled, skipping');
       }
     };
 
@@ -91,11 +124,11 @@ function OAuthTokenCapture() {
 
   // Set up auth state change listener
   useEffect(() => {
-    console.log('[OAuth Capture] Setting up auth state listener...');
+    console.warn('[OAuth Capture] Setting up auth state listener...');
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('[OAuth Capture] Auth state changed:', event);
-      console.log('[OAuth Capture] Session in event:', {
+      console.warn('[OAuth Capture] Auth state changed:', event);
+      console.warn('[OAuth Capture] Session in event:', {
         hasSession: !!session,
         providerToken: session?.provider_token ? 'EXISTS' : 'MISSING',
         providerRefreshToken: session?.provider_refresh_token ? 'EXISTS' : 'MISSING',
@@ -105,10 +138,11 @@ function OAuthTokenCapture() {
       const relevantEvents = ['SIGNED_IN', 'TOKEN_REFRESHED', 'INITIAL_SESSION'];
       
       if (relevantEvents.includes(event) && session?.provider_token && !tokenHandledRef.current) {
-        console.log(`[OAuth Capture] ${event} event with provider token, storing...`);
+        console.warn(`[OAuth Capture] ${event} event with provider token, storing...`);
         tokenHandledRef.current = true;
         
         const result = await storeGoogleTokensFromSession(session);
+        console.warn('[OAuth Capture] Auth state change store result:', result);
         
         if (result.success) {
           toast({
@@ -125,7 +159,7 @@ function OAuthTokenCapture() {
     });
 
     return () => {
-      console.log('[OAuth Capture] Cleaning up auth listener');
+      console.warn('[OAuth Capture] Cleaning up auth listener');
       subscription.unsubscribe();
     };
   }, [toast]);
