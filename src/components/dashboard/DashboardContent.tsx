@@ -13,7 +13,7 @@ import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 export function DashboardContent() {
-  const { data, loading, error, refresh } = useDashboardData();
+  const { data, loading, error, refresh, refreshSection } = useDashboardData();
   const isMobile = useIsMobile();
 
   const handleRefresh = async () => {
@@ -34,10 +34,10 @@ export function DashboardContent() {
           variant="outline" 
           size="sm" 
           onClick={refresh}
-          disabled={loading}
+          disabled={loading.full}
           className="gap-2 hidden md:flex"
         >
-          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`h-4 w-4 ${loading.full ? 'animate-spin' : ''}`} />
           Refresh
         </Button>
       </div>
@@ -49,21 +49,51 @@ export function DashboardContent() {
       )}
 
       {/* Quick Stats */}
-      <QuickStats data={data} loading={loading} />
+      <QuickStats 
+        data={data} 
+        loading={loading.full} 
+        onRefresh={refresh}
+        refreshing={loading.full}
+      />
 
       {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Left Column */}
         <div className="space-y-6">
-          <NeedsAttentionCard data={data} loading={loading} />
-          <TodayScheduleCard data={data} loading={loading} />
-          <UpcomingOccasionsCard data={data} loading={loading} />
+          <NeedsAttentionCard 
+            data={data} 
+            loading={loading.full}
+            onRefresh={refresh}
+            refreshing={loading.full}
+          />
+          <TodayScheduleCard 
+            data={data} 
+            loading={loading.full || loading.calendar}
+            onRefresh={() => refreshSection('calendar')}
+            refreshing={loading.calendar}
+          />
+          <UpcomingOccasionsCard 
+            data={data} 
+            loading={loading.full || loading.contacts}
+            onRefresh={() => refreshSection('contacts')}
+            refreshing={loading.contacts}
+          />
         </div>
 
         {/* Right Column */}
         <div className="space-y-6">
-          <RecentEmailsCard data={data} loading={loading} />
-          <PriorityContactsCard data={data} loading={loading} />
+          <RecentEmailsCard 
+            data={data} 
+            loading={loading.full || loading.gmail}
+            onRefresh={() => refreshSection('gmail')}
+            refreshing={loading.gmail}
+          />
+          <PriorityContactsCard 
+            data={data} 
+            loading={loading.full || loading.contacts}
+            onRefresh={() => refreshSection('contacts')}
+            refreshing={loading.contacts}
+          />
         </div>
       </div>
 

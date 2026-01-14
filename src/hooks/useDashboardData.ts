@@ -66,13 +66,29 @@ export interface DashboardData {
   };
 }
 
+export type DashboardSection = 'gmail' | 'calendar' | 'monday' | 'contacts';
+
+export interface LoadingState {
+  full: boolean;
+  gmail: boolean;
+  calendar: boolean;
+  monday: boolean;
+  contacts: boolean;
+}
+
 export function useDashboardData() {
   const [data, setData] = useState<DashboardData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<LoadingState>({
+    full: true,
+    gmail: false,
+    calendar: false,
+    monday: false,
+    contacts: false,
+  });
   const [error, setError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
-    setLoading(true);
+    setLoading(prev => ({ ...prev, full: true }));
     setError(null);
 
     try {
@@ -81,20 +97,19 @@ export function useDashboardData() {
       if (authError) {
         console.error('[Dashboard] Auth error:', authError);
         setError('Authentication error');
-        setLoading(false);
+        setLoading(prev => ({ ...prev, full: false }));
         return;
       }
       
       if (!user) {
         console.log('[Dashboard] No authenticated user');
         setError('Not authenticated');
-        setLoading(false);
+        setLoading(prev => ({ ...prev, full: false }));
         return;
       }
 
       console.log('[Dashboard] Fetching data for authenticated user');
 
-      // No need to send user_id - the edge function extracts it from JWT
       const { data: response, error: fetchError } = await supabase.functions.invoke('dashboard-data', {
         body: {},
       });
@@ -123,7 +138,36 @@ export function useDashboardData() {
       console.error('[Dashboard] Error:', err);
       setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
     } finally {
-      setLoading(false);
+      setLoading(prev => ({ ...prev, full: false }));
+    }
+  }, []);
+
+  const refreshSection = useCallback(async (section: DashboardSection) => {
+    setLoading(prev => ({ ...prev, [section]: true }));
+
+    try {
+      const { data: response, error: fetchError } = await supabase.functions.invoke('dashboard-data', {
+        body: { section },
+      });
+
+      if (fetchError) {
+        console.error(`[Dashboard] ${section} refresh error:`, fetchError);
+        throw fetchError;
+      }
+
+      if (!response?.success) {
+        throw new Error(response?.error || `Failed to refresh ${section}`);
+      }
+
+      console.log(`[Dashboard] ${section} refreshed successfully`);
+
+      // Merge partial data into existing state
+      setData(prev => prev ? { ...prev, ...response.data } : response.data);
+    } catch (err) {
+      console.error(`[Dashboard] ${section} refresh error:`, err);
+      // Don't set global error for section refresh failures
+    } finally {
+      setLoading(prev => ({ ...prev, [section]: false }));
     }
   }, []);
 
@@ -131,5 +175,11 @@ export function useDashboardData() {
     fetchData();
   }, [fetchData]);
 
-  return { data, loading, error, refresh: fetchData };
+  return { 
+    data, 
+    loading, 
+    error, 
+    refresh: fetchData, 
+    refreshSection,
+  };
 }

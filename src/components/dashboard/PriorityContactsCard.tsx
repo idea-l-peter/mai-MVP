@@ -1,12 +1,15 @@
-import { Users, Calendar, Clock } from 'lucide-react';
+import { Users, Calendar, Clock, RefreshCw } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { DashboardData } from '@/hooks/useDashboardData';
 
 interface PriorityContactsCardProps {
   data: DashboardData | null;
   loading: boolean;
+  onRefresh?: () => void;
+  refreshing?: boolean;
 }
 
 function formatDate(dateString?: string): string {
@@ -36,16 +39,33 @@ function isOverdue(dateString?: string): boolean {
   return new Date(dateString) < new Date();
 }
 
-export function PriorityContactsCard({ data, loading }: PriorityContactsCardProps) {
-  if (loading) {
+export function PriorityContactsCard({ data, loading, onRefresh, refreshing }: PriorityContactsCardProps) {
+  const headerContent = (
+    <CardHeader className="pb-3">
+      <div className="flex items-center justify-between">
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <Users className="h-5 w-5 text-primary" />
+          Priority Contacts
+        </CardTitle>
+        {onRefresh && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={onRefresh}
+            disabled={refreshing || loading}
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+          </Button>
+        )}
+      </div>
+    </CardHeader>
+  );
+
+  if (loading && !data) {
     return (
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Users className="h-5 w-5 text-primary" />
-            Priority Contacts
-          </CardTitle>
-        </CardHeader>
+        {headerContent}
         <CardContent className="space-y-3">
           {[1, 2, 3].map((i) => (
             <Skeleton key={i} className="h-16 w-full" />
@@ -65,12 +85,7 @@ export function PriorityContactsCard({ data, loading }: PriorityContactsCardProp
 
   return (
     <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <Users className="h-5 w-5 text-primary" />
-          Priority Contacts
-        </CardTitle>
-      </CardHeader>
+      {headerContent}
       <CardContent>
         {contacts.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-6">
