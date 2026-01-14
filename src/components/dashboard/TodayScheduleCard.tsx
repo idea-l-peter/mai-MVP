@@ -1,6 +1,7 @@
-import { Calendar, Clock, MapPin, Video, ExternalLink } from 'lucide-react';
+import { Calendar, Clock, MapPin, Video, ExternalLink, RefreshCw } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useState } from 'react';
 import type { DashboardData } from '@/hooks/useDashboardData';
@@ -8,6 +9,8 @@ import type { DashboardData } from '@/hooks/useDashboardData';
 interface TodayScheduleCardProps {
   data: DashboardData | null;
   loading: boolean;
+  onRefresh?: () => void;
+  refreshing?: boolean;
 }
 
 function formatTime(dateString: string): string {
@@ -20,18 +23,35 @@ function isAllDay(start: string, end: string): boolean {
   return !start.includes('T') && !end.includes('T');
 }
 
-export function TodayScheduleCard({ data, loading }: TodayScheduleCardProps) {
+export function TodayScheduleCard({ data, loading, onRefresh, refreshing }: TodayScheduleCardProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  if (loading) {
+  const headerContent = (
+    <CardHeader className="pb-3">
+      <div className="flex items-center justify-between">
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <Calendar className="h-5 w-5 text-primary" />
+          Today's Schedule
+        </CardTitle>
+        {onRefresh && data?.calendar.connected && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={onRefresh}
+            disabled={refreshing || loading}
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+          </Button>
+        )}
+      </div>
+    </CardHeader>
+  );
+
+  if (loading && !data) {
     return (
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Calendar className="h-5 w-5 text-primary" />
-            Today's Schedule
-          </CardTitle>
-        </CardHeader>
+        {headerContent}
         <CardContent className="space-y-3">
           {[1, 2, 3].map((i) => (
             <Skeleton key={i} className="h-16 w-full" />
@@ -44,12 +64,7 @@ export function TodayScheduleCard({ data, loading }: TodayScheduleCardProps) {
   if (!data?.calendar.connected) {
     return (
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Calendar className="h-5 w-5 text-primary" />
-            Today's Schedule
-          </CardTitle>
-        </CardHeader>
+        {headerContent}
         <CardContent>
           <p className="text-sm text-muted-foreground text-center py-6">
             Connect Google Workspace to see your schedule
@@ -63,12 +78,7 @@ export function TodayScheduleCard({ data, loading }: TodayScheduleCardProps) {
 
   return (
     <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <Calendar className="h-5 w-5 text-primary" />
-          Today's Schedule
-        </CardTitle>
-      </CardHeader>
+      {headerContent}
       <CardContent>
         {events.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-6">

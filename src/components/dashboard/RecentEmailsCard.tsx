@@ -1,12 +1,15 @@
-import { Mail, ExternalLink } from 'lucide-react';
+import { Mail, ExternalLink, RefreshCw } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { DashboardData } from '@/hooks/useDashboardData';
 
 interface RecentEmailsCardProps {
   data: DashboardData | null;
   loading: boolean;
+  onRefresh?: () => void;
+  refreshing?: boolean;
 }
 
 function formatDate(dateString: string): string {
@@ -24,16 +27,33 @@ function formatDate(dateString: string): string {
   return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
 
-export function RecentEmailsCard({ data, loading }: RecentEmailsCardProps) {
-  if (loading) {
+export function RecentEmailsCard({ data, loading, onRefresh, refreshing }: RecentEmailsCardProps) {
+  const headerContent = (
+    <CardHeader className="pb-3">
+      <div className="flex items-center justify-between">
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <Mail className="h-5 w-5 text-primary" />
+          Recent Emails
+        </CardTitle>
+        {onRefresh && data?.gmail.connected && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={onRefresh}
+            disabled={refreshing || loading}
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+          </Button>
+        )}
+      </div>
+    </CardHeader>
+  );
+
+  if (loading && !data) {
     return (
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Mail className="h-5 w-5 text-primary" />
-            Recent Emails
-          </CardTitle>
-        </CardHeader>
+        {headerContent}
         <CardContent className="space-y-3">
           {[1, 2, 3, 4, 5].map((i) => (
             <Skeleton key={i} className="h-14 w-full" />
@@ -46,12 +66,7 @@ export function RecentEmailsCard({ data, loading }: RecentEmailsCardProps) {
   if (!data?.gmail.connected) {
     return (
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Mail className="h-5 w-5 text-primary" />
-            Recent Emails
-          </CardTitle>
-        </CardHeader>
+        {headerContent}
         <CardContent>
           <p className="text-sm text-muted-foreground text-center py-6">
             Connect Google Workspace to see your emails
@@ -65,12 +80,7 @@ export function RecentEmailsCard({ data, loading }: RecentEmailsCardProps) {
 
   return (
     <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <Mail className="h-5 w-5 text-primary" />
-          Recent Emails
-        </CardTitle>
-      </CardHeader>
+      {headerContent}
       <CardContent>
         {emails.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-6">

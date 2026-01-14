@@ -1,12 +1,15 @@
-import { AlertTriangle, Mail, Calendar, CheckSquare, Users } from 'lucide-react';
+import { AlertTriangle, Mail, Calendar, CheckSquare, Users, RefreshCw } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { DashboardData } from '@/hooks/useDashboardData';
 
 interface NeedsAttentionCardProps {
   data: DashboardData | null;
   loading: boolean;
+  onRefresh?: () => void;
+  refreshing?: boolean;
 }
 
 interface AttentionItemProps {
@@ -42,16 +45,33 @@ function AttentionItem({ icon, title, description, count, variant = 'default' }:
   );
 }
 
-export function NeedsAttentionCard({ data, loading }: NeedsAttentionCardProps) {
-  if (loading) {
+export function NeedsAttentionCard({ data, loading, onRefresh, refreshing }: NeedsAttentionCardProps) {
+  const headerContent = (
+    <CardHeader className="pb-3">
+      <div className="flex items-center justify-between">
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <AlertTriangle className="h-5 w-5 text-yellow-500" />
+          Needs Attention
+        </CardTitle>
+        {onRefresh && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={onRefresh}
+            disabled={refreshing || loading}
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+          </Button>
+        )}
+      </div>
+    </CardHeader>
+  );
+
+  if (loading && !data) {
     return (
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <AlertTriangle className="h-5 w-5 text-yellow-500" />
-            Needs Attention
-          </CardTitle>
-        </CardHeader>
+        {headerContent}
         <CardContent className="space-y-3">
           {[1, 2, 3].map((i) => (
             <Skeleton key={i} className="h-16 w-full" />
@@ -114,12 +134,7 @@ export function NeedsAttentionCard({ data, loading }: NeedsAttentionCardProps) {
 
   return (
     <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <AlertTriangle className="h-5 w-5 text-yellow-500" />
-          Needs Attention
-        </CardTitle>
-      </CardHeader>
+      {headerContent}
       <CardContent>
         {items.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-6">

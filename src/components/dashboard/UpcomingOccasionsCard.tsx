@@ -1,4 +1,4 @@
-import { Gift, Calendar, Heart, PartyPopper } from 'lucide-react';
+import { Gift, Calendar, Heart, PartyPopper, RefreshCw } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,8 @@ import type { DashboardData } from '@/hooks/useDashboardData';
 interface UpcomingOccasionsCardProps {
   data: DashboardData | null;
   loading: boolean;
+  onRefresh?: () => void;
+  refreshing?: boolean;
 }
 
 interface Occasion {
@@ -51,18 +53,35 @@ function formatDaysUntil(days: number): string {
   return `In ${days} days`;
 }
 
-export function UpcomingOccasionsCard({ data, loading }: UpcomingOccasionsCardProps) {
+export function UpcomingOccasionsCard({ data, loading, onRefresh, refreshing }: UpcomingOccasionsCardProps) {
   const navigate = useNavigate();
 
-  if (loading) {
+  const headerContent = (
+    <CardHeader className="pb-3">
+      <div className="flex items-center justify-between">
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <PartyPopper className="h-5 w-5 text-primary" />
+          Upcoming Occasions
+        </CardTitle>
+        {onRefresh && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={onRefresh}
+            disabled={refreshing || loading}
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+          </Button>
+        )}
+      </div>
+    </CardHeader>
+  );
+
+  if (loading && !data) {
     return (
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <PartyPopper className="h-5 w-5 text-primary" />
-            Upcoming Occasions
-          </CardTitle>
-        </CardHeader>
+        {headerContent}
         <CardContent className="space-y-3">
           {[1, 2, 3].map((i) => (
             <Skeleton key={i} className="h-12 w-full" />
@@ -149,12 +168,7 @@ export function UpcomingOccasionsCard({ data, loading }: UpcomingOccasionsCardPr
 
   return (
     <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <PartyPopper className="h-5 w-5 text-primary" />
-          Upcoming Occasions
-        </CardTitle>
-      </CardHeader>
+      {headerContent}
       <CardContent>
         {occasions.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-6">

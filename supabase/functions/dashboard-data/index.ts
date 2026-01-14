@@ -513,12 +513,66 @@ serve(async (req) => {
     const user_id = claimsData.claims.sub as string;
     console.log(`[Dashboard] Fetching data for authenticated user: ${user_id}`);
 
-    // Fetch all data in parallel
+    // Parse optional section parameter for partial refresh
+    let section: string | undefined;
+    try {
+      const body = await req.json();
+      section = body.section;
+    } catch {
+      // No body or invalid JSON - fetch all
+    }
+
+    console.log(`[Dashboard] Section requested: ${section || 'all'}`);
+
+    // Fetch tokens only if needed
+    const needsGoogle = !section || section === 'gmail' || section === 'calendar';
+    const needsMonday = !section || section === 'monday';
+
     const [googleToken, mondayToken] = await Promise.all([
-      getGoogleToken(user_id),
-      getMondayToken(user_id),
+      needsGoogle ? getGoogleToken(user_id) : Promise.resolve(null),
+      needsMonday ? getMondayToken(user_id) : Promise.resolve(null),
     ]);
 
+    // Fetch data based on section parameter
+    if (section === 'gmail') {
+      const gmailData = googleToken 
+        ? await fetchGmailData(googleToken) 
+        : { connected: false, unreadCount: 0, recentEmails: [], awaitingResponse: [] };
+      return new Response(
+        JSON.stringify({ success: true, data: { gmail: gmailData } }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (section === 'calendar') {
+      const calendarData = googleToken
+        ? await fetchCalendarData(googleToken)
+        : { connected: false, todayEvents: [], pendingInvites: [] };
+      return new Response(
+        JSON.stringify({ success: true, data: { calendar: calendarData } }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (section === 'monday') {
+      const mondayData = mondayToken
+        ? await fetchMondayData(mondayToken)
+        : { connected: false, tasksDueToday: [], overdueTasks: [] };
+      return new Response(
+        JSON.stringify({ success: true, data: { monday: mondayData } }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (section === 'contacts') {
+      const contactData = await fetchContactData(user_id);
+      return new Response(
+        JSON.stringify({ success: true, data: { contacts: contactData } }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Fetch all data in parallel (default behavior)
     const [gmailData, calendarData, mondayData, contactData] = await Promise.all([
       googleToken ? fetchGmailData(googleToken) : { connected: false, unreadCount: 0, recentEmails: [], awaitingResponse: [] },
       googleToken ? fetchCalendarData(googleToken) : { connected: false, todayEvents: [], pendingInvites: [] },
