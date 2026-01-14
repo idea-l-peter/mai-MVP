@@ -86,25 +86,33 @@ function getSupabaseClient() {
 async function getGoogleToken(userId: string): Promise<string | null> {
   const supabase = getSupabaseClient();
   
+  // Check if Google integration exists
   const { data: integration } = await supabase
     .from('user_integrations')
-    .select('access_token_secret_id, refresh_token_secret_id, token_expires_at')
+    .select('token_expires_at')
     .eq('user_id', userId)
     .eq('provider', 'google')
     .maybeSingle();
 
-  if (!integration?.access_token_secret_id) return null;
+  if (!integration) {
+    console.log('[Dashboard] No Google integration found for user');
+    return null;
+  }
 
-  // Check if token needs refresh
-  const expiresAt = new Date(integration.token_expires_at).getTime();
+  // Check if token needs refresh (5 min buffer)
+  const expiresAt = integration.token_expires_at ? new Date(integration.token_expires_at).getTime() : 0;
   const now = Date.now();
   const needsRefresh = expiresAt - now < 5 * 60 * 1000;
 
-  if (needsRefresh && integration.refresh_token_secret_id) {
+  if (needsRefresh) {
+    console.log('[Dashboard] Token needs refresh, attempting...');
+    // Get refresh token from encrypted_integration_tokens
     const { data: refreshTokenRow } = await supabase
       .from('encrypted_integration_tokens')
       .select('encrypted_value')
-      .eq('id', integration.refresh_token_secret_id)
+      .eq('user_id', userId)
+      .eq('provider', 'google')
+      .eq('token_type', 'refresh_token')
       .maybeSingle();
 
     if (refreshTokenRow?.encrypted_value) {
@@ -121,25 +129,59 @@ async function getGoogleToken(userId: string): Promise<string | null> {
           }),
         });
         const tokenData = await tokenResponse.json();
-        if (tokenData.access_token) return tokenData.access_token;
+        
+        if (tokenData.access_token) {
+          console.log('[Dashboard] Token refreshed successfully');
+          
+          // Store the new access token
+          const { encrypt } = await import("../_shared/encryption.ts");
+          const encryptedNewToken = await encrypt(tokenData.access_token);
+          
+          await supabase
+            .from('encrypted_integration_tokens')
+            .upsert({
+              user_id: userId,
+              provider: 'google',
+              token_type: 'access_token',
+              encrypted_value: encryptedNewToken,
+            }, { onConflict: 'user_id,provider,token_type' });
+          
+          // Update expiry
+          const newExpiresAt = new Date(Date.now() + (tokenData.expires_in || 3600) * 1000).toISOString();
+          await supabase
+            .from('user_integrations')
+            .update({ token_expires_at: newExpiresAt })
+            .eq('user_id', userId)
+            .eq('provider', 'google');
+          
+          return tokenData.access_token;
+        }
       } catch (e) {
         console.error('[Dashboard] Token refresh failed:', e);
       }
     }
   }
 
-  // Return current token
+  // Get current access token from encrypted_integration_tokens
   const { data: accessTokenRow } = await supabase
     .from('encrypted_integration_tokens')
     .select('encrypted_value')
-    .eq('id', integration.access_token_secret_id)
+    .eq('user_id', userId)
+    .eq('provider', 'google')
+    .eq('token_type', 'access_token')
     .maybeSingle();
 
-  if (!accessTokenRow?.encrypted_value) return null;
+  if (!accessTokenRow?.encrypted_value) {
+    console.log('[Dashboard] No access token found for user');
+    return null;
+  }
   
   try {
-    return await decrypt(accessTokenRow.encrypted_value);
-  } catch {
+    const token = await decrypt(accessTokenRow.encrypted_value);
+    console.log('[Dashboard] Access token retrieved successfully');
+    return token;
+  } catch (e) {
+    console.error('[Dashboard] Failed to decrypt access token:', e);
     return null;
   }
 }
@@ -148,19 +190,23 @@ async function getGoogleToken(userId: string): Promise<string | null> {
 async function getMondayToken(userId: string): Promise<string | null> {
   const supabase = getSupabaseClient();
   
+  // Check if Monday integration exists
   const { data: integration } = await supabase
     .from('user_integrations')
-    .select('access_token_secret_id')
+    .select('id')
     .eq('user_id', userId)
     .eq('provider', 'monday')
     .maybeSingle();
 
-  if (!integration?.access_token_secret_id) return null;
+  if (!integration) return null;
 
+  // Get access token from encrypted_integration_tokens
   const { data: tokenRow } = await supabase
     .from('encrypted_integration_tokens')
     .select('encrypted_value')
-    .eq('id', integration.access_token_secret_id)
+    .eq('user_id', userId)
+    .eq('provider', 'monday')
+    .eq('token_type', 'access_token')
     .maybeSingle();
 
   if (!tokenRow?.encrypted_value) return null;
