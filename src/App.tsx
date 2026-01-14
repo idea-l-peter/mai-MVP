@@ -6,8 +6,15 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import NotFound from "./pages/NotFound";
+import { useGoogleTokenCapture } from "./hooks/useGoogleTokenCapture";
 
 const queryClient = new QueryClient();
+
+// Component to run global hooks
+function GlobalHooks() {
+  useGoogleTokenCapture();
+  return null;
+}
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -15,6 +22,7 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
+        <GlobalHooks />
         <Routes>
           <Route path="/" element={<Navigate to="/auth" replace />} />
           <Route path="/auth" element={<Auth />} />
