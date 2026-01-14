@@ -442,7 +442,12 @@ export function ConversationsContent() {
   }, [hasCheckedFollowups, messages.length]);
 
   const sendMessage = async () => {
-    if (!input.trim() || isLoading) return;
+    console.log("[sendMessage] Called!", { input, inputTrimmed: input.trim(), isLoading });
+    if (!input.trim() || isLoading) {
+      console.log("[sendMessage] Early return - input empty or loading", { inputEmpty: !input.trim(), isLoading });
+      return;
+    }
+    console.log("[sendMessage] Proceeding with message send");
 
     // Ensure user is authenticated so the edge function can enable tools (calendar, gmail, monday)
     const { data: sessionData } = await supabase.auth.getSession();
@@ -676,14 +681,19 @@ export function ConversationsContent() {
               style={{ fontSize: '16px' }}
               rows={1}
               onKeyDown={(e) => {
+                console.log("[Textarea] Key pressed:", e.key, { shiftKey: e.shiftKey });
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
+                  console.log("[Textarea] Enter without shift - calling sendMessage");
                   sendMessage();
                 }
               }}
             />
             <Button
-              onClick={sendMessage}
+              onClick={() => {
+                console.log("[Send Button] Clicked!", { input, isLoading, disabled: isLoading || !input.trim() });
+                sendMessage();
+              }}
               disabled={isLoading || !input.trim()}
               size="icon"
               className="h-11 w-11 min-w-[44px] rounded-full flex-shrink-0"
