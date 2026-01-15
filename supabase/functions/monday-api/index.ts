@@ -391,7 +391,7 @@ serve(async (req) => {
   }
 
   try {
-    // Validate JWT authentication
+    // Validate authorization header exists
     const authHeader = req.headers.get('Authorization');
     if (!authHeader?.startsWith('Bearer ')) {
       return new Response(
@@ -400,25 +400,46 @@ serve(async (req) => {
       );
     }
 
-    const supabaseAuth = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      global: { headers: { Authorization: authHeader } },
-      auth: { persistSession: false }
-    });
-
     const jwtToken = authHeader.replace('Bearer ', '');
-    const { data: claimsData, error: authError } = await supabaseAuth.auth.getClaims(jwtToken);
-
-    if (authError || !claimsData?.claims) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Unauthorized: Invalid token' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
-      );
-    }
-
-    // Extract user_id from JWT - NEVER trust request body
-    const user_id = claimsData.claims.sub as string;
     
-    const { action, params = {} } = await req.json() as MondayApiRequest;
+    // Parse request body first to access both action and potential user_id
+    const requestBody = await req.json() as MondayApiRequest & { user_id?: string };
+    const { action, params = {}, user_id: bodyUserId } = requestBody;
+    
+    let user_id: string;
+
+    // Check if this is a service role call (internal server-to-server from ai-assistant)
+    if (jwtToken === SUPABASE_SERVICE_ROLE_KEY) {
+      // Service role auth - trust the user_id from request body
+      if (!bodyUserId) {
+        console.error(`[MondayAPI] Service role call missing user_id in body`);
+        return new Response(
+          JSON.stringify({ success: false, error: 'user_id required for service role calls' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        );
+      }
+      console.log(`[MondayAPI] Service role auth - using user_id from body: ${bodyUserId}`);
+      user_id = bodyUserId;
+    } else {
+      // User JWT auth - extract from claims
+      const supabaseAuth = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        global: { headers: { Authorization: authHeader } },
+        auth: { persistSession: false }
+      });
+
+      const { data: claimsData, error: authError } = await supabaseAuth.auth.getClaims(jwtToken);
+
+      if (authError || !claimsData?.claims) {
+        console.error(`[MondayAPI] JWT auth failed:`, authError);
+        return new Response(
+          JSON.stringify({ success: false, error: 'Unauthorized: Invalid token' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+        );
+      }
+
+      user_id = claimsData.claims.sub as string;
+      console.log(`[MondayAPI] JWT auth - user_id from claims: ${user_id}`);
+    }
 
     console.log(`[MondayAPI] Action: ${action}, User: ${user_id}`);
 
@@ -426,6 +447,7 @@ serve(async (req) => {
     const { token, error: tokenError } = await getMondayToken(user_id);
     
     if (!token) {
+      console.error(`[MondayAPI] Token retrieval failed for user ${user_id}:`, tokenError);
       return new Response(
         JSON.stringify({ 
           success: false, 
@@ -435,6 +457,8 @@ serve(async (req) => {
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
       );
     }
+    
+    console.log(`[MondayAPI] Successfully retrieved Monday.com token for user ${user_id}`);
 
     let result: unknown;
 
