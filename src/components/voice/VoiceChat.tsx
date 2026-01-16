@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AudioVisualizer, VoiceState } from './AudioVisualizer';
 import { useVoiceService } from '@/hooks/useVoiceService';
+import { useMediaRecorder } from '@/hooks/useMediaRecorder';
 import { useTTS } from '@/hooks/useTTS';
 import { supabase } from '@/integrations/supabase/client';
 import maiLogo from '@/assets/mai-logo-white.png';
@@ -19,6 +20,8 @@ interface VoiceChatProps {
   systemPrompt?: string;
 }
 
+type TranscriptionMode = 'native' | 'fallback' | 'detecting';
+
 export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPrompt }: VoiceChatProps) {
   const [state, setState] = useState<VoiceState>('idle');
   const [audioLevel, setAudioLevel] = useState(0);
@@ -26,27 +29,106 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
   const [lastAssistantMessage, setLastAssistantMessage] = useState('');
   const [localHistory, setLocalHistory] = useState<Message[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [transcriptionMode, setTranscriptionMode] = useState<TranscriptionMode>('detecting');
   
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
   const animationFrameRef = useRef<number>(0);
   const stateRef = useRef<VoiceState>('idle');
+  const nativeFailCountRef = useRef(0);
+  const transcriptionModeRef = useRef<TranscriptionMode>('detecting');
 
-  // Keep stateRef in sync
+  // Keep refs in sync
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
 
-  // Initialize voice service with silence detection
+  useEffect(() => {
+    transcriptionModeRef.current = transcriptionMode;
+  }, [transcriptionMode]);
+
+  // Detect transcription mode on mount
+  useEffect(() => {
+    const detectMode = () => {
+      // Check if native SpeechRecognition is available
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      
+      // iOS Safari detection
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+      
+      if (!SpeechRecognition) {
+        console.log('[VoiceChat] Native SpeechRecognition not available, using fallback');
+        setTranscriptionMode('fallback');
+        return;
+      }
+
+      // iOS Safari has SpeechRecognition but it often fails silently
+      if (isIOS && isSafari) {
+        console.log('[VoiceChat] iOS Safari detected, using fallback mode');
+        setTranscriptionMode('fallback');
+        return;
+      }
+
+      // Start with native, will switch to fallback if it fails
+      console.log('[VoiceChat] Using native SpeechRecognition');
+      setTranscriptionMode('native');
+    };
+
+    if (isOpen) {
+      detectMode();
+    }
+  }, [isOpen]);
+
+  // Process transcript callback for native mode
+  const handleNativeTranscript = useCallback((transcript: string) => {
+    if (stateRef.current === 'listening' && transcript) {
+      console.log('[VoiceChat] Native transcript received:', transcript);
+      nativeFailCountRef.current = 0; // Reset fail count on success
+      processTranscript(transcript);
+    }
+  }, []);
+
+  // Initialize voice service with silence detection (native mode)
   const voiceService = useVoiceService({
     onSilenceDetected: useCallback(() => {
-      console.log('[VoiceChat] Silence detected callback, state:', stateRef.current);
-      if (stateRef.current === 'listening') {
+      console.log('[VoiceChat] Silence detected callback, state:', stateRef.current, 'mode:', transcriptionModeRef.current);
+      if (stateRef.current === 'listening' && transcriptionModeRef.current === 'native') {
         voiceService.stopListening();
       }
     }, []),
     silenceTimeout: 1500,
+  });
+
+  // Handle native speech recognition errors
+  useEffect(() => {
+    if (voiceService.error && transcriptionMode === 'native') {
+      console.log('[VoiceChat] Native voice error:', voiceService.error);
+      nativeFailCountRef.current++;
+      
+      // Switch to fallback after repeated failures
+      if (nativeFailCountRef.current >= 2) {
+        console.log('[VoiceChat] Native mode failed repeatedly, switching to fallback');
+        setTranscriptionMode('fallback');
+        setError(null); // Clear the native error
+      }
+    }
+  }, [voiceService.error, transcriptionMode]);
+
+  // MediaRecorder fallback
+  const mediaRecorder = useMediaRecorder({
+    onTranscriptionComplete: useCallback((transcript: string) => {
+      console.log('[VoiceChat] MediaRecorder transcription complete:', transcript);
+      if (stateRef.current === 'listening' || stateRef.current === 'processing') {
+        processTranscript(transcript);
+      }
+    }, []),
+    onError: useCallback((err: string) => {
+      console.error('[VoiceChat] MediaRecorder error:', err);
+      setError(err);
+      setState('idle');
+    }, []),
   });
 
   const tts = useTTS({
@@ -57,9 +139,31 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
     onPlayEnd: () => {
       console.log('[VoiceChat] TTS playback ended, resuming listening');
       setState('listening');
-      voiceService.startListening();
+      startListening();
     },
   });
+
+  // Unified start listening function
+  const startListening = useCallback(async () => {
+    console.log('[VoiceChat] Starting listening, mode:', transcriptionModeRef.current);
+    
+    if (transcriptionModeRef.current === 'fallback') {
+      await mediaRecorder.startRecording();
+    } else {
+      await voiceService.startListening();
+    }
+  }, [mediaRecorder, voiceService]);
+
+  // Unified stop listening function
+  const stopListening = useCallback(() => {
+    console.log('[VoiceChat] Stopping listening, mode:', transcriptionModeRef.current);
+    
+    if (transcriptionModeRef.current === 'fallback') {
+      mediaRecorder.stopRecording();
+    } else {
+      voiceService.stopListening();
+    }
+  }, [mediaRecorder, voiceService]);
 
   // Initialize audio context for mic level visualization
   const initAudioContext = useCallback(async () => {
@@ -124,7 +228,7 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
     if (!transcript.trim()) {
       console.log('[VoiceChat] Empty transcript, resuming listening');
       setState('listening');
-      voiceService.startListening();
+      startListening();
       return;
     }
 
@@ -165,27 +269,33 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
       setError('Failed to get response. Please try again.');
       setState('idle');
     }
-  }, [conversationHistory, localHistory, systemPrompt, tts, voiceService]);
+  }, [conversationHistory, localHistory, systemPrompt, tts, startListening]);
 
-  // Watch for completed transcript
+  // Watch for completed transcript (native mode only)
   useEffect(() => {
-    if (!voiceService.isListening && voiceService.transcript && state === 'listening') {
-      console.log('[VoiceChat] Transcript complete, processing:', voiceService.transcript);
+    if (transcriptionMode === 'native' && !voiceService.isListening && voiceService.transcript && state === 'listening') {
+      console.log('[VoiceChat] Native transcript complete, processing:', voiceService.transcript);
       processTranscript(voiceService.transcript);
       voiceService.resetTranscript();
     }
-  }, [voiceService.isListening, voiceService.transcript, state, processTranscript, voiceService]);
+  }, [voiceService.isListening, voiceService.transcript, state, processTranscript, voiceService, transcriptionMode]);
 
   // Handle orb click
   const handleOrbClick = useCallback(async () => {
-    console.log('[VoiceChat] Orb clicked, current state:', state);
+    console.log('[VoiceChat] Orb clicked, current state:', state, 'mode:', transcriptionMode);
     setError(null);
     
     if (state === 'idle') {
-      // Check browser support first
-      if (!voiceService.isSupported) {
-        setError('Voice input is not supported in this browser. Please use Chrome, Safari, or Edge.');
+      // Check if we have any transcription mode available
+      if (transcriptionMode === 'detecting') {
+        setError('Initializing voice input...');
         return;
+      }
+
+      // Native mode support check
+      if (transcriptionMode === 'native' && !voiceService.isSupported) {
+        console.log('[VoiceChat] Native not supported, switching to fallback');
+        setTranscriptionMode('fallback');
       }
       
       // Initialize audio visualization first
@@ -195,28 +305,35 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
       }
       
       setState('listening');
-      await voiceService.startListening();
+      await startListening();
+      
     } else if (state === 'listening') {
-      voiceService.stopListening();
-      if (voiceService.transcript) {
+      stopListening();
+      
+      // For native mode, check if there's a transcript to process
+      if (transcriptionMode === 'native' && voiceService.transcript) {
         processTranscript(voiceService.transcript);
         voiceService.resetTranscript();
+      } else if (transcriptionMode === 'fallback') {
+        // MediaRecorder will handle transcription via callback
+        setState('processing');
       } else {
         setState('idle');
         cleanupAudioContext();
       }
+      
     } else if (state === 'speaking') {
       tts.stop();
       setState('listening');
       voiceService.resetTranscript();
-      await voiceService.startListening();
+      await startListening();
     }
-  }, [state, voiceService, tts, initAudioContext, cleanupAudioContext, processTranscript]);
+  }, [state, transcriptionMode, voiceService, tts, initAudioContext, cleanupAudioContext, processTranscript, startListening, stopListening]);
 
   // Handle close
   const handleClose = useCallback(() => {
     console.log('[VoiceChat] Closing');
-    voiceService.stopListening();
+    stopListening();
     tts.stop();
     cleanupAudioContext();
     setState('idle');
@@ -225,7 +342,7 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
     setLocalHistory([]);
     setError(null);
     onClose();
-  }, [voiceService, tts, cleanupAudioContext, onClose]);
+  }, [stopListening, tts, cleanupAudioContext, onClose]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -242,13 +359,20 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
       setLocalHistory([]);
       setError(null);
       voiceService.resetTranscript();
+      nativeFailCountRef.current = 0;
     }
   }, [isOpen, voiceService]);
 
   if (!isOpen) return null;
 
-  const currentTranscript = voiceService.transcript + voiceService.interimTranscript;
-  const displayError = error || voiceService.error;
+  // Determine current transcript based on mode
+  const currentTranscript = transcriptionMode === 'native' 
+    ? voiceService.transcript + voiceService.interimTranscript
+    : ''; // MediaRecorder doesn't have interim results
+    
+  const isTranscribing = mediaRecorder.isTranscribing;
+  const displayError = error || (transcriptionMode === 'native' ? voiceService.error : mediaRecorder.error);
+  const isAnyRecording = transcriptionMode === 'native' ? voiceService.isListening : mediaRecorder.isRecording;
 
   return (
     <div className="fixed inset-0 z-[200] flex flex-col animate-fade-in bg-gradient-to-b from-primary via-primary to-primary/90">
@@ -270,6 +394,9 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
         <div className="flex items-center gap-2">
           <img src={maiLogo} alt="mai" className="h-8 w-auto" />
           <span className="font-semibold text-white text-lg">Voice Mode</span>
+          {transcriptionMode === 'fallback' && (
+            <span className="text-white/50 text-xs">(Cloud)</span>
+          )}
         </div>
       </header>
 
@@ -297,11 +424,9 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
           </div>
         )}
 
-        {/* Browser support warning */}
-        {!voiceService.isSupported && !displayError && (
-          <p className="mt-8 text-white/70 text-sm text-center max-w-xs">
-            Voice input is not supported in this browser. Please try Chrome, Safari, or Edge.
-          </p>
+        {/* Transcription loading indicator for fallback mode */}
+        {isTranscribing && (
+          <p className="mt-4 text-white/70 text-sm animate-pulse">Transcribing audio...</p>
         )}
 
         {/* TTS loading indicator */}
@@ -312,11 +437,19 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
 
       {/* Transcript area at bottom */}
       <div className="px-6 pb-12 space-y-3 min-h-[140px]">
-        {/* Current listening transcript */}
-        {state === 'listening' && currentTranscript && (
+        {/* Current listening transcript (native mode) */}
+        {state === 'listening' && currentTranscript && transcriptionMode === 'native' && (
           <div className="text-center animate-fade-in">
             <p className="text-white/60 text-xs mb-1">You</p>
             <p className="text-white text-lg font-medium">{currentTranscript}</p>
+          </div>
+        )}
+
+        {/* Recording indicator for fallback mode */}
+        {state === 'listening' && transcriptionMode === 'fallback' && isAnyRecording && (
+          <div className="text-center animate-fade-in">
+            <p className="text-white/60 text-xs mb-1">Recording...</p>
+            <p className="text-white/80 text-sm">Tap orb when done speaking</p>
           </div>
         )}
 
@@ -337,7 +470,7 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
         )}
 
         {/* Processing indicator */}
-        {state === 'processing' && (
+        {state === 'processing' && !isTranscribing && (
           <div className="text-center animate-fade-in">
             <p className="text-white/70">Thinking...</p>
           </div>
