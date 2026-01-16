@@ -662,8 +662,16 @@ export function ConversationsContent() {
             <QuickActionChips onSelect={handleQuickAction} disabled={isLoading} />
           )}
           
-          <div className="flex gap-2 items-end">
+          <form 
+            onSubmit={(e) => {
+              e.preventDefault();
+              console.log("[Form] onSubmit triggered");
+              sendMessage();
+            }}
+            className="flex gap-2 items-end"
+          >
             <Button
+              type="button"
               variant="ghost"
               size="icon"
               onClick={() => setIsVoiceChatOpen(true)}
@@ -684,15 +692,20 @@ export function ConversationsContent() {
                 console.log("[Textarea] Key pressed:", e.key, { shiftKey: e.shiftKey });
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
-                  console.log("[Textarea] Enter without shift - calling sendMessage");
+                  console.log("[Textarea] Enter without shift - submitting form");
                   sendMessage();
                 }
               }}
             />
             <Button
-              onClick={() => {
+              type="submit"
+              onClick={(e) => {
                 console.log("[Send Button] Clicked!", { input, isLoading, disabled: isLoading || !input.trim() });
-                sendMessage();
+                // Fallback for programmatic clicks that might not trigger form submit
+                if (!e.isTrusted) {
+                  e.preventDefault();
+                  sendMessage();
+                }
               }}
               disabled={isLoading || !input.trim()}
               size="icon"
@@ -700,7 +713,7 @@ export function ConversationsContent() {
             >
               <Send className="h-5 w-5" />
             </Button>
-          </div>
+          </form>
         </div>
       </div>
     </div>
