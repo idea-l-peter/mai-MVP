@@ -31,16 +31,21 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
   const analyserRef = useRef<AnalyserNode | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
   const animationFrameRef = useRef<number>(0);
+  const stateRef = useRef<VoiceState>('idle');
 
-  const handleSilenceDetected = useCallback(() => {
-    console.log('[VoiceChat] Silence detected');
-    if (state === 'listening') {
-      voiceService.stopListening();
-    }
+  // Keep stateRef in sync
+  useEffect(() => {
+    stateRef.current = state;
   }, [state]);
 
+  // Initialize voice service with silence detection
   const voiceService = useVoiceService({
-    onSilenceDetected: handleSilenceDetected,
+    onSilenceDetected: useCallback(() => {
+      console.log('[VoiceChat] Silence detected callback, state:', stateRef.current);
+      if (stateRef.current === 'listening') {
+        voiceService.stopListening();
+      }
+    }, []),
     silenceTimeout: 1500,
   });
 
@@ -59,9 +64,9 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
   // Initialize audio context for mic level visualization
   const initAudioContext = useCallback(async () => {
     try {
-      console.log('[VoiceChat] Initializing audio context...');
+      console.log('[VoiceChat] Initializing audio context for visualization...');
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      console.log('[VoiceChat] Microphone permission granted');
+      console.log('[VoiceChat] Microphone stream obtained for visualization');
       micStreamRef.current = stream;
       
       const audioContext = new AudioContext();
@@ -87,9 +92,11 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
       };
       
       updateAudioLevel();
+      return true;
     } catch (err) {
       console.error('[VoiceChat] Failed to init audio context:', err);
-      setError('Microphone access denied. Please allow microphone permissions.');
+      setError('Microphone access denied. Please allow microphone permissions in your browser settings.');
+      return false;
     }
   }, []);
 
@@ -98,13 +105,14 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
     console.log('[VoiceChat] Cleaning up audio context');
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = 0;
     }
     if (micStreamRef.current) {
       micStreamRef.current.getTracks().forEach(track => track.stop());
       micStreamRef.current = null;
     }
     if (audioContextRef.current) {
-      audioContextRef.current.close();
+      audioContextRef.current.close().catch(() => {});
       audioContextRef.current = null;
     }
     analyserRef.current = null;
@@ -162,19 +170,32 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
   // Watch for completed transcript
   useEffect(() => {
     if (!voiceService.isListening && voiceService.transcript && state === 'listening') {
-      console.log('[VoiceChat] Transcript complete:', voiceService.transcript);
+      console.log('[VoiceChat] Transcript complete, processing:', voiceService.transcript);
       processTranscript(voiceService.transcript);
       voiceService.resetTranscript();
     }
   }, [voiceService.isListening, voiceService.transcript, state, processTranscript, voiceService]);
 
   // Handle orb click
-  const handleOrbClick = useCallback(() => {
+  const handleOrbClick = useCallback(async () => {
     console.log('[VoiceChat] Orb clicked, current state:', state);
+    setError(null);
+    
     if (state === 'idle') {
+      // Check browser support first
+      if (!voiceService.isSupported) {
+        setError('Voice input is not supported in this browser. Please use Chrome, Safari, or Edge.');
+        return;
+      }
+      
+      // Initialize audio visualization first
+      const success = await initAudioContext();
+      if (!success) {
+        return; // Error already set by initAudioContext
+      }
+      
       setState('listening');
-      initAudioContext();
-      voiceService.startListening();
+      await voiceService.startListening();
     } else if (state === 'listening') {
       voiceService.stopListening();
       if (voiceService.transcript) {
@@ -188,7 +209,7 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
       tts.stop();
       setState('listening');
       voiceService.resetTranscript();
-      voiceService.startListening();
+      await voiceService.startListening();
     }
   }, [state, voiceService, tts, initAudioContext, cleanupAudioContext, processTranscript]);
 
@@ -219,6 +240,7 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
       console.log('[VoiceChat] Opening voice chat');
       setState('idle');
       setLocalHistory([]);
+      setError(null);
       voiceService.resetTranscript();
     }
   }, [isOpen, voiceService]);
@@ -226,6 +248,7 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
   if (!isOpen) return null;
 
   const currentTranscript = voiceService.transcript + voiceService.interimTranscript;
+  const displayError = error || voiceService.error;
 
   return (
     <div className="fixed inset-0 z-[200] flex flex-col animate-fade-in bg-gradient-to-b from-primary via-primary to-primary/90">
@@ -236,6 +259,7 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
           size="icon"
           onClick={handleClose}
           className="rounded-full text-white/80 hover:text-white hover:bg-white/10"
+          aria-label="Close voice chat"
         >
           <X className="h-6 w-6" />
         </Button>
@@ -258,14 +282,23 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
         />
 
         {/* Error display */}
-        {(error || voiceService.error) && (
-          <p className="mt-8 text-white/80 text-sm text-center max-w-xs bg-white/10 rounded-lg px-4 py-2">
-            {error || voiceService.error}
-          </p>
+        {displayError && (
+          <div className="mt-8 text-white/90 text-sm text-center max-w-xs bg-red-500/20 border border-red-400/30 rounded-lg px-4 py-3">
+            <p>{displayError}</p>
+            <button 
+              onClick={() => {
+                setError(null);
+                setState('idle');
+              }}
+              className="mt-2 text-white/70 hover:text-white underline text-xs"
+            >
+              Dismiss
+            </button>
+          </div>
         )}
 
         {/* Browser support warning */}
-        {!voiceService.isSupported && (
+        {!voiceService.isSupported && !displayError && (
           <p className="mt-8 text-white/70 text-sm text-center max-w-xs">
             Voice input is not supported in this browser. Please try Chrome, Safari, or Edge.
           </p>
