@@ -1,12 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { X } from 'lucide-react';
+import { X, Mic } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { AudioVisualizer, VoiceState } from './AudioVisualizer';
-import { useVoiceService } from '@/hooks/useVoiceService';
-import { useMediaRecorder } from '@/hooks/useMediaRecorder';
 import { useTTS } from '@/hooks/useTTS';
 import { supabase } from '@/integrations/supabase/client';
-import maiLogo from '@/assets/mai-logo-white.png';
+import maiAvatar from '@/assets/mai-avatar.png';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -20,7 +17,15 @@ interface VoiceChatProps {
   systemPrompt?: string;
 }
 
-type TranscriptionMode = 'native' | 'fallback' | 'detecting';
+type VoiceState = 'idle' | 'recording' | 'processing' | 'speaking' | 'done';
+
+// iOS Safari detection
+const isIOSSafari = (): boolean => {
+  const ua = navigator.userAgent;
+  const isIOS = /iPad|iPhone|iPod/.test(ua) && !(window as unknown as { MSStream?: unknown }).MSStream;
+  const isSafari = /Safari/.test(ua) && !/Chrome|CriOS|FxiOS/.test(ua);
+  return isIOS || (isIOS && isSafari);
+};
 
 export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPrompt }: VoiceChatProps) {
   const [state, setState] = useState<VoiceState>('idle');
@@ -29,107 +34,22 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
   const [lastAssistantMessage, setLastAssistantMessage] = useState('');
   const [localHistory, setLocalHistory] = useState<Message[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [transcriptionMode, setTranscriptionMode] = useState<TranscriptionMode>('detecting');
+  const [recordingTime, setRecordingTime] = useState(0);
   
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
-  const micStreamRef = useRef<MediaStream | null>(null);
   const animationFrameRef = useRef<number>(0);
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const maxRecordingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const stateRef = useRef<VoiceState>('idle');
-  const nativeFailCountRef = useRef(0);
-  const transcriptionModeRef = useRef<TranscriptionMode>('detecting');
 
-  // Keep refs in sync
+  // Keep ref in sync
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
-
-  useEffect(() => {
-    transcriptionModeRef.current = transcriptionMode;
-  }, [transcriptionMode]);
-
-  // Detect transcription mode on mount
-  useEffect(() => {
-    const detectMode = () => {
-      // Check if native SpeechRecognition is available
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      
-      // iOS Safari detection
-      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-      const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-      
-      if (!SpeechRecognition) {
-        console.log('[VoiceChat] Native SpeechRecognition not available, using fallback');
-        setTranscriptionMode('fallback');
-        return;
-      }
-
-      // iOS Safari has SpeechRecognition but it often fails silently
-      if (isIOS && isSafari) {
-        console.log('[VoiceChat] iOS Safari detected, using fallback mode');
-        setTranscriptionMode('fallback');
-        return;
-      }
-
-      // Start with native, will switch to fallback if it fails
-      console.log('[VoiceChat] Using native SpeechRecognition');
-      setTranscriptionMode('native');
-    };
-
-    if (isOpen) {
-      detectMode();
-    }
-  }, [isOpen]);
-
-  // Process transcript callback for native mode
-  const handleNativeTranscript = useCallback((transcript: string) => {
-    if (stateRef.current === 'listening' && transcript) {
-      console.log('[VoiceChat] Native transcript received:', transcript);
-      nativeFailCountRef.current = 0; // Reset fail count on success
-      processTranscript(transcript);
-    }
-  }, []);
-
-  // Initialize voice service with silence detection (native mode)
-  const voiceService = useVoiceService({
-    onSilenceDetected: useCallback(() => {
-      console.log('[VoiceChat] Silence detected callback, state:', stateRef.current, 'mode:', transcriptionModeRef.current);
-      if (stateRef.current === 'listening' && transcriptionModeRef.current === 'native') {
-        voiceService.stopListening();
-      }
-    }, []),
-    silenceTimeout: 1500,
-  });
-
-  // Handle native speech recognition errors
-  useEffect(() => {
-    if (voiceService.error && transcriptionMode === 'native') {
-      console.log('[VoiceChat] Native voice error:', voiceService.error);
-      nativeFailCountRef.current++;
-      
-      // Switch to fallback after repeated failures
-      if (nativeFailCountRef.current >= 2) {
-        console.log('[VoiceChat] Native mode failed repeatedly, switching to fallback');
-        setTranscriptionMode('fallback');
-        setError(null); // Clear the native error
-      }
-    }
-  }, [voiceService.error, transcriptionMode]);
-
-  // MediaRecorder fallback
-  const mediaRecorder = useMediaRecorder({
-    onTranscriptionComplete: useCallback((transcript: string) => {
-      console.log('[VoiceChat] MediaRecorder transcription complete:', transcript);
-      if (stateRef.current === 'listening' || stateRef.current === 'processing') {
-        processTranscript(transcript);
-      }
-    }, []),
-    onError: useCallback((err: string) => {
-      console.error('[VoiceChat] MediaRecorder error:', err);
-      setError(err);
-      setState('idle');
-    }, []),
-  });
 
   const tts = useTTS({
     onPlayStart: () => {
@@ -137,42 +57,76 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
       setState('speaking');
     },
     onPlayEnd: () => {
-      console.log('[VoiceChat] TTS playback ended, resuming listening');
-      setState('listening');
-      startListening();
+      console.log('[VoiceChat] TTS playback ended');
+      setState('done');
     },
   });
 
-  // Unified start listening function
-  const startListening = useCallback(async () => {
-    console.log('[VoiceChat] Starting listening, mode:', transcriptionModeRef.current);
+  // Cleanup all resources
+  const cleanup = useCallback(() => {
+    console.log('[VoiceChat] Cleaning up resources');
     
-    if (transcriptionModeRef.current === 'fallback') {
-      await mediaRecorder.startRecording();
-    } else {
-      await voiceService.startListening();
+    // Stop recording timer
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
     }
-  }, [mediaRecorder, voiceService]);
-
-  // Unified stop listening function
-  const stopListening = useCallback(() => {
-    console.log('[VoiceChat] Stopping listening, mode:', transcriptionModeRef.current);
     
-    if (transcriptionModeRef.current === 'fallback') {
-      mediaRecorder.stopRecording();
-    } else {
-      voiceService.stopListening();
+    // Stop max recording timer
+    if (maxRecordingTimerRef.current) {
+      clearTimeout(maxRecordingTimerRef.current);
+      maxRecordingTimerRef.current = null;
     }
-  }, [mediaRecorder, voiceService]);
+    
+    // Stop animation frame
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = 0;
+    }
+    
+    // Stop media recorder
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch (e) {
+        console.log('[VoiceChat] MediaRecorder already stopped');
+      }
+    }
+    mediaRecorderRef.current = null;
+    audioChunksRef.current = [];
+    
+    // Stop media stream
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    
+    // Close audio context
+    if (audioContextRef.current) {
+      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
+    }
+    analyserRef.current = null;
+    
+    setAudioLevel(0);
+    setRecordingTime(0);
+  }, []);
 
-  // Initialize audio context for mic level visualization
-  const initAudioContext = useCallback(async () => {
+  // Get state label text
+  const getStateLabel = (): string => {
+    switch (state) {
+      case 'idle': return 'Tap to speak';
+      case 'recording': return `Recording... ${recordingTime}s`;
+      case 'processing': return 'Processing...';
+      case 'speaking': return 'Speaking...';
+      case 'done': return 'Done';
+      default: return 'Tap to speak';
+    }
+  };
+
+  // Start audio visualization
+  const startAudioVisualization = useCallback((stream: MediaStream) => {
     try {
-      console.log('[VoiceChat] Initializing audio context for visualization...');
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      console.log('[VoiceChat] Microphone stream obtained for visualization');
-      micStreamRef.current = stream;
-      
       const audioContext = new AudioContext();
       audioContextRef.current = audioContext;
       
@@ -183,7 +137,7 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
       const source = audioContext.createMediaStreamSource(stream);
       source.connect(analyser);
       
-      const updateAudioLevel = () => {
+      const updateLevel = () => {
         if (!analyserRef.current) return;
         
         const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
@@ -192,43 +146,57 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
         const average = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
         setAudioLevel(Math.min(average / 128, 1));
         
-        animationFrameRef.current = requestAnimationFrame(updateAudioLevel);
+        animationFrameRef.current = requestAnimationFrame(updateLevel);
       };
       
-      updateAudioLevel();
-      return true;
+      updateLevel();
     } catch (err) {
-      console.error('[VoiceChat] Failed to init audio context:', err);
-      setError('Microphone access denied. Please allow microphone permissions in your browser settings.');
-      return false;
+      console.error('[VoiceChat] Audio visualization error:', err);
     }
   }, []);
 
-  // Cleanup audio context
-  const cleanupAudioContext = useCallback(() => {
-    console.log('[VoiceChat] Cleaning up audio context');
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = 0;
+  // Send audio to transcription API
+  const transcribeAudio = useCallback(async (audioBlob: Blob): Promise<string | null> => {
+    console.log('[VoiceChat] Transcribing audio, size:', audioBlob.size, 'type:', audioBlob.type);
+    
+    if (audioBlob.size < 1000) {
+      console.log('[VoiceChat] Audio too short, skipping');
+      return null;
     }
-    if (micStreamRef.current) {
-      micStreamRef.current.getTracks().forEach(track => track.stop());
-      micStreamRef.current = null;
+    
+    try {
+      const formData = new FormData();
+      const ext = audioBlob.type.includes('mp4') ? 'mp4' : 
+                 audioBlob.type.includes('ogg') ? 'ogg' : 
+                 audioBlob.type.includes('wav') ? 'wav' : 'webm';
+      formData.append('audio', audioBlob, `recording.${ext}`);
+
+      const { data, error: fnError } = await supabase.functions.invoke('transcribe-audio', {
+        body: formData,
+      });
+
+      if (fnError) {
+        console.error('[VoiceChat] Transcription error:', fnError);
+        throw fnError;
+      }
+
+      if (data?.error) {
+        console.error('[VoiceChat] Transcription API error:', data.error);
+        throw new Error(data.error);
+      }
+
+      return data?.text || null;
+    } catch (err) {
+      console.error('[VoiceChat] Transcription failed:', err);
+      throw err;
     }
-    if (audioContextRef.current) {
-      audioContextRef.current.close().catch(() => {});
-      audioContextRef.current = null;
-    }
-    analyserRef.current = null;
-    setAudioLevel(0);
   }, []);
 
-  // Process speech and send to AI
-  const processTranscript = useCallback(async (transcript: string) => {
+  // Process transcript with AI
+  const processWithAI = useCallback(async (transcript: string) => {
     if (!transcript.trim()) {
-      console.log('[VoiceChat] Empty transcript, resuming listening');
-      setState('listening');
-      startListening();
+      console.log('[VoiceChat] Empty transcript');
+      setState('idle');
       return;
     }
 
@@ -242,7 +210,6 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
     setLocalHistory(updatedHistory);
 
     try {
-      console.log('[VoiceChat] Calling AI assistant...');
       const { data, error: aiError } = await supabase.functions.invoke('ai-assistant', {
         body: {
           message: transcript,
@@ -251,228 +218,370 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
         },
       });
 
-      if (aiError) {
-        console.error('[VoiceChat] AI error:', aiError);
-        throw aiError;
-      }
+      if (aiError) throw aiError;
 
-      const assistantContent = data.content || 'I didn\'t catch that. Could you try again?';
+      const assistantContent = data.content || "I didn't catch that. Could you try again?";
       console.log('[VoiceChat] AI response:', assistantContent);
       setLastAssistantMessage(assistantContent);
       setLocalHistory(prev => [...prev, { role: 'assistant', content: assistantContent }]);
 
-      // Speak the response
-      console.log('[VoiceChat] Calling TTS...');
       await tts.speak(assistantContent);
     } catch (err) {
-      console.error('[VoiceChat] Error in processTranscript:', err);
+      console.error('[VoiceChat] AI error:', err);
       setError('Failed to get response. Please try again.');
       setState('idle');
     }
-  }, [conversationHistory, localHistory, systemPrompt, tts, startListening]);
+  }, [conversationHistory, localHistory, systemPrompt, tts]);
 
-  // Watch for completed transcript (native mode only)
-  useEffect(() => {
-    if (transcriptionMode === 'native' && !voiceService.isListening && voiceService.transcript && state === 'listening') {
-      console.log('[VoiceChat] Native transcript complete, processing:', voiceService.transcript);
-      processTranscript(voiceService.transcript);
-      voiceService.resetTranscript();
+  // Stop recording and process
+  const stopRecording = useCallback(async () => {
+    console.log('[VoiceChat] Stopping recording');
+    
+    // Stop timers first
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
     }
-  }, [voiceService.isListening, voiceService.transcript, state, processTranscript, voiceService, transcriptionMode]);
+    if (maxRecordingTimerRef.current) {
+      clearTimeout(maxRecordingTimerRef.current);
+      maxRecordingTimerRef.current = null;
+    }
+    
+    if (!mediaRecorderRef.current || mediaRecorderRef.current.state === 'inactive') {
+      console.log('[VoiceChat] No active recording');
+      setState('idle');
+      return;
+    }
 
-  // Handle orb click
-  const handleOrbClick = useCallback(async () => {
-    console.log('[VoiceChat] Orb clicked, current state:', state, 'mode:', transcriptionMode);
+    setState('processing');
+    
+    return new Promise<void>((resolve) => {
+      const recorder = mediaRecorderRef.current!;
+      
+      recorder.onstop = async () => {
+        console.log('[VoiceChat] Recording stopped, chunks:', audioChunksRef.current.length);
+        
+        // Stop stream
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => track.stop());
+          streamRef.current = null;
+        }
+        
+        // Stop animation
+        if (animationFrameRef.current) {
+          cancelAnimationFrame(animationFrameRef.current);
+          animationFrameRef.current = 0;
+        }
+        
+        // Close audio context
+        if (audioContextRef.current) {
+          audioContextRef.current.close().catch(() => {});
+          audioContextRef.current = null;
+        }
+        
+        // Create blob
+        const mimeType = recorder.mimeType || 'audio/webm';
+        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+        audioChunksRef.current = [];
+        
+        try {
+          const transcript = await transcribeAudio(audioBlob);
+          if (transcript) {
+            await processWithAI(transcript);
+          } else {
+            setError('Could not understand audio. Please try again.');
+            setState('idle');
+          }
+        } catch (err) {
+          setError('Transcription failed. Please try again.');
+          setState('idle');
+        }
+        
+        resolve();
+      };
+      
+      recorder.stop();
+    });
+  }, [transcribeAudio, processWithAI]);
+
+  // Start recording
+  const startRecording = useCallback(async () => {
+    console.log('[VoiceChat] Starting recording, iOS:', isIOSSafari());
+    setError(null);
+    audioChunksRef.current = [];
+    setRecordingTime(0);
+
+    try {
+      // Request microphone
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+        } 
+      });
+      streamRef.current = stream;
+      console.log('[VoiceChat] Microphone stream obtained');
+
+      // Start visualization
+      startAudioVisualization(stream);
+
+      // Determine MIME type - prioritize mp4 for iOS
+      let mimeType = '';
+      const isiOS = isIOSSafari();
+      
+      const mimeTypes = isiOS 
+        ? ['audio/mp4', 'audio/aac', 'audio/webm', 'audio/ogg'] // iOS priority
+        : ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'];
+      
+      for (const type of mimeTypes) {
+        if (MediaRecorder.isTypeSupported(type)) {
+          mimeType = type;
+          break;
+        }
+      }
+      
+      console.log('[VoiceChat] Using MIME type:', mimeType || 'default');
+
+      const options: MediaRecorderOptions = mimeType ? { mimeType } : {};
+      const recorder = new MediaRecorder(stream, options);
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onerror = (event) => {
+        console.error('[VoiceChat] MediaRecorder error:', event);
+        setError('Recording failed. Please try again.');
+        cleanup();
+        setState('idle');
+      };
+
+      recorder.onstart = () => {
+        console.log('[VoiceChat] Recording started');
+        setState('recording');
+        
+        // Start recording timer
+        recordingTimerRef.current = setInterval(() => {
+          setRecordingTime(t => t + 1);
+        }, 1000);
+        
+        // 30 second max recording timeout
+        maxRecordingTimerRef.current = setTimeout(() => {
+          console.log('[VoiceChat] Max recording time reached, auto-submitting');
+          stopRecording();
+        }, 30000);
+      };
+
+      // Start with 500ms timeslice
+      recorder.start(500);
+
+    } catch (err) {
+      console.error('[VoiceChat] Failed to start recording:', err);
+      const errName = err instanceof Error ? err.name : '';
+      
+      if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
+        setError('Microphone access denied. Please allow microphone permissions.');
+      } else if (errName === 'NotFoundError') {
+        setError('No microphone found. Please connect a microphone.');
+      } else {
+        setError('Failed to access microphone. Please check your settings.');
+      }
+      setState('idle');
+    }
+  }, [startAudioVisualization, cleanup, stopRecording]);
+
+  // Handle main button click
+  const handleMainButtonClick = useCallback(() => {
+    console.log('[VoiceChat] Main button clicked, state:', state);
     setError(null);
     
-    if (state === 'idle') {
-      // Check if we have any transcription mode available
-      if (transcriptionMode === 'detecting') {
-        setError('Initializing voice input...');
-        return;
-      }
-
-      // Native mode support check
-      if (transcriptionMode === 'native' && !voiceService.isSupported) {
-        console.log('[VoiceChat] Native not supported, switching to fallback');
-        setTranscriptionMode('fallback');
-      }
-      
-      // Initialize audio visualization first
-      const success = await initAudioContext();
-      if (!success) {
-        return; // Error already set by initAudioContext
-      }
-      
-      setState('listening');
-      await startListening();
-      
-    } else if (state === 'listening') {
-      stopListening();
-      
-      // For native mode, check if there's a transcript to process
-      if (transcriptionMode === 'native' && voiceService.transcript) {
-        processTranscript(voiceService.transcript);
-        voiceService.resetTranscript();
-      } else if (transcriptionMode === 'fallback') {
-        // MediaRecorder will handle transcription via callback
-        setState('processing');
-      } else {
-        setState('idle');
-        cleanupAudioContext();
-      }
-      
+    if (state === 'idle' || state === 'done') {
+      startRecording();
+    } else if (state === 'recording') {
+      stopRecording();
     } else if (state === 'speaking') {
       tts.stop();
-      setState('listening');
-      voiceService.resetTranscript();
-      await startListening();
+      setState('idle');
     }
-  }, [state, transcriptionMode, voiceService, tts, initAudioContext, cleanupAudioContext, processTranscript, startListening, stopListening]);
+  }, [state, startRecording, stopRecording, tts]);
+
+  // Handle cancel
+  const handleCancel = useCallback(() => {
+    console.log('[VoiceChat] Cancel clicked');
+    cleanup();
+    setState('idle');
+    setError(null);
+  }, [cleanup]);
 
   // Handle close
   const handleClose = useCallback(() => {
-    console.log('[VoiceChat] Closing');
-    stopListening();
+    console.log('[VoiceChat] Close clicked');
+    cleanup();
     tts.stop();
-    cleanupAudioContext();
     setState('idle');
     setLastUserMessage('');
     setLastAssistantMessage('');
     setLocalHistory([]);
     setError(null);
     onClose();
-  }, [stopListening, tts, cleanupAudioContext, onClose]);
+  }, [cleanup, tts, onClose]);
 
-  // Cleanup on unmount
+  // Handle try again
+  const handleTryAgain = useCallback(() => {
+    setError(null);
+    setState('idle');
+  }, []);
+
+  // Cleanup on unmount or close
   useEffect(() => {
     return () => {
-      cleanupAudioContext();
+      cleanup();
     };
-  }, [cleanupAudioContext]);
+  }, [cleanup]);
 
-  // Reset state when opening
+  // Reset when opening
   useEffect(() => {
     if (isOpen) {
-      console.log('[VoiceChat] Opening voice chat');
+      console.log('[VoiceChat] Opening');
       setState('idle');
       setLocalHistory([]);
       setError(null);
-      voiceService.resetTranscript();
-      nativeFailCountRef.current = 0;
+      setLastUserMessage('');
+      setLastAssistantMessage('');
     }
-  }, [isOpen, voiceService]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
-  // Determine current transcript based on mode
-  const currentTranscript = transcriptionMode === 'native' 
-    ? voiceService.transcript + voiceService.interimTranscript
-    : ''; // MediaRecorder doesn't have interim results
-    
-  const isTranscribing = mediaRecorder.isTranscribing;
-  const displayError = error || (transcriptionMode === 'native' ? voiceService.error : mediaRecorder.error);
-  const isAnyRecording = transcriptionMode === 'native' ? voiceService.isListening : mediaRecorder.isRecording;
-
   return (
-    <div className="fixed inset-0 z-[200] flex flex-col animate-fade-in bg-gradient-to-b from-primary via-primary to-primary/90">
+    <div className="fixed inset-0 z-[200] flex flex-col bg-gradient-to-b from-primary via-primary to-primary/95">
       {/* Close button - top right */}
-      <div className="absolute top-4 right-4 z-10">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={handleClose}
-          className="rounded-full text-white/80 hover:text-white hover:bg-white/10"
-          aria-label="Close voice chat"
-        >
-          <X className="h-6 w-6" />
-        </Button>
-      </div>
+      <button
+        onClick={handleClose}
+        className="absolute top-4 right-4 z-10 p-2 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+        aria-label="Close voice chat"
+      >
+        <X className="h-7 w-7" />
+      </button>
 
-      {/* Header with logo */}
-      <header className="flex items-center justify-center pt-12 pb-4">
-        <div className="flex items-center gap-2">
-          <img src={maiLogo} alt="mai" className="h-8 w-auto" />
-          <span className="font-semibold text-white text-lg">Voice Mode</span>
-          {transcriptionMode === 'fallback' && (
-            <span className="text-white/50 text-xs">(Cloud)</span>
-          )}
+      {/* Header */}
+      <header className="flex items-center justify-center pt-16 pb-4">
+        <div className="flex items-center gap-3">
+          <img src={maiAvatar} alt="mai" className="h-10 w-10 rounded-full" />
+          <span className="font-semibold text-white text-xl">Voice Mode</span>
         </div>
       </header>
 
-      {/* Main content - centered orb */}
+      {/* Main content */}
       <div className="flex-1 flex flex-col items-center justify-center px-6">
-        <AudioVisualizer
-          state={state}
-          audioLevel={audioLevel}
-          onClick={handleOrbClick}
-        />
+        {/* Pulsing mic button */}
+        <div className="relative">
+          {/* Pulse rings when recording */}
+          {state === 'recording' && (
+            <>
+              <div 
+                className="absolute inset-0 rounded-full bg-white/20 animate-ping"
+                style={{ 
+                  animationDuration: '1.5s',
+                  transform: `scale(${1 + audioLevel * 0.3})` 
+                }}
+              />
+              <div 
+                className="absolute -inset-4 rounded-full border-2 border-white/30 animate-pulse"
+                style={{ animationDuration: '1s' }}
+              />
+              <div 
+                className="absolute -inset-8 rounded-full border border-white/20 animate-pulse"
+                style={{ animationDuration: '1.5s' }}
+              />
+            </>
+          )}
+          
+          {/* Processing spinner */}
+          {state === 'processing' && (
+            <div className="absolute -inset-4 rounded-full border-2 border-white/20 border-t-white animate-spin" />
+          )}
+          
+          {/* Speaking indicator */}
+          {state === 'speaking' && (
+            <>
+              <div className="absolute -inset-4 rounded-full border-2 border-white/40 animate-pulse" />
+              <div className="absolute -inset-8 rounded-full border border-white/20 animate-pulse" style={{ animationDelay: '0.5s' }} />
+            </>
+          )}
+
+          {/* Main button */}
+          <button
+            onClick={handleMainButtonClick}
+            disabled={state === 'processing'}
+            className={`
+              relative w-28 h-28 rounded-full flex items-center justify-center transition-all duration-300
+              ${state === 'recording' 
+                ? 'bg-red-500 hover:bg-red-600 scale-110' 
+                : state === 'processing'
+                  ? 'bg-white/20 cursor-wait'
+                  : state === 'speaking'
+                    ? 'bg-white/30 hover:bg-white/40'
+                    : 'bg-white/20 hover:bg-white/30 hover:scale-105'
+              }
+            `}
+            aria-label={getStateLabel()}
+          >
+            <Mic className={`h-12 w-12 text-white ${state === 'recording' ? 'animate-pulse' : ''}`} />
+          </button>
+        </div>
+
+        {/* State label */}
+        <p className="mt-6 text-white text-lg font-medium">
+          {getStateLabel()}
+        </p>
+
+        {/* Cancel button (only during recording) */}
+        {state === 'recording' && (
+          <Button
+            variant="ghost"
+            onClick={handleCancel}
+            className="mt-4 text-white/70 hover:text-white hover:bg-white/10"
+          >
+            Cancel
+          </Button>
+        )}
 
         {/* Error display */}
-        {displayError && (
-          <div className="mt-8 text-white/90 text-sm text-center max-w-xs bg-red-500/20 border border-red-400/30 rounded-lg px-4 py-3">
-            <p>{displayError}</p>
+        {error && (
+          <div className="mt-6 text-center max-w-xs bg-red-500/20 border border-red-400/30 rounded-lg px-4 py-3">
+            <p className="text-white/90 text-sm">{error}</p>
             <button 
-              onClick={() => {
-                setError(null);
-                setState('idle');
-              }}
-              className="mt-2 text-white/70 hover:text-white underline text-xs"
+              onClick={handleTryAgain}
+              className="mt-2 px-4 py-1.5 bg-white/20 hover:bg-white/30 rounded-full text-white text-sm transition-colors"
             >
-              Dismiss
+              Try Again
             </button>
           </div>
         )}
 
-        {/* Transcription loading indicator for fallback mode */}
-        {isTranscribing && (
-          <p className="mt-4 text-white/70 text-sm animate-pulse">Transcribing audio...</p>
-        )}
-
-        {/* TTS loading indicator */}
+        {/* TTS loading */}
         {tts.isLoading && (
           <p className="mt-4 text-white/60 text-sm">Generating speech...</p>
         )}
       </div>
 
-      {/* Transcript area at bottom */}
+      {/* Bottom transcript area */}
       <div className="px-6 pb-12 space-y-3 min-h-[140px]">
-        {/* Current listening transcript (native mode) */}
-        {state === 'listening' && currentTranscript && transcriptionMode === 'native' && (
-          <div className="text-center animate-fade-in">
-            <p className="text-white/60 text-xs mb-1">You</p>
-            <p className="text-white text-lg font-medium">{currentTranscript}</p>
-          </div>
-        )}
-
-        {/* Recording indicator for fallback mode */}
-        {state === 'listening' && transcriptionMode === 'fallback' && isAnyRecording && (
-          <div className="text-center animate-fade-in">
-            <p className="text-white/60 text-xs mb-1">Recording...</p>
-            <p className="text-white/80 text-sm">Tap orb when done speaking</p>
-          </div>
-        )}
-
-        {/* Last user message (when not listening) */}
-        {state !== 'listening' && lastUserMessage && (
+        {lastUserMessage && state !== 'recording' && (
           <div className="text-center animate-fade-in">
             <p className="text-white/60 text-xs mb-1">You said</p>
-            <p className="text-white/80 text-sm line-clamp-2">{lastUserMessage}</p>
+            <p className="text-white/90 text-sm line-clamp-2">{lastUserMessage}</p>
           </div>
         )}
 
-        {/* Assistant response */}
-        {lastAssistantMessage && (state === 'speaking' || state === 'listening') && (
+        {lastAssistantMessage && (state === 'speaking' || state === 'done') && (
           <div className="text-center animate-fade-in">
             <p className="text-white/60 text-xs mb-1">mai</p>
             <p className="text-white text-lg line-clamp-3">{lastAssistantMessage}</p>
-          </div>
-        )}
-
-        {/* Processing indicator */}
-        {state === 'processing' && !isTranscribing && (
-          <div className="text-center animate-fade-in">
-            <p className="text-white/70">Thinking...</p>
           </div>
         )}
       </div>
