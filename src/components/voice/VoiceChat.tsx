@@ -240,25 +240,78 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
     const updatedHistory = [...localHistory, userMessage];
     setLocalHistory(updatedHistory);
 
+    // Prepare request payload for debugging
+    const requestPayload = {
+      message: transcript,
+      systemPrompt: systemPrompt || 'You are mai, an executive assistant. Keep responses brief and conversational since this is a voice interface. Limit responses to 2-3 sentences.',
+      conversationHistory: [...conversationHistory, ...updatedHistory].slice(-10),
+    };
+
+    // Get current session to check auth
+    const { data: sessionData } = await supabase.auth.getSession();
+    console.log('[VoiceChat] Auth session check:', {
+      hasSession: !!sessionData?.session,
+      userId: sessionData?.session?.user?.id || 'none',
+      tokenExpiry: sessionData?.session?.expires_at 
+        ? new Date(sessionData.session.expires_at * 1000).toISOString() 
+        : 'none',
+    });
+
+    console.log('[VoiceChat] AI request payload:', {
+      messageLength: requestPayload.message.length,
+      systemPromptLength: requestPayload.systemPrompt.length,
+      historyCount: requestPayload.conversationHistory.length,
+      fullPayload: requestPayload,
+    });
+
     try {
+      console.log('[VoiceChat] Calling ai-assistant edge function...');
+      const startTime = Date.now();
+      
       const { data, error: aiError } = await supabase.functions.invoke('ai-assistant', {
-        body: {
-          message: transcript,
-          systemPrompt: systemPrompt || 'You are mai, an executive assistant. Keep responses brief and conversational since this is a voice interface. Limit responses to 2-3 sentences.',
-          conversationHistory: [...conversationHistory, ...updatedHistory].slice(-10),
-        },
+        body: requestPayload,
       });
 
-      if (aiError) throw aiError;
+      const elapsed = Date.now() - startTime;
+      console.log('[VoiceChat] AI response received:', {
+        elapsedMs: elapsed,
+        hasData: !!data,
+        hasError: !!aiError,
+        dataKeys: data ? Object.keys(data) : [],
+        fullData: data,
+        fullError: aiError,
+      });
 
-      const assistantContent = data.content || "I didn't catch that. Could you try again?";
-      console.log('[VoiceChat] AI response:', assistantContent);
+      if (aiError) {
+        console.error('[VoiceChat] AI function error object:', {
+          message: aiError.message,
+          name: aiError.name,
+          stack: aiError.stack,
+          fullError: JSON.stringify(aiError, null, 2),
+        });
+        throw aiError;
+      }
+
+      if (data?.error) {
+        console.error('[VoiceChat] AI returned error in data:', data.error);
+        throw new Error(data.error);
+      }
+
+      const assistantContent = data?.content || "I didn't catch that. Could you try again?";
+      console.log('[VoiceChat] AI response content:', assistantContent);
       setLastAssistantMessage(assistantContent);
       setLocalHistory(prev => [...prev, { role: 'assistant', content: assistantContent }]);
 
       await tts.speak(assistantContent);
     } catch (err) {
-      console.error('[VoiceChat] AI error:', err);
+      const errorObj = err as Error;
+      console.error('[VoiceChat] AI error caught:', {
+        message: errorObj?.message,
+        name: errorObj?.name,
+        stack: errorObj?.stack,
+        fullError: err,
+        stringified: JSON.stringify(err, Object.getOwnPropertyNames(err || {}), 2),
+      });
       setError('Failed to get response. Please try again.');
       setState('idle');
     }
@@ -517,21 +570,28 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
 
   return (
     <div className="fixed inset-0 z-[200] flex flex-col bg-gradient-to-b from-primary via-primary to-primary/95">
-      {/* Close button - top right */}
-      <button
-        onClick={handleClose}
-        className="absolute top-4 right-4 z-10 p-2 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-colors"
-        aria-label="Close voice chat"
+      {/* Header with safe area - contains close button and title */}
+      <header 
+        className="flex items-center justify-between px-4 pb-4"
+        style={{ paddingTop: 'max(env(safe-area-inset-top, 12px), 48px)' }}
       >
-        <X className="h-7 w-7" />
-      </button>
-
-      {/* Header */}
-      <header className="flex items-center justify-center pt-16 pb-4">
+        {/* Spacer for centering */}
+        <div className="w-11" />
+        
+        {/* Centered title */}
         <div className="flex items-center gap-3">
           <img src={maiAvatar} alt="mai" className="h-10 w-10 rounded-full" />
           <span className="font-semibold text-white text-xl">Voice Mode</span>
         </div>
+        
+        {/* Close button - now inside safe area */}
+        <button
+          onClick={handleClose}
+          className="p-2 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+          aria-label="Close voice chat"
+        >
+          <X className="h-7 w-7" />
+        </button>
       </header>
 
       {/* Main content */}
