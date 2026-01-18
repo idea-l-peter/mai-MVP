@@ -19,6 +19,16 @@ interface VoiceChatProps {
 
 type VoiceState = 'idle' | 'recording' | 'processing' | 'speaking' | 'done';
 
+// Timeout helper for promises
+const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> => {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => 
+      setTimeout(() => reject(new Error(`TIMEOUT: ${label} exceeded ${ms}ms`)), ms)
+    ),
+  ]);
+};
+
 // iOS Safari detection
 const isIOSSafari = (): boolean => {
   const ua = navigator.userAgent;
@@ -35,6 +45,7 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
   const [localHistory, setLocalHistory] = useState<Message[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [recordingTime, setRecordingTime] = useState(0);
+  const [hasTranscriptionFailed, setHasTranscriptionFailed] = useState(false);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -44,6 +55,7 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
   const animationFrameRef = useRef<number>(0);
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const maxRecordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const errorClearTimerRef = useRef<NodeJS.Timeout | null>(null);
   const stateRef = useRef<VoiceState>('idle');
 
   // Keep ref in sync
@@ -76,6 +88,12 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
     if (maxRecordingTimerRef.current) {
       clearTimeout(maxRecordingTimerRef.current);
       maxRecordingTimerRef.current = null;
+    }
+    
+    // Stop error clear timer
+    if (errorClearTimerRef.current) {
+      clearTimeout(errorClearTimerRef.current);
+      errorClearTimerRef.current = null;
     }
     
     // Stop animation frame
@@ -114,6 +132,9 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
 
   // Get state label text
   const getStateLabel = (): string => {
+    if (state === 'idle' && hasTranscriptionFailed) {
+      return 'Failed - tap to retry';
+    }
     switch (state) {
       case 'idle': return 'Tap to speak';
       case 'recording': return `Recording... ${recordingTime}s`;
@@ -155,41 +176,51 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
     }
   }, []);
 
-  // Send audio to transcription API
+  // Send audio to transcription API with 15-second timeout
   const transcribeAudio = useCallback(async (audioBlob: Blob): Promise<string | null> => {
-    console.log('[VoiceChat] Transcribing audio, size:', audioBlob.size, 'type:', audioBlob.type);
+    console.log('[VoiceChat] Audio blob created:', { 
+      size: audioBlob.size, 
+      type: audioBlob.type,
+      sizeKB: Math.round(audioBlob.size / 1024) 
+    });
     
     if (audioBlob.size < 1000) {
       console.log('[VoiceChat] Audio too short, skipping');
       return null;
     }
     
-    try {
-      const formData = new FormData();
-      const ext = audioBlob.type.includes('mp4') ? 'mp4' : 
-                 audioBlob.type.includes('ogg') ? 'ogg' : 
-                 audioBlob.type.includes('wav') ? 'wav' : 'webm';
-      formData.append('audio', audioBlob, `recording.${ext}`);
+    const formData = new FormData();
+    const ext = audioBlob.type.includes('mp4') ? 'mp4' : 
+               audioBlob.type.includes('ogg') ? 'ogg' : 
+               audioBlob.type.includes('wav') ? 'wav' : 'webm';
+    formData.append('audio', audioBlob, `recording.${ext}`);
 
-      const { data, error: fnError } = await supabase.functions.invoke('transcribe-audio', {
-        body: formData,
-      });
+    console.log('[VoiceChat] Transcription fetch start');
+    
+    const invokePromise = supabase.functions.invoke('transcribe-audio', {
+      body: formData,
+    });
 
-      if (fnError) {
-        console.error('[VoiceChat] Transcription error:', fnError);
-        throw fnError;
-      }
+    // Wrap with 15-second timeout
+    const { data, error: fnError } = await withTimeout(
+      invokePromise,
+      15000,
+      'transcribe-audio'
+    );
 
-      if (data?.error) {
-        console.error('[VoiceChat] Transcription API error:', data.error);
-        throw new Error(data.error);
-      }
+    console.log('[VoiceChat] Transcription fetch response received');
 
-      return data?.text || null;
-    } catch (err) {
-      console.error('[VoiceChat] Transcription failed:', err);
-      throw err;
+    if (fnError) {
+      console.error('[VoiceChat] Transcription error:', fnError);
+      throw fnError;
     }
+
+    if (data?.error) {
+      console.error('[VoiceChat] Transcription API error:', data.error);
+      throw new Error(data.error);
+    }
+
+    return data?.text || null;
   }, []);
 
   // Process transcript with AI
@@ -289,12 +320,30 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
           if (transcript) {
             await processWithAI(transcript);
           } else {
+            console.warn('[VoiceChat] No transcript returned');
             setError('Could not understand audio. Please try again.');
+            setHasTranscriptionFailed(true);
             setState('idle');
           }
         } catch (err) {
-          setError('Transcription failed. Please try again.');
+          const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+          const isTimeout = errorMessage.includes('TIMEOUT');
+          
+          if (isTimeout) {
+            console.warn('[VoiceChat] Transcription timed out after 15s');
+            setError('Transcription timed out. Please try again.');
+          } else {
+            console.error('[VoiceChat] Transcription failed:', err);
+            setError('Transcription failed. Please try again.');
+          }
+          
+          setHasTranscriptionFailed(true);
           setState('idle');
+          
+          // Auto-clear error message after 3 seconds, but keep failed state
+          errorClearTimerRef.current = setTimeout(() => {
+            setError(null);
+          }, 3000);
         }
         
         resolve();
@@ -397,6 +446,7 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
   const handleMainButtonClick = useCallback(() => {
     console.log('[VoiceChat] Main button clicked, state:', state);
     setError(null);
+    setHasTranscriptionFailed(false); // Clear failed state on retry
     
     if (state === 'idle' || state === 'done') {
       startRecording();
@@ -416,9 +466,16 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
     setError(null);
   }, [cleanup]);
 
-  // Handle close
+  // Handle close - always works regardless of state
   const handleClose = useCallback(() => {
-    console.log('[VoiceChat] Close clicked');
+    console.log('[VoiceChat] Close clicked, forcing exit from state:', stateRef.current);
+    
+    // Clear all timers first
+    if (errorClearTimerRef.current) {
+      clearTimeout(errorClearTimerRef.current);
+      errorClearTimerRef.current = null;
+    }
+    
     cleanup();
     tts.stop();
     setState('idle');
@@ -426,12 +483,14 @@ export function VoiceChat({ isOpen, onClose, conversationHistory = [], systemPro
     setLastAssistantMessage('');
     setLocalHistory([]);
     setError(null);
+    setHasTranscriptionFailed(false);
     onClose();
   }, [cleanup, tts, onClose]);
 
   // Handle try again
   const handleTryAgain = useCallback(() => {
     setError(null);
+    setHasTranscriptionFailed(false);
     setState('idle');
   }, []);
 
