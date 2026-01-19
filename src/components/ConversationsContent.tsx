@@ -12,7 +12,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import type { Session } from "@supabase/supabase-js";
 
 // Version for debugging PWA cache issues
-const COMPONENT_VERSION = "2025-01-19-v2";
+const COMPONENT_VERSION = "2025-01-19-v3-immediate-session";
 
 interface Message {
   id: string;
@@ -327,16 +327,40 @@ export function ConversationsContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [hasCheckedFollowups, setHasCheckedFollowups] = useState(false);
   const [isVoiceChatOpen, setIsVoiceChatOpen] = useState(false);
-  const [sessionStatus, setSessionStatus] = useState<SessionStatus>('checking');
-  const [currentSession, setCurrentSession] = useState<Session | null>(null);
+  // Initialize session immediately from localStorage to avoid any "checking" delays
+  const getInitialSession = (): { session: Session | null; status: SessionStatus } => {
+    try {
+      const key = Object.keys(localStorage).find((k) => /^(sb-.*-auth-token)$/.test(k));
+      if (!key) return { session: null, status: 'none' };
+      const raw = localStorage.getItem(key);
+      if (!raw) return { session: null, status: 'none' };
+      const parsed = JSON.parse(raw) as { access_token?: string; expires_at?: number };
+      if (!parsed?.access_token) return { session: null, status: 'none' };
+      // Check if token is expired
+      if (parsed.expires_at && parsed.expires_at * 1000 < Date.now()) {
+        return { session: null, status: 'expired' };
+      }
+      return { session: { access_token: parsed.access_token } as unknown as Session, status: 'valid' };
+    } catch {
+      return { session: null, status: 'checking' };
+    }
+  };
+  
+  const initialState = getInitialSession();
+  const [sessionStatus, setSessionStatus] = useState<SessionStatus>(initialState.status);
+  const [currentSession, setCurrentSession] = useState<Session | null>(initialState.session);
   const [isRefreshingSession, setIsRefreshingSession] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isMobile = useIsMobile();
 
-  // Log version on mount for PWA cache debugging
+  // Log version and session state on mount for debugging
   useEffect(() => {
     console.log(`[ConversationsContent] ${COMPONENT_VERSION} loaded`);
+    console.log(`[ConversationsContent] Initial sessionStatus: ${initialState.status}`);
+    console.log(`[ConversationsContent] Initial hasSession: ${!!initialState.session}`);
+    console.log(`[ConversationsContent] Current sessionStatus state: ${sessionStatus}`);
+    console.log(`[ConversationsContent] Current hasSession state: ${!!currentSession}`);
   }, []);
 
   // Resolve auth on mount using the same pattern as Dashboard.tsx:
