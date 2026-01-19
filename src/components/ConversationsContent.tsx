@@ -442,16 +442,47 @@ export function ConversationsContent() {
   }, [hasCheckedFollowups, messages.length]);
 
   const sendMessage = async () => {
-    console.log("[sendMessage] Called!", { input, inputTrimmed: input.trim(), isLoading });
-    if (!input.trim() || isLoading) {
-      console.log("[sendMessage] Early return - input empty or loading", { inputEmpty: !input.trim(), isLoading });
+    const trimmedInput = input.trim();
+    console.log("[sendMessage] Called!", { 
+      inputLength: input.length, 
+      trimmedLength: trimmedInput.length, 
+      isLoading 
+    });
+    
+    if (!trimmedInput || isLoading) {
+      console.log("[sendMessage] Early return", { 
+        reason: !trimmedInput ? 'empty input' : 'already loading' 
+      });
       return;
     }
-    console.log("[sendMessage] Proceeding with message send");
+    
+    console.log("[sendMessage] Starting message send flow");
 
-    // Ensure user is authenticated so the edge function can enable tools (calendar, gmail, monday)
-    const { data: sessionData } = await supabase.auth.getSession();
-    if (!sessionData.session) {
+    // Get session first
+    let sessionData;
+    try {
+      const result = await supabase.auth.getSession();
+      sessionData = result.data;
+      console.log("[sendMessage] Session check:", { 
+        hasSession: !!sessionData.session,
+        userId: sessionData.session?.user?.id 
+      });
+    } catch (authErr) {
+      console.error("[sendMessage] Auth getSession failed:", authErr);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: "Failed to verify authentication. Please refresh and try again.",
+          timestamp: new Date(),
+        },
+      ]);
+      return;
+    }
+
+    if (!sessionData?.session) {
+      console.log("[sendMessage] No session found");
       setMessages((prev) => [
         ...prev,
         {
@@ -464,13 +495,15 @@ export function ConversationsContent() {
       return;
     }
 
+    // Create user message and update state
     const userMessage: Message = {
       id: crypto.randomUUID(),
       role: "user",
-      content: input.trim(),
+      content: trimmedInput,
       timestamp: new Date(),
     };
 
+    console.log("[sendMessage] Adding user message to state");
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setIsLoading(true);
@@ -479,56 +512,78 @@ export function ConversationsContent() {
       textareaRef.current.style.height = "auto";
     }
 
+    // Build messages array for API
+    const apiMessages = [
+      { role: "system", content: MAI_SYSTEM_PROMPT },
+      ...messages.map((m) => ({ role: m.role, content: m.content })),
+      { role: "user", content: trimmedInput },
+    ];
+
+    const accessToken = sessionData.session.access_token;
+    
+    console.log("[sendMessage] Invoking ai-assistant", {
+      messageCount: apiMessages.length,
+      hasToken: !!accessToken,
+      tokenPrefix: accessToken?.substring(0, 15) + "...",
+    });
+
     try {
-      // Use sessionData already fetched above (line 453)
-      const accessToken = sessionData.session?.access_token;
-
-      console.log("[sendMessage] About to invoke ai-assistant", {
-        hasSession: !!sessionData.session,
-        userEmail: sessionData.session?.user?.email,
-        accessTokenPresent: !!accessToken,
-        accessTokenPrefix: accessToken ? accessToken.substring(0, 12) + "..." : null,
-        messageCount: messages.length + 1,
-      });
-
+      const invokeStart = Date.now();
       const { data, error } = await supabase.functions.invoke("ai-assistant", {
         body: {
-          messages: [
-            { role: "system", content: MAI_SYSTEM_PROMPT },
-            ...messages.map((m) => ({ role: m.role, content: m.content })),
-            { role: "user", content: userMessage.content },
-          ],
+          messages: apiMessages,
           temperature: 0.7,
           max_tokens: 1024,
           stream: false,
         },
-        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const invokeElapsed = Date.now() - invokeStart;
+
+      console.log("[sendMessage] ai-assistant response", {
+        elapsed: invokeElapsed + "ms",
+        hasData: !!data,
+        hasError: !!error,
+        dataKeys: data ? Object.keys(data) : null,
+        errorMessage: error?.message,
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error("[sendMessage] Invoke error:", error);
+        throw error;
+      }
+
+      if (!data) {
+        console.error("[sendMessage] No data returned from ai-assistant");
+        throw new Error("No response from assistant");
+      }
+
+      const assistantContent = data.content || data.error || "Something went wrong. Try again.";
+      console.log("[sendMessage] Assistant response received, length:", assistantContent.length);
 
       const assistantMessage: Message = {
         id: crypto.randomUUID(),
         role: "assistant",
-        content: data.content || data.error || "Something went wrong. Try again.",
+        content: assistantContent,
         timestamp: new Date(),
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error("Chat error:", err);
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      console.error("[sendMessage] Error:", err);
       setMessages((prev) => [
         ...prev,
         {
           id: crypto.randomUUID(),
           role: "assistant",
-          content: `Hit a snag. ${message}`,
+          content: `Hit a snag. ${errorMessage}`,
           timestamp: new Date(),
         },
       ]);
     } finally {
       setIsLoading(false);
+      console.log("[sendMessage] Complete");
     }
   };
 

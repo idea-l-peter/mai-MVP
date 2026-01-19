@@ -218,77 +218,70 @@ async function getMondayToken(userId: string): Promise<string | null> {
   }
 }
 
-// Fetch Gmail data
+// Fetch Gmail data - optimized with parallel requests
 async function fetchGmailData(token: string): Promise<DashboardData['gmail']> {
+  const startTime = Date.now();
+  console.log('[Dashboard] Starting Gmail fetch...');
+  
   try {
-    // Get unread count
-    const unreadResponse = await fetch(
-      'https://gmail.googleapis.com/gmail/v1/users/me/messages?q=is:unread&maxResults=1',
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
-    const unreadData = await unreadResponse.json();
-    const unreadCount = unreadData.resultSizeEstimate || 0;
+    // Fetch unread count, recent emails list, and awaiting response list in PARALLEL
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const beforeDate = yesterday.toISOString().split('T')[0].replace(/-/g, '/');
+    
+    const [unreadResponse, recentResponse, awaitingResponse] = await Promise.all([
+      fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?q=is:unread&maxResults=1', {
+        headers: { Authorization: `Bearer ${token}` }
+      }),
+      fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=5', {
+        headers: { Authorization: `Bearer ${token}` }
+      }),
+      fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?q=in:inbox is:unread before:${beforeDate}&maxResults=5`, {
+        headers: { Authorization: `Bearer ${token}` }
+      }),
+    ]);
 
-    // Get recent emails
-    const recentResponse = await fetch(
-      'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=5',
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
-    const recentData = await recentResponse.json();
-    
-    const recentEmails: Email[] = [];
-    const messageIds = (recentData.messages || []).slice(0, 5);
-    
-    for (const msg of messageIds) {
-      const detailResponse = await fetch(
+    const [unreadData, recentData, awaitingData] = await Promise.all([
+      unreadResponse.json(),
+      recentResponse.json(),
+      awaitingResponse.json(),
+    ]);
+
+    const unreadCount = unreadData.resultSizeEstimate || 0;
+    const recentMessageIds = (recentData.messages || []).slice(0, 5);
+    const awaitingMessageIds = (awaitingData.messages || []).slice(0, 5);
+
+    // Fetch all email details in PARALLEL (both recent and awaiting)
+    const allMessageIds = [...recentMessageIds, ...awaitingMessageIds];
+    const detailPromises = allMessageIds.map(msg =>
+      fetch(
         `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`,
         { headers: { Authorization: `Bearer ${token}` } }
-      );
-      const detail = await detailResponse.json();
-      
+      ).then(r => r.json())
+    );
+
+    const allDetails = await Promise.all(detailPromises);
+
+    // Parse email details
+    const parseEmail = (detail: { id: string; payload?: { headers?: { name: string; value: string }[] }; snippet?: string; labelIds?: string[] }, isUnread: boolean) => {
       const headers = detail.payload?.headers || [];
-      const from = headers.find((h: { name: string }) => h.name === 'From')?.value || 'Unknown';
-      const subject = headers.find((h: { name: string }) => h.name === 'Subject')?.value || '(No subject)';
-      const date = headers.find((h: { name: string }) => h.name === 'Date')?.value || '';
+      const from = headers.find((h) => h.name === 'From')?.value || 'Unknown';
+      const subject = headers.find((h) => h.name === 'Subject')?.value || '(No subject)';
+      const date = headers.find((h) => h.name === 'Date')?.value || '';
       
-      recentEmails.push({
-        id: msg.id,
+      return {
+        id: detail.id || '',
         from: from.replace(/<.*>/, '').trim(),
         subject,
         snippet: detail.snippet || '',
         date,
-        isUnread: detail.labelIds?.includes('UNREAD') || false,
-      });
-    }
+        isUnread: isUnread || detail.labelIds?.includes('UNREAD') || false,
+      };
+    };
 
-    // Get emails older than 24hrs awaiting response (inbox, not sent, older than 24hrs)
-    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const beforeDate = yesterday.toISOString().split('T')[0].replace(/-/g, '/');
-    const awaitingResponse = await fetch(
-      `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=in:inbox is:unread before:${beforeDate}&maxResults=5`,
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
-    const awaitingData = await awaitingResponse.json();
-    
-    const awaitingEmails: Email[] = [];
-    for (const msg of (awaitingData.messages || []).slice(0, 5)) {
-      const detailResponse = await fetch(
-        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      const detail = await detailResponse.json();
-      
-      const headers = detail.payload?.headers || [];
-      awaitingEmails.push({
-        id: msg.id,
-        from: (headers.find((h: { name: string }) => h.name === 'From')?.value || 'Unknown').replace(/<.*>/, '').trim(),
-        subject: headers.find((h: { name: string }) => h.name === 'Subject')?.value || '(No subject)',
-        snippet: detail.snippet || '',
-        date: headers.find((h: { name: string }) => h.name === 'Date')?.value || '',
-        isUnread: true,
-      });
-    }
+    const recentEmails = allDetails.slice(0, recentMessageIds.length).map(d => parseEmail(d, false));
+    const awaitingEmails = allDetails.slice(recentMessageIds.length).map(d => parseEmail(d, true));
 
+    console.log('[Dashboard] Gmail fetch completed in', Date.now() - startTime, 'ms');
     return { connected: true, unreadCount, recentEmails, awaitingResponse: awaitingEmails };
   } catch (e) {
     console.error('[Dashboard] Gmail fetch error:', e);
