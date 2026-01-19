@@ -339,18 +339,39 @@ export function ConversationsContent() {
     console.log(`[ConversationsContent] ${COMPONENT_VERSION} loaded`);
   }, []);
 
-  // Resolve auth on mount using the same pattern as other parts of the app:
+  // Resolve auth on mount using the same pattern as Dashboard.tsx:
   // 1) Subscribe to auth changes
-  // 2) Do an initial auth check
-  // NOTE: We prefer getUser() for the initial check because getSession() can hang in some environments.
+  // 2) Do an initial getSession() call
+  //
+  // NOTE: In some environments, supabase.auth.getUser() can hang due to a network call.
+  // For Conversations we only need an access token for edge functions, so we rely on
+  // getSession() and fall back to reading the stored auth token if needed.
   useEffect(() => {
     let isMounted = true;
+
+    const readSessionFromStorage = (): Session | null => {
+      try {
+        // Supabase stores session JSON under a key like: sb-<project-ref>-auth-token
+        const key = Object.keys(localStorage).find((k) => /^(sb-.*-auth-token)$/.test(k));
+        if (!key) return null;
+
+        const raw = localStorage.getItem(key);
+        if (!raw) return null;
+
+        const parsed = JSON.parse(raw) as { access_token?: string };
+        if (!parsed?.access_token) return null;
+
+        // We only require access_token for Authorization headers.
+        return { access_token: parsed.access_token } as unknown as Session;
+      } catch {
+        return null;
+      }
+    };
 
     console.log("[Session] Setting up auth state listener");
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       console.log("[Session] Auth state changed:", { event, hasSession: !!session });
-
       if (!isMounted) return;
 
       if (session) {
@@ -362,66 +383,48 @@ export function ConversationsContent() {
       if (event === 'SIGNED_OUT') {
         setCurrentSession(null);
         setSessionStatus('none');
-        return;
       }
-
-      // For other events where session might be null, keep current status.
     });
 
     const initialAuthCheck = async () => {
+      setSessionStatus('checking');
+
       try {
-        setSessionStatus('checking');
-
-        // Step 1: Confirm we have a user (works reliably across the app)
-        const { data: { user }, error: userError } = await supabase.auth.getUser();
-
-        if (!isMounted) return;
-
-        if (userError) {
-          console.error("[Session] getUser error:", userError);
-          setSessionStatus('expired');
-          return;
-        }
-
-        if (!user) {
-          setSessionStatus('none');
-          return;
-        }
-
-        // We have a logged-in user.
-        setSessionStatus('valid');
-
-        // Step 2: Try to obtain a session/access token for edge function calls.
-        // getSession() can hang; use a short timeout and fall back to refreshSession().
-        const sessionResult = await Promise.race([
+        // Match Dashboard.tsx: initialize from the cached session.
+        const result = await Promise.race([
           supabase.auth.getSession(),
           new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500)),
         ]);
 
-        const session = (sessionResult as any)?.data?.session ?? null;
-
-        if (session) {
-          setCurrentSession(session);
-          return;
-        }
-
-        const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
-
         if (!isMounted) return;
 
-        if (refreshError) {
-          console.error("[Session] refreshSession error:", refreshError);
-          // User exists but token refresh failed: treat as expired.
-          setSessionStatus('expired');
+        const session = (result as any)?.data?.session ?? null;
+        if (session) {
+          setCurrentSession(session);
+          setSessionStatus('valid');
           return;
         }
 
-        if (refreshed?.session) {
-          setCurrentSession(refreshed.session);
+        // Fallback: if Supabase JS call is slow/hanging, still unlock UI if the token exists.
+        const stored = readSessionFromStorage();
+        if (stored) {
+          setCurrentSession(stored);
+          setSessionStatus('valid');
+          return;
         }
+
+        setSessionStatus('none');
       } catch (err) {
         console.error("[Session] Initial auth check exception:", err);
         if (!isMounted) return;
+
+        const stored = readSessionFromStorage();
+        if (stored) {
+          setCurrentSession(stored);
+          setSessionStatus('valid');
+          return;
+        }
+
         setSessionStatus('expired');
       }
     };
