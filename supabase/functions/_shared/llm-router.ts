@@ -50,8 +50,8 @@ const PROVIDER_CONFIGS: Record<Provider, ProviderConfig> = {
   groq: {
     name: "groq",
     baseUrl: "https://api.groq.com/openai/v1",
-    model: "openai/gpt-oss-120b",
-    timeout: 15000,
+    model: "llama-3.3-70b-versatile", // Fixed: was using invalid model name
+    timeout: 30000, // Increased timeout
     apiKeyEnv: "GROQ_API_KEY",
     supportsTemperature: true,
     supportsTools: true,
@@ -60,7 +60,7 @@ const PROVIDER_CONFIGS: Record<Provider, ProviderConfig> = {
     name: "openai",
     baseUrl: "https://api.openai.com/v1",
     model: "gpt-4o-mini",
-    timeout: 20000,
+    timeout: 30000, // Increased timeout
     apiKeyEnv: "OPENAI_API_KEY",
     supportsTemperature: true,
     supportsTools: true,
@@ -68,8 +68,8 @@ const PROVIDER_CONFIGS: Record<Provider, ProviderConfig> = {
   gemini: {
     name: "gemini",
     baseUrl: "https://generativelanguage.googleapis.com/v1beta",
-    model: "gemini-2.5-flash",
-    timeout: 20000,
+    model: "gemini-2.0-flash", // Updated to stable model
+    timeout: 30000, // Increased timeout
     apiKeyEnv: "GEMINI_API_KEY",
     supportsTemperature: true,
     supportsTools: false, // Gemini has different tool format, skip for now
