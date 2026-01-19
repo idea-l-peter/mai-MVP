@@ -474,12 +474,24 @@ export function ConversationsContent() {
       }
 
       step("3. starting message send flow");
+      // IMPORTANT: raw log (bypasses step helper) to confirm execution continues past step 3
+      console.log("[sendMessage] Step 1: About to check session");
 
       // Get session first
-      step("4. about to call supabase.auth.getSession()");
+      step("4. about to call supabase.auth.getSession()", {
+        hasSupabase: !!supabase,
+        hasAuth: !!(supabase as any)?.auth,
+        ts: Date.now(),
+      });
       let sessionData: Awaited<ReturnType<typeof supabase.auth.getSession>>["data"] | undefined;
       try {
-        const result = await supabase.auth.getSession();
+        // Guard against a hung promise (we've seen this when storage is blocked or auth client is misconfigured)
+        const result = (await Promise.race([
+          supabase.auth.getSession(),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("getSession timeout after 5000ms")), 5000)
+          ),
+        ])) as Awaited<ReturnType<typeof supabase.auth.getSession>>;
         step("5. getSession resolved", {
           hasData: !!result?.data,
           hasSession: !!result?.data?.session,
