@@ -21,9 +21,9 @@ interface Message {
 }
 
 const PROVIDER_INFO: Record<Provider, { name: string; model: string; color: string }> = {
-  groq: { name: "Groq", model: "Llama 3.3 70B", color: "bg-orange-500" },
+  groq: { name: "Groq", model: "llama-3.3-70b-versatile", color: "bg-orange-500" },
   openai: { name: "OpenAI", model: "GPT-4o-mini", color: "bg-green-500" },
-  gemini: { name: "Gemini", model: "gemini-1.5-flash", color: "bg-blue-500" },
+  gemini: { name: "Gemini", model: "gemini-2.0-flash", color: "bg-blue-500" },
 };
 
 export function TestChatContent() {
