@@ -339,53 +339,97 @@ export function ConversationsContent() {
     console.log(`[ConversationsContent] ${COMPONENT_VERSION} loaded`);
   }, []);
 
-  // Pre-check session on mount and listen for auth changes
+  // Resolve auth on mount using the same pattern as other parts of the app:
+  // 1) Subscribe to auth changes
+  // 2) Do an initial auth check
+  // NOTE: We prefer getUser() for the initial check because getSession() can hang in some environments.
   useEffect(() => {
+    let isMounted = true;
+
     console.log("[Session] Setting up auth state listener");
-    
-    const checkSession = async () => {
-      try {
-        console.log("[Session] Checking initial session...");
-        const { data, error } = await supabase.auth.getSession();
-        console.log("[Session] Initial check result:", { 
-          hasSession: !!data?.session, 
-          error: error?.message,
-          userId: data?.session?.user?.id 
-        });
-        
-        if (error) {
-          console.error("[Session] Initial check error:", error);
-          setSessionStatus('expired');
-        } else if (data.session) {
-          setCurrentSession(data.session);
-          setSessionStatus('valid');
-        } else {
-          setSessionStatus('none');
-        }
-      } catch (err) {
-        console.error("[Session] Initial check exception:", err);
-        setSessionStatus('expired');
-      }
-    };
-    
-    // Set up auth state listener BEFORE checking session
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       console.log("[Session] Auth state changed:", { event, hasSession: !!session });
+
+      if (!isMounted) return;
+
       if (session) {
         setCurrentSession(session);
         setSessionStatus('valid');
-      } else if (event === 'SIGNED_OUT') {
+        return;
+      }
+
+      if (event === 'SIGNED_OUT') {
         setCurrentSession(null);
         setSessionStatus('none');
-      } else if (event === 'TOKEN_REFRESHED') {
-        setCurrentSession(session);
-        setSessionStatus('valid');
+        return;
       }
+
+      // For other events where session might be null, keep current status.
     });
-    
-    checkSession();
-    
+
+    const initialAuthCheck = async () => {
+      try {
+        setSessionStatus('checking');
+
+        // Step 1: Confirm we have a user (works reliably across the app)
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+        if (!isMounted) return;
+
+        if (userError) {
+          console.error("[Session] getUser error:", userError);
+          setSessionStatus('expired');
+          return;
+        }
+
+        if (!user) {
+          setSessionStatus('none');
+          return;
+        }
+
+        // We have a logged-in user.
+        setSessionStatus('valid');
+
+        // Step 2: Try to obtain a session/access token for edge function calls.
+        // getSession() can hang; use a short timeout and fall back to refreshSession().
+        const sessionResult = await Promise.race([
+          supabase.auth.getSession(),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500)),
+        ]);
+
+        const session = (sessionResult as any)?.data?.session ?? null;
+
+        if (session) {
+          setCurrentSession(session);
+          return;
+        }
+
+        const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+
+        if (!isMounted) return;
+
+        if (refreshError) {
+          console.error("[Session] refreshSession error:", refreshError);
+          // User exists but token refresh failed: treat as expired.
+          setSessionStatus('expired');
+          return;
+        }
+
+        if (refreshed?.session) {
+          setCurrentSession(refreshed.session);
+        }
+      } catch (err) {
+        console.error("[Session] Initial auth check exception:", err);
+        if (!isMounted) return;
+        setSessionStatus('expired');
+      }
+    };
+
+    initialAuthCheck();
+
     return () => {
+      isMounted = false;
       console.log("[Session] Cleaning up auth listener");
       subscription.unsubscribe();
     };
@@ -423,8 +467,12 @@ export function ConversationsContent() {
   const sendMessageWithContent = useCallback(async (content: string) => {
     if (!content.trim() || isLoading) return;
 
-    const { data: sessionData } = await supabase.auth.getSession();
-    if (!sessionData.session) return;
+    // Avoid getSession() here (it may hang). Reuse the same session source as the main flow.
+    const accessToken = currentSession?.access_token
+      ? currentSession.access_token
+      : (await supabase.auth.refreshSession()).data.session?.access_token;
+
+    if (!accessToken) return;
 
     const userMessage: Message = {
       id: crypto.randomUUID(),
@@ -437,8 +485,6 @@ export function ConversationsContent() {
     setIsLoading(true);
 
     try {
-      const accessToken = sessionData.session?.access_token;
-
       const { data, error } = await supabase.functions.invoke("ai-assistant", {
         body: {
           messages: [
@@ -450,7 +496,7 @@ export function ConversationsContent() {
           max_tokens: 1024,
           stream: false,
         },
-        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+        headers: { Authorization: `Bearer ${accessToken}` },
       });
 
       if (error) throw error;
@@ -478,7 +524,7 @@ export function ConversationsContent() {
     } finally {
       setIsLoading(false);
     }
-  }, [isLoading, messages]);
+  }, [isLoading, messages, currentSession]);
 
   // Check for prompt query parameter on mount
   useEffect(() => {
@@ -496,12 +542,14 @@ export function ConversationsContent() {
     const checkFollowups = async () => {
       if (hasCheckedFollowups || messages.length > 0) return;
       
-      const { data: sessionData } = await supabase.auth.getSession();
-      if (!sessionData.session) return;
+      // Avoid getSession() here (it may hang). Reuse the cached session if available.
+      const accessToken = currentSession?.access_token
+        ? currentSession.access_token
+        : (await supabase.auth.refreshSession()).data.session?.access_token;
+
+      if (!accessToken) return;
 
       try {
-        const accessToken = sessionData.session.access_token;
-        
         // Call the contact-intelligence function directly to check for overdue followups
         // No need to send user_id - the edge function extracts it from JWT
         const { data, error } = await supabase.functions.invoke("contact-intelligence", {
@@ -537,7 +585,7 @@ export function ConversationsContent() {
     };
 
     checkFollowups();
-  }, [hasCheckedFollowups, messages.length]);
+  }, [hasCheckedFollowups, messages.length, currentSession]);
 
   const sendMessage = async () => {
     console.log("[sendMessage] Called!", { sessionStatus, hasSession: !!currentSession, version: COMPONENT_VERSION });
