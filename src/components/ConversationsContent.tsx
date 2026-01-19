@@ -615,22 +615,35 @@ export function ConversationsContent() {
   }, [hasCheckedFollowups, messages.length, currentSession]);
 
   const sendMessage = async () => {
-    console.log("[sendMessage] Called!", { sessionStatus, hasSession: !!currentSession, version: COMPONENT_VERSION });
+    console.log("STEP 1: Starting sendMessage", {
+      version: COMPONENT_VERSION,
+      sessionStatus,
+      hasSession: !!currentSession,
+      isLoading,
+      inputLength: input?.length ?? 0,
+    });
 
     try {
       const trimmedInput = input.trim();
-      console.log("[sendMessage] Input:", { length: trimmedInput.length, isLoading });
 
-      if (!trimmedInput || isLoading) {
-        console.log("[sendMessage] Early return - empty or loading");
+      if (!trimmedInput) {
+        console.log("[sendMessage] Early return - empty input");
+        return;
+      }
+
+      if (isLoading) {
+        console.log("[sendMessage] Early return - already loading");
         return;
       }
 
       // Use pre-checked session status instead of calling getSession()
-      console.log("[sendMessage] Checking session status:", sessionStatus);
-      
-      if (sessionStatus === 'checking') {
-        console.log("[sendMessage] Session still checking - waiting...");
+      console.log("[sendMessage] Session gate", {
+        sessionStatus,
+        hasSession: !!currentSession,
+      });
+
+      if (sessionStatus === "checking") {
+        console.log("[sendMessage] Early return - session still checking");
         setMessages((prev) => [
           ...prev,
           {
@@ -643,8 +656,8 @@ export function ConversationsContent() {
         return;
       }
 
-      if (sessionStatus === 'none') {
-        console.log("[sendMessage] No session - prompting sign in");
+      if (sessionStatus === "none") {
+        console.log("[sendMessage] Early return - no session");
         setMessages((prev) => [
           ...prev,
           {
@@ -657,8 +670,8 @@ export function ConversationsContent() {
         return;
       }
 
-      if (sessionStatus === 'expired' || !currentSession) {
-        console.log("[sendMessage] Session expired");
+      if (sessionStatus === "expired" || !currentSession) {
+        console.log("[sendMessage] Early return - expired session or missing currentSession");
         setMessages((prev) => [
           ...prev,
           {
@@ -671,11 +684,9 @@ export function ConversationsContent() {
         return;
       }
 
-      console.log("[sendMessage] Session valid, proceeding...");
-
-      const messageId = safeUUID();
+      // UI update (user bubble + thinking indicator)
       const userMessage: Message = {
-        id: messageId,
+        id: safeUUID(),
         role: "user",
         content: trimmedInput,
         timestamp: new Date(),
@@ -694,12 +705,15 @@ export function ConversationsContent() {
         ...messages.map((m) => ({ role: m.role, content: m.content })),
         { role: "user", content: trimmedInput },
       ];
-      console.log("[sendMessage] API messages built:", { count: apiMessages.length });
 
       const accessToken = currentSession.access_token;
-      console.log("[sendMessage] Access token extracted:", { hasToken: !!accessToken });
 
-      console.log("[sendMessage] Invoking ai-assistant...");
+      console.log("STEP 2: Before fetch", {
+        apiMessagesCount: apiMessages.length,
+        hasAccessToken: !!accessToken,
+        accessTokenLength: accessToken?.length ?? 0,
+      });
+
       const invokeStart = Date.now();
       const { data, error } = await supabase.functions.invoke("ai-assistant", {
         body: {
@@ -710,35 +724,31 @@ export function ConversationsContent() {
         },
         headers: { Authorization: `Bearer ${accessToken}` },
       });
-      console.log("[sendMessage] Invoke complete:", { 
-        elapsedMs: Date.now() - invokeStart, 
-        hasData: !!data, 
-        hasError: !!error 
+
+      console.log("STEP 3: After fetch", {
+        elapsedMs: Date.now() - invokeStart,
+        hasData: !!data,
+        hasError: !!error,
+        error: error ? { name: error.name, message: error.message } : null,
       });
 
-      if (error) {
-        console.error("[sendMessage] Invoke error:", error);
-        throw error;
-      }
-
-      if (!data) {
-        throw new Error("No response from assistant");
-      }
+      if (error) throw error;
+      if (!data) throw new Error("No response from assistant");
 
       const assistantContent =
         (data as { content?: string; error?: string }).content ||
         (data as { content?: string; error?: string }).error ||
         "Something went wrong. Try again.";
 
-      const assistantMessage: Message = {
-        id: safeUUID(),
-        role: "assistant",
-        content: assistantContent,
-        timestamp: new Date(),
-      };
-
-      setMessages((prev) => [...prev, assistantMessage]);
-      console.log("[sendMessage] Success!");
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: safeUUID(),
+          role: "assistant",
+          content: assistantContent,
+          timestamp: new Date(),
+        },
+      ]);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       console.error("[sendMessage] Error:", err);
