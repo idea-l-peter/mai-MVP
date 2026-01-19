@@ -3,13 +3,16 @@ import { useSearchParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, ArrowLeft, Mic } from "lucide-react";
+import { Send, ArrowLeft, Mic, RefreshCw, AlertCircle } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import maiLogo from "@/assets/mai-logo.png";
 import { QuickActionChips } from "@/components/chat/QuickActionChips";
-
 import { VoiceChat } from "@/components/voice/VoiceChat";
 import { useIsMobile } from "@/hooks/use-mobile";
+import type { Session } from "@supabase/supabase-js";
+
+// Version for debugging PWA cache issues
+const COMPONENT_VERSION = "2025-01-19-v2";
 
 interface Message {
   id: string;
@@ -18,9 +21,10 @@ interface Message {
   timestamp: Date;
 }
 
+type SessionStatus = 'checking' | 'valid' | 'expired' | 'none';
+
 function safeUUID(): string {
   try {
-    // Safari < 15.4 and some embedded browsers may not support crypto.randomUUID
     const anyCrypto = crypto as unknown as { randomUUID?: () => string };
     if (anyCrypto?.randomUUID) return anyCrypto.randomUUID();
   } catch {
@@ -323,9 +327,92 @@ export function ConversationsContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [hasCheckedFollowups, setHasCheckedFollowups] = useState(false);
   const [isVoiceChatOpen, setIsVoiceChatOpen] = useState(false);
+  const [sessionStatus, setSessionStatus] = useState<SessionStatus>('checking');
+  const [currentSession, setCurrentSession] = useState<Session | null>(null);
+  const [isRefreshingSession, setIsRefreshingSession] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isMobile = useIsMobile();
+
+  // Log version on mount for PWA cache debugging
+  useEffect(() => {
+    console.log(`[ConversationsContent] ${COMPONENT_VERSION} loaded`);
+  }, []);
+
+  // Pre-check session on mount and listen for auth changes
+  useEffect(() => {
+    console.log("[Session] Setting up auth state listener");
+    
+    const checkSession = async () => {
+      try {
+        console.log("[Session] Checking initial session...");
+        const { data, error } = await supabase.auth.getSession();
+        console.log("[Session] Initial check result:", { 
+          hasSession: !!data?.session, 
+          error: error?.message,
+          userId: data?.session?.user?.id 
+        });
+        
+        if (error) {
+          console.error("[Session] Initial check error:", error);
+          setSessionStatus('expired');
+        } else if (data.session) {
+          setCurrentSession(data.session);
+          setSessionStatus('valid');
+        } else {
+          setSessionStatus('none');
+        }
+      } catch (err) {
+        console.error("[Session] Initial check exception:", err);
+        setSessionStatus('expired');
+      }
+    };
+    
+    // Set up auth state listener BEFORE checking session
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log("[Session] Auth state changed:", { event, hasSession: !!session });
+      if (session) {
+        setCurrentSession(session);
+        setSessionStatus('valid');
+      } else if (event === 'SIGNED_OUT') {
+        setCurrentSession(null);
+        setSessionStatus('none');
+      } else if (event === 'TOKEN_REFRESHED') {
+        setCurrentSession(session);
+        setSessionStatus('valid');
+      }
+    });
+    
+    checkSession();
+    
+    return () => {
+      console.log("[Session] Cleaning up auth listener");
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  // Handle session refresh
+  const handleRefreshSession = async () => {
+    console.log("[Session] Refreshing session...");
+    setIsRefreshingSession(true);
+    try {
+      const { data, error } = await supabase.auth.refreshSession();
+      console.log("[Session] Refresh result:", { hasSession: !!data?.session, error: error?.message });
+      
+      if (error || !data.session) {
+        console.log("[Session] Refresh failed, redirecting to auth");
+        navigate('/auth');
+      } else {
+        setCurrentSession(data.session);
+        setSessionStatus('valid');
+      }
+    } catch (err) {
+      console.error("[Session] Refresh exception:", err);
+      navigate('/auth');
+    } finally {
+      setIsRefreshingSession(false);
+    }
+  };
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -453,70 +540,36 @@ export function ConversationsContent() {
   }, [hasCheckedFollowups, messages.length]);
 
   const sendMessage = async () => {
-    // Note: this function is heavily instrumented to catch silent failures.
-    const step = (label: string, data?: unknown) => {
-      try {
-        console.log(`[sendMessage][step] ${label}`, data ?? "");
-      } catch {
-        // avoid crashing if console is not available
-      }
-    };
+    console.log("[sendMessage] Called!", { sessionStatus, hasSession: !!currentSession, version: COMPONENT_VERSION });
 
     try {
-      step("0. entered", { inputLength: input?.length ?? 0, isLoading });
-
       const trimmedInput = input.trim();
-      step("1. trimmed", { trimmedLength: trimmedInput.length });
+      console.log("[sendMessage] Input:", { length: trimmedInput.length, isLoading });
 
       if (!trimmedInput || isLoading) {
-        step("2. early return", { reason: !trimmedInput ? "empty input" : "already loading" });
+        console.log("[sendMessage] Early return - empty or loading");
         return;
       }
 
-      step("3. starting message send flow");
-      // IMPORTANT: raw log (bypasses step helper) to confirm execution continues past step 3
-      console.log("[sendMessage] Step 1: About to check session");
-
-      // Get session first
-      step("4. about to call supabase.auth.getSession()", {
-        hasSupabase: !!supabase,
-        hasAuth: !!(supabase as any)?.auth,
-        ts: Date.now(),
-      });
-      let sessionData: Awaited<ReturnType<typeof supabase.auth.getSession>>["data"] | undefined;
-      try {
-        // Guard against a hung promise (we've seen this when storage is blocked or auth client is misconfigured)
-        const result = (await Promise.race([
-          supabase.auth.getSession(),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error("getSession timeout after 5000ms")), 5000)
-          ),
-        ])) as Awaited<ReturnType<typeof supabase.auth.getSession>>;
-        step("5. getSession resolved", {
-          hasData: !!result?.data,
-          hasSession: !!result?.data?.session,
-          userId: result?.data?.session?.user?.id,
-        });
-        sessionData = result.data;
-      } catch (authErr) {
-        step("5x. getSession threw", authErr);
-        console.error("[sendMessage] Auth getSession failed:", authErr);
+      // Use pre-checked session status instead of calling getSession()
+      console.log("[sendMessage] Checking session status:", sessionStatus);
+      
+      if (sessionStatus === 'checking') {
+        console.log("[sendMessage] Session still checking - waiting...");
         setMessages((prev) => [
           ...prev,
           {
             id: safeUUID(),
             role: "assistant",
-            content: "Failed to verify authentication. Please refresh and try again.",
+            content: "Still verifying your session. Please wait a moment and try again.",
             timestamp: new Date(),
           },
         ]);
         return;
       }
 
-      step("6. sessionData checked", { hasSession: !!sessionData?.session });
-
-      if (!sessionData?.session) {
-        step("7. no session - prompting sign in");
+      if (sessionStatus === 'none') {
+        console.log("[sendMessage] No session - prompting sign in");
         setMessages((prev) => [
           ...prev,
           {
@@ -529,52 +582,49 @@ export function ConversationsContent() {
         return;
       }
 
-      step("8. about to create userMessage");
-      const messageId = safeUUID();
-      step("9. generated message id", { messageId });
+      if (sessionStatus === 'expired' || !currentSession) {
+        console.log("[sendMessage] Session expired");
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: safeUUID(),
+            role: "assistant",
+            content: "Your session has expired. Tap the refresh button above to continue.",
+            timestamp: new Date(),
+          },
+        ]);
+        return;
+      }
 
+      console.log("[sendMessage] Session valid, proceeding...");
+
+      const messageId = safeUUID();
       const userMessage: Message = {
         id: messageId,
         role: "user",
         content: trimmedInput,
         timestamp: new Date(),
       };
-      step("10. userMessage created", { contentLength: userMessage.content.length });
 
-      step("11. updating state (messages, input, loading)");
       setMessages((prev) => [...prev, userMessage]);
-      step("12. setMessages called");
       setInput("");
-      step("13. setInput('') called");
       setIsLoading(true);
-      step("14. setIsLoading(true) called");
 
       if (textareaRef.current) {
-        step("15. resetting textarea height");
         textareaRef.current.style.height = "auto";
-      } else {
-        step("15b. textareaRef missing");
       }
 
-      step("16. building apiMessages");
       const apiMessages = [
         { role: "system", content: MAI_SYSTEM_PROMPT },
         ...messages.map((m) => ({ role: m.role, content: m.content })),
         { role: "user", content: trimmedInput },
       ];
-      step("17. apiMessages built", {
-        count: apiMessages.length,
-        lastRole: apiMessages[apiMessages.length - 1]?.role,
-        lastLen: apiMessages[apiMessages.length - 1]?.content?.length,
-      });
+      console.log("[sendMessage] API messages built:", { count: apiMessages.length });
 
-      const accessToken = sessionData.session.access_token;
-      step("18. access token extracted", {
-        hasToken: !!accessToken,
-        tokenPrefix: accessToken ? accessToken.substring(0, 15) + "..." : null,
-      });
+      const accessToken = currentSession.access_token;
+      console.log("[sendMessage] Access token extracted:", { hasToken: !!accessToken });
 
-      step("19. invoking ai-assistant (supabase.functions.invoke)");
+      console.log("[sendMessage] Invoking ai-assistant...");
       const invokeStart = Date.now();
       const { data, error } = await supabase.functions.invoke("ai-assistant", {
         body: {
@@ -585,24 +635,18 @@ export function ConversationsContent() {
         },
         headers: { Authorization: `Bearer ${accessToken}` },
       });
-      const invokeElapsed = Date.now() - invokeStart;
-
-      step("20. invoke returned", {
-        elapsedMs: invokeElapsed,
-        hasData: !!data,
-        hasError: !!error,
-        errorMessage: (error as { message?: string } | null)?.message,
-        dataKeys: data ? Object.keys(data as Record<string, unknown>) : null,
+      console.log("[sendMessage] Invoke complete:", { 
+        elapsedMs: Date.now() - invokeStart, 
+        hasData: !!data, 
+        hasError: !!error 
       });
 
       if (error) {
-        step("21. throwing invoke error", error);
         console.error("[sendMessage] Invoke error:", error);
         throw error;
       }
 
       if (!data) {
-        step("22. no data - throwing");
         throw new Error("No response from assistant");
       }
 
@@ -611,27 +655,18 @@ export function ConversationsContent() {
         (data as { content?: string; error?: string }).error ||
         "Something went wrong. Try again.";
 
-      step("23. assistant content extracted", { length: assistantContent.length });
-
       const assistantMessage: Message = {
         id: safeUUID(),
         role: "assistant",
         content: assistantContent,
         timestamp: new Date(),
       };
-      step("24. assistantMessage created");
 
       setMessages((prev) => [...prev, assistantMessage]);
-      step("25. assistant message appended");
+      console.log("[sendMessage] Success!");
     } catch (err) {
-      // Catch ANY sync/async error (including crypto.randomUUID issues)
       const errorMessage = err instanceof Error ? err.message : String(err);
-      console.error("[sendMessage] Fatal error:", err);
-      try {
-        console.log("[sendMessage] Fatal error (stringified):", JSON.stringify(err));
-      } catch {
-        // ignore
-      }
+      console.error("[sendMessage] Error:", err);
 
       setMessages((prev) => [
         ...prev,
@@ -644,11 +679,7 @@ export function ConversationsContent() {
       ]);
     } finally {
       setIsLoading(false);
-      try {
-        console.log("[sendMessage] Complete");
-      } catch {
-        // ignore
-      }
+      console.log("[sendMessage] Complete");
     }
   };
 
@@ -778,8 +809,52 @@ export function ConversationsContent() {
         }}
       >
         <div className="w-full max-w-[800px] mx-auto space-y-2">
-          {/* Quick action chips - only show when no messages */}
-          {messages.length === 0 && (
+          {/* Session status banner */}
+          {sessionStatus === 'checking' && (
+            <div className="text-sm text-muted-foreground text-center py-1">
+              Verifying session...
+            </div>
+          )}
+          
+          {sessionStatus === 'expired' && (
+            <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-2 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-sm text-destructive">
+                <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                <span>Session expired</span>
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleRefreshSession}
+                disabled={isRefreshingSession}
+                className="h-8"
+              >
+                {isRefreshingSession ? (
+                  <RefreshCw className="h-3 w-3 animate-spin mr-1" />
+                ) : (
+                  <RefreshCw className="h-3 w-3 mr-1" />
+                )}
+                Refresh
+              </Button>
+            </div>
+          )}
+          
+          {sessionStatus === 'none' && (
+            <div className="bg-muted border border-border rounded-lg p-2 flex items-center justify-between gap-2">
+              <span className="text-sm text-muted-foreground">Please sign in to chat</span>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => navigate('/auth')}
+                className="h-8"
+              >
+                Sign In
+              </Button>
+            </div>
+          )}
+
+          {/* Quick action chips - only show when no messages and session is valid */}
+          {messages.length === 0 && sessionStatus === 'valid' && (
             <QuickActionChips onSelect={handleQuickAction} disabled={isLoading} />
           )}
           
@@ -796,6 +871,7 @@ export function ConversationsContent() {
               variant="ghost"
               size="icon"
               onClick={() => setIsVoiceChatOpen(true)}
+              disabled={sessionStatus !== 'valid'}
               className="h-11 w-11 min-w-[44px] rounded-full flex-shrink-0"
               aria-label="Open voice mode"
             >
@@ -805,30 +881,21 @@ export function ConversationsContent() {
               ref={textareaRef}
               value={input}
               onChange={handleTextareaChange}
-              placeholder="Message mai..."
+              placeholder={sessionStatus === 'valid' ? "Message mai..." : "Sign in to chat..."}
+              disabled={sessionStatus !== 'valid'}
               className="min-h-[44px] max-h-[120px] resize-none rounded-2xl py-3 flex-1 min-w-0"
               style={{ fontSize: '16px' }}
               rows={1}
               onKeyDown={(e) => {
-                console.log("[Textarea] Key pressed:", e.key, { shiftKey: e.shiftKey });
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
-                  console.log("[Textarea] Enter without shift - submitting form");
                   sendMessage();
                 }
               }}
             />
             <Button
               type="submit"
-              onClick={(e) => {
-                console.log("[Send Button] Clicked!", { input, isLoading, disabled: isLoading || !input.trim() });
-                // Fallback for programmatic clicks that might not trigger form submit
-                if (!e.isTrusted) {
-                  e.preventDefault();
-                  sendMessage();
-                }
-              }}
-              disabled={isLoading || !input.trim()}
+              disabled={isLoading || !input.trim() || sessionStatus !== 'valid'}
               size="icon"
               className="h-11 w-11 min-w-[44px] rounded-full flex-shrink-0"
             >
