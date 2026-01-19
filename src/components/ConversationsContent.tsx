@@ -480,14 +480,15 @@ export function ConversationsContent() {
     }
 
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
+      // Use sessionData already fetched above (line 453)
       const accessToken = sessionData.session?.access_token;
 
-      console.log("[Chat] Session:", {
+      console.log("[sendMessage] About to invoke ai-assistant", {
         hasSession: !!sessionData.session,
         userEmail: sessionData.session?.user?.email,
         accessTokenPresent: !!accessToken,
         accessTokenPrefix: accessToken ? accessToken.substring(0, 12) + "..." : null,
+        messageCount: messages.length + 1,
       });
 
       const { data, error } = await supabase.functions.invoke("ai-assistant", {
