@@ -12,6 +12,7 @@ import { TestChatContent } from "@/components/TestChatContent";
 import { TestMondayContent } from "@/components/TestMondayContent";
 import { ConversationsContent } from "@/components/ConversationsContent";
 import { SettingsContent } from "@/components/SettingsContent";
+import { ContactsContent } from "@/components/ContactsContent";
 import { DashboardContent } from "@/components/dashboard/DashboardContent";
 import Admin from "@/pages/Admin";
 import maiLogo from "@/assets/mai-logo.png";
@@ -122,6 +123,7 @@ const Dashboard = () => {
             <div className={isFullScreenRoute ? '' : 'mt-4 md:mt-6'}>
               {location.pathname === "/dashboard" && <DashboardContent />}
               {location.pathname === "/conversations" && <ConversationsContent />}
+              {location.pathname === "/contacts" && <ContactsContent />}
               {location.pathname === "/admin" && <Admin />}
               {location.pathname === "/integrations" && <IntegrationsContent />}
               {location.pathname === "/settings" && <SettingsContent />}
