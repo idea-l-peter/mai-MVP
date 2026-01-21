@@ -43,7 +43,7 @@ async function getGoogleToken(userId: string): Promise<{ token: string | null; e
     return { token: null, error: 'Failed to fetch Google integration' };
   }
 
-  if (!integration?.access_token_secret_id) {
+  if (!integration) {
     console.log(`[GoogleContacts] No Google integration found for user`);
     return { token: null, error: 'Google Workspace not connected. Please connect from Integrations.' };
   }
@@ -69,23 +69,31 @@ async function getGoogleToken(userId: string): Promise<{ token: string | null; e
   const REFRESH_BUFFER_MS = 5 * 60 * 1000; // 5 minutes
   const needsRefresh = expiresAt - now < REFRESH_BUFFER_MS;
 
-  if (needsRefresh && integration.refresh_token_secret_id) {
+  console.log(`[GoogleContacts] Token expires at: ${integration.token_expires_at}, needsRefresh: ${needsRefresh}`);
+
+  // Query tokens by user_id, provider, token_type (not by secret ID since those may be null)
+  if (needsRefresh) {
     console.log(`[GoogleContacts] Token needs refresh`);
     
-    // Get the refresh token
-    const { data: refreshTokenRow } = await supabase
+    // Get the refresh token by user_id + provider + token_type
+    const { data: refreshTokenRow, error: refreshFetchError } = await supabase
       .from('encrypted_integration_tokens')
       .select('encrypted_value')
-      .eq('id', integration.refresh_token_secret_id)
+      .eq('user_id', userId)
+      .eq('provider', 'google')
+      .eq('token_type', 'refresh_token')
       .maybeSingle();
+
+    console.log(`[GoogleContacts] Refresh token query result:`, { found: !!refreshTokenRow, error: refreshFetchError?.message });
 
     if (!refreshTokenRow?.encrypted_value) {
       console.error(`[GoogleContacts] No refresh token available`);
-      return { token: null, error: 'Failed to retrieve refresh token' };
+      return { token: null, error: 'Token expired and no refresh token available. Please reconnect Google.' };
     }
 
     try {
       const refreshToken = await decrypt(refreshTokenRow.encrypted_value);
+      console.log(`[GoogleContacts] Refresh token decrypted, requesting new access token...`);
       
       // Refresh the token
       const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
@@ -102,10 +110,32 @@ async function getGoogleToken(userId: string): Promise<{ token: string | null; e
       const tokenData = await tokenResponse.json();
       if (tokenData.error) {
         console.error(`[GoogleContacts] Token refresh failed:`, tokenData);
-        return { token: null, error: 'Token refresh failed' };
+        return { token: null, error: `Token refresh failed: ${tokenData.error_description || tokenData.error}` };
       }
 
       console.log(`[GoogleContacts] Token refreshed successfully`);
+
+      // Store the new access token
+      const { encrypt } = await import("../_shared/encryption.ts");
+      const encryptedAccessToken = await encrypt(tokenData.access_token);
+      
+      await supabase
+        .from('encrypted_integration_tokens')
+        .upsert({
+          user_id: userId,
+          provider: 'google',
+          token_type: 'access_token',
+          encrypted_value: encryptedAccessToken,
+        }, { onConflict: 'user_id,provider,token_type' });
+
+      // Update token expiration in user_integrations
+      const newExpiresAt = new Date(Date.now() + (tokenData.expires_in * 1000)).toISOString();
+      await supabase
+        .from('user_integrations')
+        .update({ token_expires_at: newExpiresAt })
+        .eq('user_id', userId)
+        .eq('provider', 'google');
+
       return { token: tokenData.access_token };
     } catch (err) {
       console.error(`[GoogleContacts] Refresh error:`, err);
@@ -113,20 +143,25 @@ async function getGoogleToken(userId: string): Promise<{ token: string | null; e
     }
   }
 
-  // Token is valid, decrypt and return
-  const { data: accessTokenRow } = await supabase
+  // Token is valid, get access token by user_id + provider + token_type
+  const { data: accessTokenRow, error: accessFetchError } = await supabase
     .from('encrypted_integration_tokens')
     .select('encrypted_value')
-    .eq('id', integration.access_token_secret_id)
+    .eq('user_id', userId)
+    .eq('provider', 'google')
+    .eq('token_type', 'access_token')
     .maybeSingle();
+
+  console.log(`[GoogleContacts] Access token query result:`, { found: !!accessTokenRow, error: accessFetchError?.message });
 
   if (!accessTokenRow?.encrypted_value) {
     console.error(`[GoogleContacts] No access token found`);
-    return { token: null, error: 'Failed to retrieve access token' };
+    return { token: null, error: 'No access token found. Please reconnect Google.' };
   }
 
   try {
     const decryptedToken = await decrypt(accessTokenRow.encrypted_value);
+    console.log(`[GoogleContacts] Access token decrypted successfully`);
     return { token: decryptedToken };
   } catch (decryptError) {
     console.error(`[GoogleContacts] Error decrypting token:`, decryptError);
