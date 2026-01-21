@@ -8,6 +8,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import maiLogo from "@/assets/mai-logo.png";
 
+// Google Workspace scopes we request (needed for Calendar/Gmail/Contacts tooling)
+const GOOGLE_WORKSPACE_SCOPES = [
+  "https://www.googleapis.com/auth/calendar",
+  "https://www.googleapis.com/auth/gmail.modify",
+  "https://www.googleapis.com/auth/contacts",
+  "https://www.googleapis.com/auth/userinfo.email",
+  "https://www.googleapis.com/auth/userinfo.profile",
+];
+
 // Check domain against database via edge function
 const checkDomainAllowed = async (email: string): Promise<boolean> => {
   try {
@@ -149,10 +158,21 @@ const Auth = () => {
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true);
     try {
+      console.log('[Auth] Starting Google OAuth sign-in', {
+        redirectTo: `${getAuthRedirectOrigin()}/dashboard`,
+        scopesCount: GOOGLE_WORKSPACE_SCOPES.length,
+      });
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: `${getAuthRedirectOrigin()}/dashboard`,
+          scopes: GOOGLE_WORKSPACE_SCOPES.join(' '),
+          // Encourage Google to return a refresh token when possible
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
         },
       });
       if (error) throw error;
