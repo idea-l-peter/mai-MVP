@@ -64,12 +64,20 @@ async function getGoogleToken(userId: string): Promise<{ token: string | null; e
   }
 
   // Check if token needs refresh
-  const expiresAt = new Date(integration.token_expires_at).getTime();
   const now = Date.now();
   const REFRESH_BUFFER_MS = 5 * 60 * 1000; // 5 minutes
-  const needsRefresh = expiresAt - now < REFRESH_BUFFER_MS;
+  const expiresAtRaw = integration.token_expires_at;
+  const expiresAt = expiresAtRaw ? new Date(expiresAtRaw).getTime() : NaN;
 
-  console.log(`[GoogleContacts] Token expires at: ${integration.token_expires_at}, needsRefresh: ${needsRefresh}`);
+  const hasValidExpiry = Number.isFinite(expiresAt);
+  const needsRefresh = hasValidExpiry ? (expiresAt - now < REFRESH_BUFFER_MS) : false;
+
+  console.log(`[GoogleContacts] Token expiry check`, {
+    hasTokenExpiresAt: !!expiresAtRaw,
+    token_expires_at: expiresAtRaw,
+    hasValidExpiry,
+    needsRefresh,
+  });
 
   // Query tokens by user_id, provider, token_type (not by secret ID since those may be null)
   if (needsRefresh) {
@@ -87,11 +95,14 @@ async function getGoogleToken(userId: string): Promise<{ token: string | null; e
     console.log(`[GoogleContacts] Refresh token query result:`, { found: !!refreshTokenRow, error: refreshFetchError?.message });
 
     if (!refreshTokenRow?.encrypted_value) {
-      console.error(`[GoogleContacts] No refresh token available`);
-      return { token: null, error: 'Token expired and no refresh token available. Please reconnect Google.' };
+      // We can't refresh, but we can still attempt to use whatever access token we have.
+      console.warn(`[GoogleContacts] No refresh token available; will attempt to use stored access token (may be expired).`);
     }
 
     try {
+      if (!refreshTokenRow?.encrypted_value) {
+        // fall through to access token fetch below
+      } else {
       const refreshToken = await decrypt(refreshTokenRow.encrypted_value);
       console.log(`[GoogleContacts] Refresh token decrypted, requesting new access token...`);
       
@@ -137,9 +148,10 @@ async function getGoogleToken(userId: string): Promise<{ token: string | null; e
         .eq('provider', 'google');
 
       return { token: tokenData.access_token };
+      }
     } catch (err) {
       console.error(`[GoogleContacts] Refresh error:`, err);
-      return { token: null, error: 'Failed to refresh token' };
+      // fall through to access token fetch below
     }
   }
 
@@ -161,7 +173,7 @@ async function getGoogleToken(userId: string): Promise<{ token: string | null; e
 
   try {
     const decryptedToken = await decrypt(accessTokenRow.encrypted_value);
-    console.log(`[GoogleContacts] Access token decrypted successfully`);
+    console.log(`[GoogleContacts] Access token decrypted successfully`, { tokenLength: decryptedToken.length });
     return { token: decryptedToken };
   } catch (decryptError) {
     console.error(`[GoogleContacts] Error decrypting token:`, decryptError);
@@ -214,6 +226,9 @@ async function getContacts(
   if (!response.ok) {
     const errorText = await response.text();
     console.error(`[GoogleContacts] API error:`, errorText);
+    if (response.status === 401) {
+      throw new Error(`GOOGLE_API_UNAUTHORIZED`);
+    }
     throw new Error(`Google People API error: ${response.status}`);
   }
 
@@ -243,6 +258,9 @@ async function searchContacts(token: string, query: string, pageSize: number = 3
   if (!response.ok) {
     const errorText = await response.text();
     console.error(`[GoogleContacts] Search API error:`, errorText);
+    if (response.status === 401) {
+      throw new Error(`GOOGLE_API_UNAUTHORIZED`);
+    }
     throw new Error(`Google People API search error: ${response.status}`);
   }
 
@@ -273,6 +291,9 @@ async function getContact(token: string, resourceName: string): Promise<Contact 
     }
     const errorText = await response.text();
     console.error(`[GoogleContacts] Get contact API error:`, errorText);
+    if (response.status === 401) {
+      throw new Error(`GOOGLE_API_UNAUTHORIZED`);
+    }
     throw new Error(`Google People API error: ${response.status}`);
   }
 
@@ -294,6 +315,9 @@ async function getContactGroups(token: string): Promise<ContactGroup[]> {
   if (!response.ok) {
     const errorText = await response.text();
     console.error(`[GoogleContacts] Groups API error:`, errorText);
+    if (response.status === 401) {
+      throw new Error(`GOOGLE_API_UNAUTHORIZED`);
+    }
     throw new Error(`Google People API error: ${response.status}`);
   }
 
@@ -593,6 +617,16 @@ serve(async (req) => {
   }
 
   try {
+    // Debug request headers (do not log sensitive values)
+    const headerNames = Array.from(req.headers.keys());
+    const authHeaderPresent = req.headers.has('authorization') || req.headers.has('Authorization');
+    const apikeyPresent = req.headers.has('apikey');
+    console.log('[GoogleContacts] Incoming request headers', {
+      headerNames,
+      authHeaderPresent,
+      apikeyPresent,
+    });
+
     // Validate JWT authentication
     const authHeader = req.headers.get('Authorization');
     if (!authHeader?.startsWith('Bearer ')) {
@@ -639,6 +673,8 @@ serve(async (req) => {
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
       );
     }
+
+    console.log('[GoogleContacts] Retrieved google access token', { tokenLength: token.length });
 
     let result: unknown;
 
@@ -740,6 +776,18 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('[GoogleContacts] Error:', error);
+
+    if (error instanceof Error && error.message === 'GOOGLE_API_UNAUTHORIZED') {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Google token was rejected by Google (expired/invalid). Please reconnect Google from Integrations.',
+          needsAuth: true,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      );
+    }
+
     return new Response(
       JSON.stringify({ 
         success: false, 
