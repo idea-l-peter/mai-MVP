@@ -16,6 +16,15 @@ import {
   AlertCircle
 } from 'lucide-react';
 
+interface ContactFromApi {
+  resourceName: string;
+  name?: string;
+  emails?: string[];
+  phones?: string[];
+  organization?: string;
+  photoUrl?: string;
+}
+
 interface Contact {
   resourceName: string;
   name?: string;
@@ -74,8 +83,8 @@ export function ContactsContent() {
       
       const { data, error: fetchError } = await supabase.functions.invoke('google-contacts', {
         body: { 
-          action: 'getContacts',
-          params: { pageSize: 200 }
+          action: 'get_contacts',
+          params: { page_size: 200 }
         }
       });
 
@@ -88,9 +97,20 @@ export function ContactsContent() {
         throw new Error(data?.error || 'Failed to fetch contacts');
       }
 
-      console.log('[Contacts] Fetched', data.contacts?.length, 'contacts');
-      setContacts(data.contacts || []);
-      setFilteredContacts(data.contacts || []);
+      // Map API response to component interface
+      const apiContacts: ContactFromApi[] = data.data?.contacts || [];
+      const mappedContacts: Contact[] = apiContacts.map((c) => ({
+        resourceName: c.resourceName,
+        name: c.name,
+        email: c.emails?.[0],
+        phone: c.phones?.[0],
+        company: c.organization,
+        photoUrl: c.photoUrl,
+      }));
+
+      console.log('[Contacts] Fetched', mappedContacts.length, 'contacts');
+      setContacts(mappedContacts);
+      setFilteredContacts(mappedContacts);
     } catch (err) {
       console.error('[Contacts] Error:', err);
       setError(err instanceof Error ? err.message : 'Failed to load contacts');
