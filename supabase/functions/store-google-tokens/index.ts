@@ -19,6 +19,8 @@ type Body = {
 };
 
 serve(async (req) => {
+  console.log("[store-google-tokens] Request received", { method: req.method });
+  
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -31,31 +33,38 @@ serve(async (req) => {
       });
     }
 
+    console.log("[store-google-tokens] Validating auth...");
+    
     // Validate JWT authentication
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
+      console.error("[store-google-tokens] Missing auth header");
       return new Response(JSON.stringify({ error: "Unauthorized: Missing or invalid authorization header" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
+    // Use getUser instead of getClaims - it's faster and more reliable
     const supabaseAuth = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       global: { headers: { Authorization: authHeader } },
       auth: { persistSession: false },
     });
 
-    const jwtToken = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsError } = await supabaseAuth.auth.getClaims(jwtToken);
-    if (claimsError || !claimsData?.claims) {
+    console.log("[store-google-tokens] Calling getUser...");
+    const { data: userData, error: userError } = await supabaseAuth.auth.getUser();
+    
+    if (userError || !userData?.user?.id) {
+      console.error("[store-google-tokens] Auth failed:", userError?.message);
       return new Response(JSON.stringify({ error: "Unauthorized: Invalid token" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Extract user_id from JWT - NEVER trust request body
-    const user_id = claimsData.claims.sub as string;
+    // Extract user_id from authenticated user - NEVER trust request body
+    const user_id = userData.user.id;
+    console.log("[store-google-tokens] User authenticated:", user_id.slice(0, 8) + "...");
 
     const body = (await req.json()) as Body;
     const provider = body.provider || "google";
@@ -78,10 +87,12 @@ serve(async (req) => {
       });
     }
 
+    console.log("[store-google-tokens] Creating service client...");
     // Service role client for DB writes
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
       auth: { persistSession: false },
     });
+    console.log("[store-google-tokens] Service client ready");
 
     // Optionally validate token + fetch Google user email (nice for UI)
     let provider_email: string | null = null;
