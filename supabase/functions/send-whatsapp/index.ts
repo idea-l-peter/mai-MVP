@@ -20,12 +20,17 @@ interface TextMessageRequest {
 interface TemplateMessageRequest {
   type: 'template';
   to: string;
-  template_name: string;
+  template_name?: string;
   template_language?: string;
   template_components?: any[];
 }
 
-type SendMessageRequest = TextMessageRequest | TemplateMessageRequest;
+interface TestMessageRequest {
+  type: 'test';
+  to: string;
+}
+
+type SendMessageRequest = TextMessageRequest | TemplateMessageRequest | TestMessageRequest;
 
 serve(async (req) => {
   // Handle CORS preflight
@@ -86,8 +91,25 @@ serve(async (req) => {
 
     // Build WhatsApp API payload
     let whatsappPayload: any;
+    let messageContent: string;
     
-    if (body.type === 'text') {
+    if (body.type === 'test') {
+      // Use hello_world template for testing - this works outside 24hr window
+      console.log('[Send WhatsApp] Using hello_world template for test message');
+      whatsappPayload = {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: phoneNumber,
+        type: 'template',
+        template: {
+          name: 'hello_world',
+          language: {
+            code: 'en_US'
+          }
+        }
+      };
+      messageContent = '[TEMPLATE] hello_world';
+    } else if (body.type === 'text') {
       if (!body.message || body.message.trim().length === 0) {
         return new Response(
           JSON.stringify({ error: 'Message content is required' }),
@@ -95,6 +117,8 @@ serve(async (req) => {
         );
       }
       
+      // Text messages only work within 24hr conversation window
+      console.log('[Send WhatsApp] Sending text message (requires active conversation window)');
       whatsappPayload = {
         messaging_product: 'whatsapp',
         recipient_type: 'individual',
@@ -105,30 +129,29 @@ serve(async (req) => {
           body: body.message.substring(0, 4096) // WhatsApp message limit
         }
       };
+      messageContent = body.message;
     } else if (body.type === 'template') {
-      if (!body.template_name) {
-        return new Response(
-          JSON.stringify({ error: 'Template name is required' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
+      const templateName = body.template_name || 'hello_world';
+      const templateLang = body.template_language || 'en_US';
       
+      console.log(`[Send WhatsApp] Using template: ${templateName}`);
       whatsappPayload = {
         messaging_product: 'whatsapp',
         recipient_type: 'individual',
         to: phoneNumber,
         type: 'template',
         template: {
-          name: body.template_name,
+          name: templateName,
           language: {
-            code: body.template_language || 'en'
+            code: templateLang
           },
           components: body.template_components || []
         }
       };
+      messageContent = `[TEMPLATE] ${templateName}`;
     } else {
       return new Response(
-        JSON.stringify({ error: 'Invalid message type. Must be "text" or "template"' }),
+        JSON.stringify({ error: 'Invalid message type. Must be "text", "template", or "test"' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -170,12 +193,12 @@ serve(async (req) => {
         phone_number: phoneNumber,
         message_id: messageId,
         direction: 'outbound',
-        content: body.type === 'text' ? body.message : `[TEMPLATE] ${body.template_name}`,
-        message_type: body.type,
+        content: messageContent,
+        message_type: body.type === 'test' ? 'template' : body.type,
         status: 'sent',
         metadata: {
           whatsapp_response: whatsappResult,
-          template_name: body.type === 'template' ? body.template_name : undefined
+          template_name: body.type === 'template' ? (body.template_name || 'hello_world') : (body.type === 'test' ? 'hello_world' : undefined)
         }
       });
 

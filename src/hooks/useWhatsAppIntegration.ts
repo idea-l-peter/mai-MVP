@@ -141,11 +141,81 @@ export function useWhatsAppIntegration() {
     }
   }, [toast, fetchMessages]);
 
+  // Send a test message using hello_world template (works outside 24hr window)
+  const sendTestMessage = useCallback(async (
+    to: string
+  ): Promise<{ success: boolean; messageId?: string; error?: string }> => {
+    setIsLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        const error = "Not authenticated";
+        toast({
+          title: "Failed to send test message",
+          description: error,
+          variant: "destructive",
+        });
+        return { success: false, error };
+      }
+
+      console.log("[WhatsApp] Sending test message (hello_world template) to:", to);
+      
+      const { data, error } = await supabase.functions.invoke("send-whatsapp", {
+        body: {
+          type: "test",
+          to,
+        },
+      });
+
+      console.log("[WhatsApp] Test message response:", { data, error });
+
+      if (error) {
+        console.error("[WhatsApp] Function invoke error:", error);
+        const errorMessage = error.message || "Failed to send test message";
+        toast({
+          title: "Failed to send test message",
+          description: errorMessage,
+          variant: "destructive",
+        });
+        return { success: false, error: errorMessage };
+      }
+
+      if (data?.success) {
+        toast({
+          title: "Test message sent",
+          description: `WhatsApp hello_world template sent to ${to}`,
+        });
+        await fetchMessages();
+        return { success: true, messageId: data.message_id };
+      } else {
+        const errorMessage = data?.error || data?.details || "Failed to send test message";
+        console.error("[WhatsApp] API error:", errorMessage);
+        toast({
+          title: "Failed to send test message",
+          description: errorMessage,
+          variant: "destructive",
+        });
+        return { success: false, error: errorMessage };
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Unknown error";
+      console.error("[WhatsApp] Exception:", err);
+      toast({
+        title: "Failed to send test message",
+        description: errorMessage,
+        variant: "destructive",
+      });
+      return { success: false, error: errorMessage };
+    } finally {
+      setIsLoading(false);
+    }
+  }, [toast, fetchMessages]);
+
   // Send a template message
   const sendTemplateMessage = useCallback(async (
     to: string,
     templateName: string,
-    templateLanguage = "en",
+    templateLanguage = "en_US",
     templateComponents: unknown[] = []
   ): Promise<{ success: boolean; messageId?: string; error?: string }> => {
     setIsLoading(true);
@@ -196,6 +266,7 @@ export function useWhatsAppIntegration() {
     checkConnection,
     fetchMessages,
     sendMessage,
+    sendTestMessage,
     sendTemplateMessage,
   };
 }
