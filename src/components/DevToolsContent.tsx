@@ -99,6 +99,8 @@ export function DevToolsContent() {
 
   const handleSendTestMessage = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    console.log("[WhatsApp][Test Page] Submit clicked");
     
     if (!testPhone.trim()) {
       toast({
@@ -110,12 +112,24 @@ export function DevToolsContent() {
     }
 
     setIsSending(true);
-    const result = await sendTestMessage(testPhone.trim());
-    setIsSending(false);
+    try {
+      console.log("[WhatsApp][Test Page] Calling sendTestMessage with:", testPhone.trim());
+      const result = await sendTestMessage(testPhone.trim());
+      console.log("[WhatsApp][Test Page] sendTestMessage result:", result);
 
-    if (result.success) {
-      saveRecentNumber(testPhone.trim());
-      loadMessages();
+      if (result.success) {
+        saveRecentNumber(testPhone.trim());
+        loadMessages();
+      }
+    } catch (err) {
+      console.error("[WhatsApp][Test Page] sendTestMessage threw:", err);
+      toast({
+        title: "Failed to send test message",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSending(false);
     }
   };
 
