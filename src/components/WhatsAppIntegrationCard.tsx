@@ -21,22 +21,22 @@ export function WhatsAppIntegrationCard() {
     
     const checkWhatsAppStatus = async () => {
       try {
-        // Check if user is authenticated - if yes, WhatsApp integration is available
-        // (The actual WhatsApp secrets are server-side, so if sending works, it's connected)
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (isMounted) {
-          // If user is authenticated, WhatsApp is considered connected
-          // because the secrets are configured server-side
-          setIsConnected(!!session);
-          setIsChecking(false);
-        }
+        // Prevent infinite "Checking..." if getSession hangs.
+        const result = await Promise.race([
+          supabase.auth.getSession(),
+          new Promise<never>((_, reject) =>
+            window.setTimeout(() => reject(new Error("session_timeout")), 4000)
+          ),
+        ]);
+
+        const session = (result as { data?: { session: unknown } })?.data?.session;
+        if (isMounted) setIsConnected(!!session);
       } catch {
-        if (isMounted) {
-          // On error, still show as connected since the user confirmed it works
-          setIsConnected(true);
-          setIsChecking(false);
-        }
+        // If this check fails, don't block the UI forever.
+        // Show as not connected (user can still verify via sending on /whatsapp).
+        if (isMounted) setIsConnected(false);
+      } finally {
+        if (isMounted) setIsChecking(false);
       }
     };
     
