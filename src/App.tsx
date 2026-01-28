@@ -5,7 +5,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
-import DevTools from "./pages/DevTools";
 import NotFound from "./pages/NotFound";
 import { useGoogleTokenCapture } from "./hooks/useGoogleTokenCapture";
 
@@ -33,7 +32,7 @@ const App = () => (
           <Route path="/contacts" element={<Dashboard />} />
           <Route path="/integrations" element={<Dashboard />} />
           <Route path="/settings" element={<Dashboard />} />
-          <Route path="/dev-tools" element={<DevTools />} />
+          <Route path="/dev-tools" element={<Dashboard />} />
           <Route path="/test-chat" element={<Dashboard />} />
           <Route path="/test-google" element={<Dashboard />} />
           <Route path="/test-monday" element={<Dashboard />} />

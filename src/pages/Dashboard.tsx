@@ -15,6 +15,7 @@ import { WhatsAppConversations } from "@/components/WhatsAppConversations";
 import { SettingsContent } from "@/components/SettingsContent";
 import { ContactsContent } from "@/components/ContactsContent";
 import { DashboardContent } from "@/components/dashboard/DashboardContent";
+import { DevToolsContent } from "@/components/DevToolsContent";
 import Admin from "@/pages/Admin";
 import maiLogo from "@/assets/mai-logo.png";
 
@@ -83,6 +84,8 @@ const Dashboard = () => {
         return "LLM Router Test";
       case "/test-monday":
         return "Monday.com API Test";
+      case "/dev-tools":
+        return "WhatsApp Testing";
       default:
         return "Dashboard";
     }
@@ -134,6 +137,7 @@ const Dashboard = () => {
               {location.pathname === "/test-google" && <TestGoogleContent />}
               {location.pathname === "/test-chat" && <TestChatContent />}
               {location.pathname === "/test-monday" && <TestMondayContent />}
+              {location.pathname === "/dev-tools" && <DevToolsContent />}
             </div>
           </main>
 
