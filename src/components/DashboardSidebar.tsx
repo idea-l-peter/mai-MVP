@@ -176,15 +176,12 @@ const [devToolsOpen, setDevToolsOpen] = useState(false);
             </SidebarMenuItem>
           )}
           <SidebarMenuItem>
-            <SidebarMenuButton asChild>
-              <button
-                type="button"
-                onClick={handleLogout}
-                className="w-full justify-start gap-3 px-4 py-3 text-sidebar-foreground hover:bg-sidebar-accent cursor-pointer"
-              >
-                <LogOut className="h-5 w-5" />
-                <span>Logout</span>
-              </button>
+            <SidebarMenuButton
+              onClick={handleLogout}
+              className="w-full justify-start gap-3 px-4 py-3 text-sidebar-foreground hover:bg-sidebar-accent"
+            >
+              <LogOut className="h-5 w-5" />
+              <span>Logout</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

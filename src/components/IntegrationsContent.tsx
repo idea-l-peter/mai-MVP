@@ -129,6 +129,42 @@ export function IntegrationsContent() {
     const captureToken = async () => {
       try {
         console.log("[TokenCapture] Starting token capture check...");
+
+        // Supabase OAuth (PKCE) returns an authorization code in the URL query.
+        // In many cases Supabase will auto-handle it (detectSessionInUrl), but we
+        // explicitly exchange here to make the /integrations callback reliable.
+        const codeFromQuery = searchParams.get("code");
+        if (codeFromQuery) {
+          console.log("[TokenCapture] Found ?code= in URL. Exchanging for session...");
+          const { data, error } = await supabase.auth.exchangeCodeForSession(codeFromQuery);
+          if (error) {
+            console.error("[TokenCapture] exchangeCodeForSession error:", error);
+            toast({
+              title: "Google connection failed",
+              description: error.message,
+              variant: "destructive",
+            });
+            // Don't keep retrying on every render
+            tokenProcessedRef.current = true;
+            return;
+          }
+          console.log("[TokenCapture] exchangeCodeForSession ok", {
+            hasSession: !!data?.session,
+            hasProviderToken: !!data?.session?.provider_token,
+          });
+
+          // Remove the OAuth code from the URL to avoid re-processing.
+          try {
+            const nextParams = new URLSearchParams(searchParams);
+            nextParams.delete("code");
+            nextParams.delete("state");
+            nextParams.delete("error");
+            nextParams.delete("error_description");
+            setSearchParams(nextParams, { replace: true });
+          } catch {
+            // ignore
+          }
+        }
         
         // First, check if we have a hash fragment (OAuth redirect with tokens)
         const hashParams = new URLSearchParams(window.location.hash.substring(1));
@@ -271,7 +307,7 @@ export function IntegrationsContent() {
     };
 
     void captureToken();
-  }, [refreshIntegrations, toast]);
+  }, [refreshIntegrations, toast, searchParams, setSearchParams]);
 
   // Clear any stale disconnect-in-progress flag on page load
   useEffect(() => {
