@@ -48,7 +48,7 @@ const devItems = [
   { title: "Test Chat", icon: Zap, url: "/test-chat" },
   { title: "Test Google", icon: Calendar, url: "/test-google" },
   { title: "Test monday.com", icon: List, url: "/test-monday" },
-  { title: "Test WhatsApp", icon: MessageSquare, url: "/dev-tools" },
+  { title: "Test WhatsApp", icon: MessageSquare, url: "/test-whatsapp" },
 ];
 
 export function DashboardSidebar() {
