@@ -15,16 +15,6 @@ import { supabase } from '@/integrations/supabase/client';
 const SUPABASE_AUTH_KEY = 'sb-vqunxhjgpdgpzkjescvb-auth-token';
 const TOKEN_CAPTURED_KEY = 'google_provider_token_captured';
 
-// Google Workspace scopes we request
-const GOOGLE_WORKSPACE_SCOPES = [
-  "https://www.googleapis.com/auth/calendar",
-  "https://www.googleapis.com/auth/gmail.modify",
-  "https://www.googleapis.com/auth/contacts",
-  "https://www.googleapis.com/auth/contacts.readonly",
-  "https://www.googleapis.com/auth/userinfo.email",
-  "https://www.googleapis.com/auth/userinfo.profile",
-];
-
 export function useGoogleTokenCapture() {
   const captureInProgressRef = useRef(false);
 
@@ -89,6 +79,8 @@ export function useGoogleTokenCapture() {
         }
 
         // Step 2: Store tokens server-side via edge function
+        // Note: We don't know what scopes were granted client-side. The edge function
+        // should determine this from the token or leave scopes as null/empty.
         console.log('[GoogleTokenCapture] Calling store-google-tokens edge function...');
 
         const { data, error } = await supabase.functions.invoke('store-google-tokens', {
@@ -96,7 +88,7 @@ export function useGoogleTokenCapture() {
             provider: 'google',
             provider_token: args.providerToken,
             provider_refresh_token: args.providerRefreshToken,
-            scopes: GOOGLE_WORKSPACE_SCOPES,
+            // Don't hardcode scopes - let the edge function handle it or leave null
           },
         });
 
