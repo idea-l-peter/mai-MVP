@@ -146,19 +146,22 @@ export function useWhatsAppIntegration() {
     to: string
   ): Promise<{ success: boolean; messageId?: string; error?: string }> => {
     setIsLoading(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        const error = "Not authenticated";
-        toast({
-          title: "Failed to send test message",
-          description: error,
-          variant: "destructive",
-        });
-        return { success: false, error };
-      }
+    
+    // Create timeout controller
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      console.log("[WhatsApp] Request timeout after 30 seconds");
+      controller.abort();
+    }, 30000);
 
-      console.log("[WhatsApp] Sending test message (hello_world template) to:", to);
+    try {
+      console.log("[WhatsApp] Step 1: Starting sendTestMessage to:", to);
+      
+      // Skip session check - edge function handles auth optionally
+      console.log("[WhatsApp] Step 2: Calling edge function send-whatsapp");
+      console.log("[WhatsApp] Request body:", JSON.stringify({ type: "test", to }));
+      
+      const startTime = Date.now();
       
       const { data, error } = await supabase.functions.invoke("send-whatsapp", {
         body: {
@@ -166,8 +169,12 @@ export function useWhatsAppIntegration() {
           to,
         },
       });
-
-      console.log("[WhatsApp] Test message response:", { data, error });
+      
+      clearTimeout(timeoutId);
+      const elapsed = Date.now() - startTime;
+      console.log(`[WhatsApp] Step 3: Response received in ${elapsed}ms`);
+      console.log("[WhatsApp] Response data:", JSON.stringify(data));
+      console.log("[WhatsApp] Response error:", error ? JSON.stringify(error) : "none");
 
       if (error) {
         console.error("[WhatsApp] Function invoke error:", error);
@@ -181,6 +188,7 @@ export function useWhatsAppIntegration() {
       }
 
       if (data?.success) {
+        console.log("[WhatsApp] Step 4: Success! Message ID:", data.message_id);
         toast({
           title: "Test message sent",
           description: `WhatsApp hello_world template sent to ${to}`,
@@ -198,6 +206,19 @@ export function useWhatsAppIntegration() {
         return { success: false, error: errorMessage };
       }
     } catch (err) {
+      clearTimeout(timeoutId);
+      
+      // Check if it's an abort error (timeout)
+      if (err instanceof Error && err.name === 'AbortError') {
+        console.error("[WhatsApp] Request timed out");
+        toast({
+          title: "Request timed out",
+          description: "The request took too long. Please try again.",
+          variant: "destructive",
+        });
+        return { success: false, error: "Request timed out" };
+      }
+      
       const errorMessage = err instanceof Error ? err.message : "Unknown error";
       console.error("[WhatsApp] Exception:", err);
       toast({
