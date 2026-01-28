@@ -50,6 +50,8 @@ serve(async (req) => {
     const token = authHeader.replace('Bearer ', '');
     const { data: claimsData, error: claimsError } = await supabase.auth.getUser(token);
     
+    console.log('[Send WhatsApp] Auth check:', { hasUser: !!claimsData?.user, error: claimsError?.message });
+    
     if (claimsError || !claimsData?.user) {
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
