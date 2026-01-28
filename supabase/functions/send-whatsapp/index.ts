@@ -156,8 +156,8 @@ serve(async (req) => {
       );
     }
 
-    // Send message via WhatsApp Cloud API
-    const whatsappUrl = `https://graph.facebook.com/v18.0/${WHATSAPP_PHONE_NUMBER_ID}/messages`;
+    // Send message via WhatsApp Cloud API (v22.0 as per Meta's current API)
+    const whatsappUrl = `https://graph.facebook.com/v22.0/${WHATSAPP_PHONE_NUMBER_ID}/messages`;
     
     const whatsappResponse = await fetch(whatsappUrl, {
       method: 'POST',
