@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -39,11 +38,10 @@ interface WhatsAppMessage {
 export default function DevTools() {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { sendMessage, fetchMessages, isLoading } = useWhatsAppIntegration();
+  const { sendTestMessage, fetchMessages, isLoading } = useWhatsAppIntegration();
   
   // Test message form state
   const [testPhone, setTestPhone] = useState("");
-  const [testMessage, setTestMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
   
   // Messages state
@@ -79,21 +77,20 @@ export default function DevTools() {
   const handleSendTestMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!testPhone.trim() || !testMessage.trim()) {
+    if (!testPhone.trim()) {
       toast({
-        title: "Missing fields",
-        description: "Please enter both phone number and message",
+        title: "Missing phone number",
+        description: "Please enter a phone number",
         variant: "destructive",
       });
       return;
     }
 
     setIsSending(true);
-    const result = await sendMessage(testPhone.trim(), testMessage.trim());
+    const result = await sendTestMessage(testPhone.trim());
     setIsSending(false);
 
     if (result.success) {
-      setTestMessage("");
       loadMessages();
     }
   };
@@ -160,7 +157,7 @@ export default function DevTools() {
                     Send Test Message
                   </CardTitle>
                   <CardDescription>
-                    Send a WhatsApp message to test the integration
+                    Send a WhatsApp test message using the pre-approved "hello_world" template
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -177,15 +174,11 @@ export default function DevTools() {
                         International format without + or spaces
                       </p>
                     </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Message</label>
-                      <Textarea
-                        placeholder="Type your test message..."
-                        value={testMessage}
-                        onChange={(e) => setTestMessage(e.target.value)}
-                        disabled={isSending}
-                        rows={3}
-                      />
+                    <div className="rounded-md bg-muted p-3 text-sm">
+                      <p className="font-medium mb-1">Template: hello_world</p>
+                      <p className="text-muted-foreground text-xs">
+                        This is a pre-approved Meta template that works outside the 24-hour conversation window.
+                      </p>
                     </div>
                     <Button type="submit" className="w-full" disabled={isSending}>
                       {isSending ? (
@@ -196,7 +189,7 @@ export default function DevTools() {
                       ) : (
                         <>
                           <Send className="h-4 w-4 mr-2" />
-                          Send Message
+                          Send Test Message
                         </>
                       )}
                     </Button>
