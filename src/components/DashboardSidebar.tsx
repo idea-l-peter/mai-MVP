@@ -177,8 +177,14 @@ const [devToolsOpen, setDevToolsOpen] = useState(false);
           )}
           <SidebarMenuItem>
             <SidebarMenuButton
-              onClick={handleLogout}
-              className="w-full justify-start gap-3 px-4 py-3 text-sidebar-foreground hover:bg-sidebar-accent"
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log("[Logout] Button clicked!");
+                handleLogout();
+              }}
+              className="w-full justify-start gap-3 px-4 py-3 text-sidebar-foreground hover:bg-sidebar-accent cursor-pointer"
             >
               <LogOut className="h-5 w-5" />
               <span>Logout</span>
