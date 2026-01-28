@@ -69,15 +69,27 @@ const [devToolsOpen, setDevToolsOpen] = useState(false);
   };
 
   const handleLogout = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) {
+    console.log("[Logout] Starting sign out...");
+    try {
+      const { error } = await supabase.auth.signOut();
+      console.log("[Logout] signOut completed, error:", error);
+      if (error) {
+        toast({
+          title: "Error",
+          description: "Failed to sign out",
+          variant: "destructive",
+        });
+      } else {
+        console.log("[Logout] Navigating to /auth");
+        navigate("/auth");
+      }
+    } catch (err) {
+      console.error("[Logout] Exception during signOut:", err);
       toast({
         title: "Error",
-        description: "Failed to sign out",
+        description: "Logout failed unexpectedly",
         variant: "destructive",
       });
-    } else {
-      navigate("/auth");
     }
   };
 
