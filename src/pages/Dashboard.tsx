@@ -84,8 +84,8 @@ const Dashboard = () => {
         return "LLM Router Test";
       case "/test-monday":
         return "Monday.com API Test";
-      case "/dev-tools":
-        return "WhatsApp Testing";
+      case "/test-whatsapp":
+        return "Test WhatsApp";
       default:
         return "Dashboard";
     }
@@ -137,7 +137,7 @@ const Dashboard = () => {
               {location.pathname === "/test-google" && <TestGoogleContent />}
               {location.pathname === "/test-chat" && <TestChatContent />}
               {location.pathname === "/test-monday" && <TestMondayContent />}
-              {location.pathname === "/dev-tools" && <DevToolsContent />}
+              {location.pathname === "/test-whatsapp" && <DevToolsContent />}
             </div>
           </main>
 
