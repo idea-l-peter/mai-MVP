@@ -178,7 +178,11 @@ export function MobileNav() {
           
           <div className="border-t border-primary-foreground/20 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
             <button
-              onClick={handleLogout}
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                handleLogout();
+              }}
               className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-primary-foreground transition-colors hover:bg-primary-foreground/10"
             >
               <LogOut className="h-5 w-5" />

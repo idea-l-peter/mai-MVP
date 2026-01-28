@@ -128,29 +128,67 @@ export function IntegrationsContent() {
 
     const captureToken = async () => {
       try {
-        const authData = localStorage.getItem(SUPABASE_AUTH_KEY);
-        if (!authData) {
+        console.log("[TokenCapture] Starting token capture check...");
+        
+        // First, check if we have a hash fragment (OAuth redirect with tokens)
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        const accessTokenFromHash = hashParams.get('access_token');
+        
+        if (accessTokenFromHash) {
+          console.log("[TokenCapture] Found access_token in hash, waiting for Supabase to process...");
+          // Give Supabase a moment to process the hash tokens
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+
+        // Get fresh session from Supabase
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError) {
+          console.error("[TokenCapture] Session error:", sessionError);
           return;
         }
 
-        let parsed: any;
-        try {
-          parsed = JSON.parse(authData);
-        } catch {
-          return;
-        }
+        const session = sessionData?.session;
+        console.log("[TokenCapture] Session check:", {
+          hasSession: !!session,
+          hasProviderToken: !!session?.provider_token,
+          providerTokenLength: session?.provider_token?.length,
+          hasRefreshToken: !!session?.provider_refresh_token,
+        });
 
-        const providerToken: string | undefined = parsed?.provider_token;
-        const providerRefreshToken: string | undefined = parsed?.provider_refresh_token;
+        // Check for provider_token in session first (preferred)
+        let providerToken = session?.provider_token;
+        let providerRefreshToken = session?.provider_refresh_token;
+
+        // Fallback: check localStorage
+        if (!providerToken) {
+          const authData = localStorage.getItem(SUPABASE_AUTH_KEY);
+          if (authData) {
+            try {
+              const parsed = JSON.parse(authData);
+              providerToken = parsed?.provider_token;
+              providerRefreshToken = providerRefreshToken || parsed?.provider_refresh_token;
+              console.log("[TokenCapture] Checked localStorage:", {
+                hasProviderToken: !!providerToken,
+                hasRefreshToken: !!providerRefreshToken,
+              });
+            } catch {
+              // Ignore parse errors
+            }
+          }
+        }
 
         if (!providerToken) {
+          console.log("[TokenCapture] No provider token found, skipping");
           return;
         }
 
-        const userId: string | undefined = parsed?.user?.id;
-        if (!userId) {
+        if (!session?.user?.id) {
+          console.log("[TokenCapture] No user ID, cannot store token");
           return;
         }
+
+        console.log("[TokenCapture] Calling store-google-tokens edge function...");
 
         const STORE_TIMEOUT_MS = 10_000;
         const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> =>
@@ -178,6 +216,8 @@ export function IntegrationsContent() {
           return;
         }
 
+        console.log("[TokenCapture] Edge function response:", invokeResult);
+
         if (invokeResult.error) {
           console.error("[TokenCapture] Edge function error:", invokeResult.error);
           toast({
@@ -199,10 +239,11 @@ export function IntegrationsContent() {
         }
 
         tokenProcessedRef.current = true;
+        console.log("[TokenCapture] Token stored successfully!");
 
         toast({
           title: "Google Connected!",
-          description: `Successfully connected as ${invokeResult.data?.provider_email || parsed?.user?.email || "your account"}`,
+          description: `Successfully connected as ${invokeResult.data?.provider_email || session?.user?.email || "your account"}`,
         });
 
         // Clear provider tokens from localStorage
