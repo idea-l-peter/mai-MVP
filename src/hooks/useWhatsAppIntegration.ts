@@ -146,31 +146,58 @@ export function useWhatsAppIntegration() {
     to: string
   ): Promise<{ success: boolean; messageId?: string; error?: string }> => {
     setIsLoading(true);
-    
-    // Create timeout controller
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => {
-      console.log("[WhatsApp] Request timeout after 30 seconds");
-      controller.abort();
-    }, 30000);
 
     try {
       console.log("[WhatsApp] Step 1: Starting sendTestMessage to:", to);
-      
-      // Skip session check - edge function handles auth optionally
+
+      // For debugging: include explicit headers.
+      // - If user is logged in: send their JWT.
+      // - If not logged in: still send a Bearer token (anon key) to satisfy callers that expect it.
+      //   NOTE: send-whatsapp does NOT require user auth; it uses WHATSAPP_ACCESS_TOKEN on the server.
+      const anonKey =
+        (import.meta as any).env?.VITE_SUPABASE_PUBLISHABLE_KEY ||
+        (import.meta as any).env?.VITE_SUPABASE_ANON_KEY;
+
+      const sessionResult = await supabase.auth.getSession();
+      const session = sessionResult.data.session;
+
+      const headers: Record<string, string> = {};
+      if (anonKey) headers.apikey = String(anonKey);
+      headers.Authorization = session?.access_token
+        ? `Bearer ${session.access_token}`
+        : anonKey
+          ? `Bearer ${String(anonKey)}`
+          : "";
+
       console.log("[WhatsApp] Step 2: Calling edge function send-whatsapp");
+      console.log("[WhatsApp] Has session:", Boolean(session));
+      console.log("[WhatsApp] Has anon key:", Boolean(anonKey));
       console.log("[WhatsApp] Request body:", JSON.stringify({ type: "test", to }));
-      
+      console.log(
+        "[WhatsApp] Request headers:",
+        JSON.stringify({
+          apikey: headers.apikey ? "[present]" : "[missing]",
+          Authorization: headers.Authorization ? "Bearer [present]" : "[missing]",
+        })
+      );
+
       const startTime = Date.now();
-      
-      const { data, error } = await supabase.functions.invoke("send-whatsapp", {
+
+      const timeoutMs = 30000;
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Timeout")), timeoutMs)
+      );
+
+      const invokePromise = supabase.functions.invoke("send-whatsapp", {
         body: {
           type: "test",
           to,
         },
+        headers,
       });
-      
-      clearTimeout(timeoutId);
+
+      const { data, error } = await Promise.race([invokePromise, timeoutPromise]);
+
       const elapsed = Date.now() - startTime;
       console.log(`[WhatsApp] Step 3: Response received in ${elapsed}ms`);
       console.log("[WhatsApp] Response data:", JSON.stringify(data));
@@ -206,11 +233,8 @@ export function useWhatsAppIntegration() {
         return { success: false, error: errorMessage };
       }
     } catch (err) {
-      clearTimeout(timeoutId);
-      
-      // Check if it's an abort error (timeout)
-      if (err instanceof Error && err.name === 'AbortError') {
-        console.error("[WhatsApp] Request timed out");
+      if (err instanceof Error && err.message === "Timeout") {
+        console.error("[WhatsApp] Request timed out after 30 seconds");
         toast({
           title: "Request timed out",
           description: "The request took too long. Please try again.",
