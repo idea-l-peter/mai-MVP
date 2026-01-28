@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useSearchParams, useLocation } from "react-router-dom";
 import { IntegrationCard } from "./IntegrationCard";
 import { GoogleWorkspaceCard } from "./GoogleWorkspaceCard";
-import { WhatsAppLogo } from "./icons";
+import { WhatsAppIntegrationCard } from "./WhatsAppIntegrationCard";
 import { useGoogleIntegration } from "@/hooks/useGoogleIntegration";
 import { useMondayIntegration } from "@/hooks/useMondayIntegration";
 import { useToast } from "@/hooks/use-toast";
@@ -44,14 +44,6 @@ const OTHER_INTEGRATION_CONFIGS: IntegrationConfig[] = [
     defaultStatus: "not_connected",
     showConnectButton: true,
     provider: "monday",
-  },
-  {
-    id: "whatsapp",
-    title: "WhatsApp",
-    description: "Your mai WhatsApp number for external communications",
-    icon: <WhatsAppLogo className="h-7 w-7" />,
-    defaultStatus: "pending",
-    showConnectButton: false,
   },
 ];
 
@@ -393,6 +385,9 @@ export function IntegrationsContent() {
         onDisconnect={handleGoogleDisconnect}
         onUpdatePermissions={handleGoogleUpdatePermissions}
       />
+      
+      {/* WhatsApp Integration Card */}
+      <WhatsAppIntegrationCard />
       
       {/* Other integrations */}
       {OTHER_INTEGRATION_CONFIGS.map((integration) => (
