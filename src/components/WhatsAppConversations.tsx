@@ -1,8 +1,15 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useWhatsAppIntegration } from "@/hooks/useWhatsAppIntegration";
 import { WhatsAppLogo } from "@/components/icons";
@@ -37,10 +44,13 @@ interface ConversationThread {
   unreadCount: number;
 }
 
+const STORAGE_KEY = "whatsapp_recent_numbers";
+const DEFAULT_NUMBERS = ["971567659090"];
+
 export function WhatsAppConversations() {
   const { toast } = useToast();
   const isMobile = useIsMobile();
-  const { sendMessage, fetchMessages, isLoading } = useWhatsAppIntegration();
+  const { sendMessage, fetchMessages } = useWhatsAppIntegration();
   
   const [messages, setMessages] = useState<WhatsAppMessage[]>([]);
   const [threads, setThreads] = useState<ConversationThread[]>([]);
@@ -50,7 +60,35 @@ export function WhatsAppConversations() {
   const [showNewConversation, setShowNewConversation] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState(true);
+  const [recentNumbers, setRecentNumbers] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Load recent numbers from localStorage
+  useEffect(() => {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored) as string[];
+        const merged = [...new Set([...DEFAULT_NUMBERS, ...parsed])];
+        setRecentNumbers(merged);
+      } catch {
+        setRecentNumbers(DEFAULT_NUMBERS);
+      }
+    } else {
+      setRecentNumbers(DEFAULT_NUMBERS);
+    }
+  }, []);
+
+  const saveRecentNumber = useCallback((phone: string) => {
+    const cleaned = phone.replace(/[^\d]/g, "");
+    if (!cleaned || cleaned.length < 10) return;
+    
+    setRecentNumbers((prev) => {
+      const updated = [cleaned, ...prev.filter((n) => n !== cleaned)].slice(0, 10);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
 
   // Load messages on mount and set up realtime subscription
   useEffect(() => {
@@ -137,6 +175,7 @@ export function WhatsAppConversations() {
 
     if (result.success) {
       setNewMessage("");
+      saveRecentNumber(phone);
       if (!selectedPhone) {
         // New conversation started
         setSelectedPhone(phone);
@@ -160,6 +199,12 @@ export function WhatsAppConversations() {
         variant: "destructive",
       });
     }
+  };
+
+  const handleSelectRecentNumber = (value: string) => {
+    setNewPhoneNumber(value);
+    setSelectedPhone(value);
+    setShowNewConversation(false);
   };
 
   const getThreadMessages = () => {
@@ -192,8 +237,10 @@ export function WhatsAppConversations() {
     return `+${phone}`;
   };
 
-  // Thread list panel
-  const ThreadListPanel = () => (
+  const threadMessages = getThreadMessages();
+
+  // Thread list panel content
+  const threadListContent = (
     <div className="flex flex-col h-full border-r">
       {/* Header */}
       <div className="p-4 border-b flex items-center justify-between bg-card">
@@ -216,23 +263,37 @@ export function WhatsAppConversations() {
         </div>
       </div>
 
-      {/* New conversation input */}
+      {/* New conversation input with dropdown */}
       {showNewConversation && (
-        <div className="p-3 border-b bg-muted/30">
+        <div className="p-3 border-b bg-muted/30 space-y-3">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Recent Numbers</label>
+            <Select value="" onValueChange={handleSelectRecentNumber}>
+              <SelectTrigger className="bg-background">
+                <SelectValue placeholder="Select a saved number..." />
+              </SelectTrigger>
+              <SelectContent className="bg-background z-50">
+                {recentNumbers.map((num) => (
+                  <SelectItem key={num} value={num}>
+                    {formatPhoneNumber(num)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="flex gap-2">
             <Input
-              placeholder="Enter phone number with country code..."
+              placeholder="Or enter phone number..."
               value={newPhoneNumber}
               onChange={(e) => setNewPhoneNumber(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleStartNewConversation()}
               className="text-sm"
-              autoFocus
             />
             <Button size="sm" onClick={handleStartNewConversation}>
               <MessageSquare className="h-4 w-4" />
             </Button>
           </div>
-          <p className="text-xs text-muted-foreground mt-2">
+          <p className="text-xs text-muted-foreground">
             Example: 971567659090 (no + or spaces)
           </p>
         </div>
@@ -288,121 +349,113 @@ export function WhatsAppConversations() {
     </div>
   );
 
-  // Chat panel for selected conversation
-  const ChatPanel = () => {
-    const threadMessages = getThreadMessages();
-    
-    if (!selectedPhone) {
-      return (
-        <div className="flex-1 flex items-center justify-center bg-muted/20">
-          <div className="text-center text-muted-foreground">
-            <MessageSquare className="h-16 w-16 mx-auto mb-4 opacity-30" />
-            <p className="text-lg font-medium">Select a conversation</p>
-            <p className="text-sm mt-1">or start a new one using the + button</p>
-          </div>
+  // Chat panel content
+  const chatPanelContent = !selectedPhone ? (
+    <div className="flex-1 flex items-center justify-center bg-muted/20">
+      <div className="text-center text-muted-foreground">
+        <MessageSquare className="h-16 w-16 mx-auto mb-4 opacity-30" />
+        <p className="text-lg font-medium">Select a conversation</p>
+        <p className="text-sm mt-1">or start a new one using the + button</p>
+      </div>
+    </div>
+  ) : (
+    <div className="flex-1 flex flex-col h-full">
+      {/* Header */}
+      <div className="p-3 border-b flex items-center gap-3 bg-card flex-shrink-0">
+        {isMobile && (
+          <button
+            onClick={() => setSelectedPhone(null)}
+            className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-muted transition-colors"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+        )}
+        <div className="w-10 h-10 rounded-full bg-[#25D366]/10 flex items-center justify-center">
+          <Phone className="h-5 w-5 text-[#25D366]" />
         </div>
-      );
-    }
-    
-    return (
-      <div className="flex-1 flex flex-col h-full">
-        {/* Header */}
-        <div className="p-3 border-b flex items-center gap-3 bg-card flex-shrink-0">
-          {isMobile && (
-            <button
-              onClick={() => setSelectedPhone(null)}
-              className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-muted transition-colors"
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </button>
-          )}
-          <div className="w-10 h-10 rounded-full bg-[#25D366]/10 flex items-center justify-center">
-            <Phone className="h-5 w-5 text-[#25D366]" />
-          </div>
-          <div className="flex-1">
-            <p className="font-medium">{formatPhoneNumber(selectedPhone)}</p>
-            <p className="text-xs text-muted-foreground">WhatsApp Business</p>
-          </div>
-        </div>
-
-        {/* Messages */}
-        <ScrollArea className="flex-1 p-4">
-          <div className="space-y-3">
-            {threadMessages.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <p className="text-sm">No messages yet</p>
-                <p className="text-xs mt-1">Send a message to start the conversation</p>
-              </div>
-            ) : (
-              threadMessages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className={`flex ${msg.direction === "outbound" ? "justify-end" : "justify-start"}`}
-                >
-                  <div
-                    className={`max-w-[75%] rounded-2xl px-4 py-2 ${
-                      msg.direction === "outbound"
-                        ? "bg-[#DCF8C6] dark:bg-[#005C4B] text-foreground rounded-br-md"
-                        : "bg-muted rounded-bl-md"
-                    }`}
-                  >
-                    {msg.message_type === "template" && (
-                      <p className="text-xs text-muted-foreground mb-1 italic">[Template]</p>
-                    )}
-                    <p className="text-sm whitespace-pre-wrap">{msg.content || "[Media]"}</p>
-                    <div className="flex items-center justify-end gap-1 mt-1">
-                      <span className="text-[10px] text-muted-foreground">
-                        {formatTime(msg.created_at)}
-                      </span>
-                      {msg.direction === "outbound" && (
-                        msg.status === "delivered" || msg.status === "read" ? (
-                          <CheckCircle className="h-3 w-3 text-[#53BDEB]" />
-                        ) : msg.status === "sent" ? (
-                          <CheckCircle className="h-3 w-3 text-muted-foreground" />
-                        ) : (
-                          <Clock className="h-3 w-3 text-muted-foreground" />
-                        )
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-        </ScrollArea>
-
-        {/* Message input */}
-        <div className="p-3 border-t bg-background flex-shrink-0">
-          <form onSubmit={handleSendMessage} className="flex gap-2">
-            <Input
-              placeholder="Type a message..."
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              disabled={isSending}
-              className="flex-1"
-            />
-            <Button type="submit" disabled={isSending || !newMessage.trim()}>
-              {isSending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Send className="h-4 w-4" />
-              )}
-            </Button>
-          </form>
-          <p className="text-xs text-muted-foreground mt-2">
-            Free-form messages require the recipient to have messaged you within 24 hours
-          </p>
+        <div className="flex-1">
+          <p className="font-medium">{formatPhoneNumber(selectedPhone)}</p>
+          <p className="text-xs text-muted-foreground">WhatsApp Business</p>
         </div>
       </div>
-    );
-  };
+
+      {/* Messages */}
+      <ScrollArea className="flex-1 p-4">
+        <div className="space-y-3">
+          {threadMessages.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <p className="text-sm">No messages yet</p>
+              <p className="text-xs mt-1">Send a message to start the conversation</p>
+            </div>
+          ) : (
+            threadMessages.map((msg) => (
+              <div
+                key={msg.id}
+                className={`flex ${msg.direction === "outbound" ? "justify-end" : "justify-start"}`}
+              >
+                <div
+                  className={`max-w-[75%] rounded-2xl px-4 py-2 ${
+                    msg.direction === "outbound"
+                      ? "bg-[#DCF8C6] dark:bg-[#005C4B] text-foreground rounded-br-md"
+                      : "bg-muted rounded-bl-md"
+                  }`}
+                >
+                  {msg.message_type === "template" && (
+                    <p className="text-xs text-muted-foreground mb-1 italic">[Template]</p>
+                  )}
+                  <p className="text-sm whitespace-pre-wrap">{msg.content || "[Media]"}</p>
+                  <div className="flex items-center justify-end gap-1 mt-1">
+                    <span className="text-[10px] text-muted-foreground">
+                      {formatTime(msg.created_at)}
+                    </span>
+                    {msg.direction === "outbound" && (
+                      msg.status === "delivered" || msg.status === "read" ? (
+                        <CheckCircle className="h-3 w-3 text-[#53BDEB]" />
+                      ) : msg.status === "sent" ? (
+                        <CheckCircle className="h-3 w-3 text-muted-foreground" />
+                      ) : (
+                        <Clock className="h-3 w-3 text-muted-foreground" />
+                      )
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+      </ScrollArea>
+
+      {/* Message input */}
+      <div className="p-3 border-t bg-background flex-shrink-0">
+        <form onSubmit={handleSendMessage} className="flex gap-2">
+          <Input
+            placeholder="Type a message..."
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            disabled={isSending}
+            className="flex-1"
+          />
+          <Button type="submit" disabled={isSending || !newMessage.trim()}>
+            {isSending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
+          </Button>
+        </form>
+        <p className="text-xs text-muted-foreground mt-2">
+          Free-form messages require the recipient to have messaged you within 24 hours
+        </p>
+      </div>
+    </div>
+  );
 
   // Mobile view: show one panel at a time
   if (isMobile) {
     return (
       <div className="h-[calc(100vh-8rem)] border rounded-lg overflow-hidden bg-card">
-        {selectedPhone ? <ChatPanel /> : <ThreadListPanel />}
+        {selectedPhone ? chatPanelContent : threadListContent}
       </div>
     );
   }
@@ -411,9 +464,9 @@ export function WhatsAppConversations() {
   return (
     <div className="h-[calc(100vh-12rem)] border rounded-lg overflow-hidden bg-card flex">
       <div className="w-80 flex-shrink-0">
-        <ThreadListPanel />
+        {threadListContent}
       </div>
-      <ChatPanel />
+      {chatPanelContent}
     </div>
   );
 }
