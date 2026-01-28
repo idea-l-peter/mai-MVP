@@ -37,6 +37,7 @@ import maiLogoWhite from "@/assets/mai-logo-white.png";
 const navItems = [
   { title: "Dashboard", icon: LayoutDashboard, url: "/dashboard" },
   { title: "Conversations", icon: MessageSquare, url: "/conversations" },
+  { title: "WhatsApp", icon: MessageSquare, url: "/whatsapp" },
   { title: "Contacts", icon: Users, url: "/contacts" },
   { title: "Integrations", icon: Plug, url: "/integrations" },
   { title: "Settings", icon: Settings, url: "/settings" },
@@ -44,6 +45,7 @@ const navItems = [
 
 
 const devItems = [
+  { title: "Dev Tools", icon: Wrench, url: "/dev-tools" },
   { title: "Test Chat", icon: Zap, url: "/test-chat" },
   { title: "Test Google", icon: Calendar, url: "/test-google" },
   { title: "Test monday.com", icon: List, url: "/test-monday" },
@@ -56,7 +58,7 @@ export function DashboardSidebar() {
   const { isAdmin } = useAdminCheck();
   const { setOpenMobile, isMobile } = useSidebar();
   const [devToolsOpen, setDevToolsOpen] = useState(false);
-  const isDevToolActive = devItems.some(item => location.pathname === item.url);
+  const isDevToolActive = devItems.some(item => location.pathname === item.url) || location.pathname === "/dev-tools";
 
   // Navigation handler that closes mobile sidebar after navigation
   const handleNavigation = (url: string) => {

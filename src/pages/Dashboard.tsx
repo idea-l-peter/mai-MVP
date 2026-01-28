@@ -11,6 +11,7 @@ import { TestGoogleContent } from "@/components/TestGoogleContent";
 import { TestChatContent } from "@/components/TestChatContent";
 import { TestMondayContent } from "@/components/TestMondayContent";
 import { ConversationsContent } from "@/components/ConversationsContent";
+import { WhatsAppConversations } from "@/components/WhatsAppConversations";
 import { SettingsContent } from "@/components/SettingsContent";
 import { ContactsContent } from "@/components/ContactsContent";
 import { DashboardContent } from "@/components/dashboard/DashboardContent";
@@ -66,6 +67,8 @@ const Dashboard = () => {
         return "Dashboard";
       case "/conversations":
         return "Chat";
+      case "/whatsapp":
+        return "WhatsApp";
       case "/contacts":
         return "Contacts";
       case "/integrations":
@@ -123,6 +126,7 @@ const Dashboard = () => {
             <div className={isFullScreenRoute ? '' : 'mt-4 md:mt-6'}>
               {location.pathname === "/dashboard" && <DashboardContent />}
               {location.pathname === "/conversations" && <ConversationsContent />}
+              {location.pathname === "/whatsapp" && <WhatsAppConversations />}
               {location.pathname === "/contacts" && <ContactsContent />}
               {location.pathname === "/admin" && <Admin />}
               {location.pathname === "/integrations" && <IntegrationsContent />}
