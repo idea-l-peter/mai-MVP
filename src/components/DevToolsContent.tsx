@@ -1,9 +1,16 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useWhatsAppIntegration } from "@/hooks/useWhatsAppIntegration";
 import { 
@@ -31,21 +38,53 @@ interface WhatsAppMessage {
   metadata: Record<string, unknown> | null;
 }
 
+const STORAGE_KEY = "whatsapp_recent_numbers";
+const DEFAULT_NUMBERS = ["971567659090"];
+
 export function DevToolsContent() {
   const { toast } = useToast();
   const { sendTestMessage, fetchMessages } = useWhatsAppIntegration();
   
   // Test message form state
   const [testPhone, setTestPhone] = useState("");
+  const [recentNumbers, setRecentNumbers] = useState<string[]>([]);
   const [isSending, setIsSending] = useState(false);
   
   // Messages state
   const [messages, setMessages] = useState<WhatsAppMessage[]>([]);
   const [isLoadingMessages, setIsLoadingMessages] = useState(true);
 
+  // Load recent numbers from localStorage
+  useEffect(() => {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored) as string[];
+        // Merge with defaults, remove duplicates
+        const merged = [...new Set([...DEFAULT_NUMBERS, ...parsed])];
+        setRecentNumbers(merged);
+      } catch {
+        setRecentNumbers(DEFAULT_NUMBERS);
+      }
+    } else {
+      setRecentNumbers(DEFAULT_NUMBERS);
+    }
+  }, []);
+
   // Load messages on mount
   useEffect(() => {
     loadMessages();
+  }, []);
+
+  const saveRecentNumber = useCallback((phone: string) => {
+    const cleaned = phone.replace(/[^\d]/g, "");
+    if (!cleaned || cleaned.length < 10) return;
+    
+    setRecentNumbers((prev) => {
+      const updated = [cleaned, ...prev.filter((n) => n !== cleaned)].slice(0, 10);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      return updated;
+    });
   }, []);
 
   const loadMessages = async () => {
@@ -75,6 +114,7 @@ export function DevToolsContent() {
     setIsSending(false);
 
     if (result.success) {
+      saveRecentNumber(testPhone.trim());
       loadMessages();
     }
   };
@@ -150,6 +190,25 @@ export function DevToolsContent() {
           <CardContent>
             <form onSubmit={handleSendTestMessage} className="space-y-4">
               <div className="space-y-2">
+                <label className="text-sm font-medium">Recent Numbers</label>
+                <Select
+                  value=""
+                  onValueChange={(value) => setTestPhone(value)}
+                  disabled={isSending}
+                >
+                  <SelectTrigger className="bg-background">
+                    <SelectValue placeholder="Select a saved number..." />
+                  </SelectTrigger>
+                  <SelectContent className="bg-background z-50">
+                    {recentNumbers.map((num) => (
+                      <SelectItem key={num} value={num}>
+                        {num}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
                 <label className="text-sm font-medium">Phone Number</label>
                 <Input
                   placeholder="e.g., 971567659090"
@@ -158,7 +217,7 @@ export function DevToolsContent() {
                   disabled={isSending}
                 />
                 <p className="text-xs text-muted-foreground">
-                  International format without + or spaces
+                  International format without + or spaces. Select from dropdown or type manually.
                 </p>
               </div>
               <div className="rounded-md bg-muted p-3 text-sm">
