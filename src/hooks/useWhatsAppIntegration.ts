@@ -25,13 +25,21 @@ export function useWhatsAppIntegration() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return false;
 
-      // Try to fetch messages - if the table exists and user has access, it's "connected"
-      const { error } = await supabase
-        .from("whatsapp_messages")
-        .select("id")
-        .limit(1);
+      // Use a timeout to prevent hanging
+      const timeoutPromise = new Promise<boolean>((_, reject) => 
+        setTimeout(() => reject(new Error('Timeout')), 5000)
+      );
+      
+      const checkPromise = (async () => {
+        // Try to fetch messages - if the table exists and user has access, it's "connected"
+        const { error } = await supabase
+          .from("whatsapp_messages")
+          .select("id")
+          .limit(1);
+        return !error;
+      })();
 
-      return !error;
+      return await Promise.race([checkPromise, timeoutPromise]);
     } catch {
       return false;
     }
@@ -69,9 +77,17 @@ export function useWhatsAppIntegration() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
-        throw new Error("Not authenticated");
+        const error = "Not authenticated";
+        toast({
+          title: "Failed to send message",
+          description: error,
+          variant: "destructive",
+        });
+        return { success: false, error };
       }
 
+      console.log("[WhatsApp] Sending message to:", to);
+      
       const { data, error } = await supabase.functions.invoke("send-whatsapp", {
         body: {
           type: "text",
@@ -80,7 +96,18 @@ export function useWhatsAppIntegration() {
         },
       });
 
-      if (error) throw error;
+      console.log("[WhatsApp] Response:", { data, error });
+
+      if (error) {
+        console.error("[WhatsApp] Function invoke error:", error);
+        const errorMessage = error.message || "Failed to send message";
+        toast({
+          title: "Failed to send message",
+          description: errorMessage,
+          variant: "destructive",
+        });
+        return { success: false, error: errorMessage };
+      }
 
       if (data?.success) {
         toast({
@@ -91,10 +118,18 @@ export function useWhatsAppIntegration() {
         await fetchMessages();
         return { success: true, messageId: data.message_id };
       } else {
-        throw new Error(data?.error || "Failed to send message");
+        const errorMessage = data?.error || data?.details || "Failed to send message";
+        console.error("[WhatsApp] API error:", errorMessage);
+        toast({
+          title: "Failed to send message",
+          description: errorMessage,
+          variant: "destructive",
+        });
+        return { success: false, error: errorMessage };
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Unknown error";
+      console.error("[WhatsApp] Exception:", err);
       toast({
         title: "Failed to send message",
         description: errorMessage,

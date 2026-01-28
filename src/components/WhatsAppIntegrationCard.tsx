@@ -13,14 +13,37 @@ export function WhatsAppIntegrationCard() {
   const { checkConnection } = useWhatsAppIntegration();
   const [isConnected, setIsConnected] = useState(false);
   const [isChecking, setIsChecking] = useState(true);
+  const [checkError, setCheckError] = useState(false);
 
   useEffect(() => {
+    let isMounted = true;
+    const timeoutId = setTimeout(() => {
+      if (isMounted && isChecking) {
+        setIsChecking(false);
+        setCheckError(true);
+      }
+    }, 6000);
+
     const check = async () => {
-      const connected = await checkConnection();
-      setIsConnected(connected);
-      setIsChecking(false);
+      try {
+        const connected = await checkConnection();
+        if (isMounted) {
+          setIsConnected(connected);
+          setIsChecking(false);
+        }
+      } catch {
+        if (isMounted) {
+          setIsChecking(false);
+          setCheckError(true);
+        }
+      }
     };
     check();
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timeoutId);
+    };
   }, [checkConnection]);
 
   return (
@@ -41,6 +64,10 @@ export function WhatsAppIntegrationCard() {
           {isChecking ? (
             <Badge variant="secondary" className="bg-muted text-muted-foreground">
               Checking...
+            </Badge>
+          ) : checkError ? (
+            <Badge variant="secondary" className="bg-red-100 text-red-700 hover:bg-red-100">
+              Check failed
             </Badge>
           ) : isConnected ? (
             <Badge className="bg-green-100 text-green-700 hover:bg-green-100">

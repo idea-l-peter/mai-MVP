@@ -45,10 +45,10 @@ const navItems = [
 
 
 const devItems = [
-  { title: "Dev Tools", icon: Wrench, url: "/dev-tools" },
   { title: "Test Chat", icon: Zap, url: "/test-chat" },
   { title: "Test Google", icon: Calendar, url: "/test-google" },
   { title: "Test monday.com", icon: List, url: "/test-monday" },
+  { title: "Test WhatsApp", icon: MessageSquare, url: "/dev-tools" },
 ];
 
 export function DashboardSidebar() {
@@ -57,8 +57,8 @@ export function DashboardSidebar() {
   const { toast } = useToast();
   const { isAdmin } = useAdminCheck();
   const { setOpenMobile, isMobile } = useSidebar();
-  const [devToolsOpen, setDevToolsOpen] = useState(false);
-  const isDevToolActive = devItems.some(item => location.pathname === item.url) || location.pathname === "/dev-tools";
+const [devToolsOpen, setDevToolsOpen] = useState(false);
+  const isDevToolActive = devItems.some(item => location.pathname === item.url);
 
   // Navigation handler that closes mobile sidebar after navigation
   const handleNavigation = (url: string) => {
