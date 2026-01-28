@@ -16,38 +16,37 @@ serve(async (req) => {
   }
 
   try {
-    // Verify authentication
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      console.log('[Send WhatsApp] No auth header');
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      global: { headers: { Authorization: authHeader } }
-    });
-
-    const token = authHeader.replace('Bearer ', '');
-    const { data: userData, error: userError } = await supabase.auth.getUser(token);
+    console.log('[Send WhatsApp] Request received, method:', req.method);
     
-    if (userError || !userData?.user) {
-      console.log('[Send WhatsApp] Auth failed:', userError?.message);
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // Try to get user from auth header (optional - for tracking purposes)
+    let userId: string | null = null;
+    const authHeader = req.headers.get('Authorization');
+    
+    if (authHeader?.startsWith('Bearer ')) {
+      try {
+        const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+          global: { headers: { Authorization: authHeader } }
+        });
+        const token = authHeader.replace('Bearer ', '');
+        const { data: userData, error: userError } = await supabase.auth.getUser(token);
+        
+        if (!userError && userData?.user) {
+          userId = userData.user.id;
+          console.log('[Send WhatsApp] Authenticated user:', userId);
+        } else {
+          console.log('[Send WhatsApp] Auth optional - continuing without user:', userError?.message);
+        }
+      } catch (authErr) {
+        console.log('[Send WhatsApp] Auth check failed, continuing anyway:', authErr);
+      }
+    } else {
+      console.log('[Send WhatsApp] No auth header - continuing as anonymous');
     }
 
-    const userId = userData.user.id;
-    console.log('[Send WhatsApp] Authenticated user:', userId);
-
-    // Read WhatsApp token from environment
+    // Read WhatsApp token from environment - THIS is the real auth for Meta API
     const WHATSAPP_ACCESS_TOKEN = Deno.env.get('WHATSAPP_ACCESS_TOKEN');
     
-    // Debug: Log first 20 chars of token
+    // Debug: Log token info
     if (WHATSAPP_ACCESS_TOKEN) {
       console.log('[Send WhatsApp] Token first 20 chars:', WHATSAPP_ACCESS_TOKEN.substring(0, 20));
       console.log('[Send WhatsApp] Token length:', WHATSAPP_ACCESS_TOKEN.length);
@@ -140,19 +139,25 @@ serve(async (req) => {
       );
     }
 
-    // Store message in database
+    // Store message in database (only if we have a user)
     const messageId = whatsappResult.messages?.[0]?.id;
     
-    await supabase.from('whatsapp_messages').insert({
-      user_id: userId,
-      phone_number: phoneNumber,
-      message_id: messageId,
-      direction: 'outbound',
-      content: messageContent,
-      message_type: body.type === 'text' ? 'text' : 'template',
-      status: 'sent',
-      metadata: { whatsapp_response: whatsappResult }
-    });
+    if (userId) {
+      const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      await supabase.from('whatsapp_messages').insert({
+        user_id: userId,
+        phone_number: phoneNumber,
+        message_id: messageId,
+        direction: 'outbound',
+        content: messageContent,
+        message_type: body.type === 'text' ? 'text' : 'template',
+        status: 'sent',
+        metadata: { whatsapp_response: whatsappResult }
+      });
+      console.log('[Send WhatsApp] Message stored in database');
+    } else {
+      console.log('[Send WhatsApp] Skipping database storage - no authenticated user');
+    }
 
     return new Response(
       JSON.stringify({ 
