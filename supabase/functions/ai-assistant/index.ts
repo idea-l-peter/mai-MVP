@@ -337,7 +337,7 @@ serve(async (req) => {
       }
     }
 
-    // Generate the complete Chief of Staff v4.0 system prompt
+    // Generate the complete v5.0 Natural Executive system prompt
     const userName = userEmail?.split('@')[0] || 'Principal';
     const currentDate = new Date().toLocaleDateString('en-GB', { 
       weekday: 'long', 
