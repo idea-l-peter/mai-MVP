@@ -174,6 +174,20 @@ export function WhatsAppConversations() {
     setIsSending(false);
 
     if (result.success) {
+      // Optimistic update: add the message to local state instead of refetching
+      const optimisticMessage: WhatsAppMessage = {
+        id: `temp-${Date.now()}`,
+        phone_number: phone,
+        message_id: result.messageId || null,
+        direction: 'outbound',
+        content: messageText,
+        message_type: 'text',
+        status: 'sending',
+        created_at: new Date().toISOString(),
+        metadata: null,
+      };
+
+      setMessages(prev => [...prev, optimisticMessage]);
       setNewMessage("");
       saveRecentNumber(phone);
       if (!selectedPhone) {
@@ -182,7 +196,7 @@ export function WhatsAppConversations() {
         setNewPhoneNumber("");
         setShowNewConversation(false);
       }
-      loadMessages();
+      // The realtime subscription will update the message status from 'sending' to 'sent'.
     }
   };
 

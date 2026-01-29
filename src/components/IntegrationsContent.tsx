@@ -122,192 +122,64 @@ export function IntegrationsContent() {
 
   // Token capture on mount - store provider_token after OAuth redirect
   useEffect(() => {
-    if (tokenProcessedRef.current) {
-      return;
-    }
+    if (tokenProcessedRef.current) return;
 
     const captureToken = async () => {
-      try {
-        console.log("[TokenCapture] Starting token capture check...");
+      console.log("[TokenCapture] Starting token capture check...");
 
-        // Supabase OAuth (PKCE) returns an authorization code in the URL query.
-        // In many cases Supabase will auto-handle it (detectSessionInUrl), but we
-        // explicitly exchange here to make the /integrations callback reliable.
-        const codeFromQuery = searchParams.get("code");
-        if (codeFromQuery) {
-          console.log("[TokenCapture] Found ?code= in URL. Exchanging for session...");
-          const { data, error } = await supabase.auth.exchangeCodeForSession(codeFromQuery);
-          if (error) {
-            console.error("[TokenCapture] exchangeCodeForSession error:", error);
-            toast({
-              title: "Google connection failed",
-              description: error.message,
-              variant: "destructive",
-            });
-            // Don't keep retrying on every render
-            tokenProcessedRef.current = true;
-            return;
-          }
-          console.log("[TokenCapture] exchangeCodeForSession ok", {
-            hasSession: !!data?.session,
-            hasProviderToken: !!data?.session?.provider_token,
-          });
+      const codeFromQuery = searchParams.get("code");
+      if (codeFromQuery) {
+        tokenProcessedRef.current = true; // Prevent re-running
+        console.log("[TokenCapture] Found ?code= in URL. Exchanging for session...");
+        const { data, error } = await supabase.auth.exchangeCodeForSession(codeFromQuery);
 
-          // Remove the OAuth code from the URL to avoid re-processing.
-          try {
-            const nextParams = new URLSearchParams(searchParams);
-            nextParams.delete("code");
-            nextParams.delete("state");
-            nextParams.delete("error");
-            nextParams.delete("error_description");
-            setSearchParams(nextParams, { replace: true });
-          } catch {
-            // ignore
-          }
-        }
-        
-        // First, check if we have a hash fragment (OAuth redirect with tokens)
-        const hashParams = new URLSearchParams(window.location.hash.substring(1));
-        const accessTokenFromHash = hashParams.get('access_token');
-        
-        if (accessTokenFromHash) {
-          console.log("[TokenCapture] Found access_token in hash, waiting for Supabase to process...");
-          // Give Supabase a moment to process the hash tokens
-          await new Promise(resolve => setTimeout(resolve, 500));
-        }
-
-        // Get fresh session from Supabase
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-        
-        if (sessionError) {
-          console.error("[TokenCapture] Session error:", sessionError);
+        if (error) {
+          console.error("[TokenCapture] exchangeCodeForSession error:", error);
+          toast({ title: "Google connection failed", description: error.message, variant: "destructive" });
           return;
         }
 
-        const session = sessionData?.session;
-        console.log("[TokenCapture] Session check:", {
-          hasSession: !!session,
-          hasProviderToken: !!session?.provider_token,
-          providerTokenLength: session?.provider_token?.length,
-          hasRefreshToken: !!session?.provider_refresh_token,
-        });
+        console.log("[TokenCapture] exchangeCodeForSession OK. Session:", data.session);
 
-        // Check for provider_token in session first (preferred)
-        let providerToken = session?.provider_token;
-        let providerRefreshToken = session?.provider_refresh_token;
+        // Clean the URL
+        const nextParams = new URLSearchParams(searchParams);
+        nextParams.delete("code");
+        nextParams.delete("state");
+        setSearchParams(nextParams, { replace: true });
 
-        // Fallback: check localStorage
-        if (!providerToken) {
-          const authData = localStorage.getItem(SUPABASE_AUTH_KEY);
-          if (authData) {
-            try {
-              const parsed = JSON.parse(authData);
-              providerToken = parsed?.provider_token;
-              providerRefreshToken = providerRefreshToken || parsed?.provider_refresh_token;
-              console.log("[TokenCapture] Checked localStorage:", {
-                hasProviderToken: !!providerToken,
-                hasRefreshToken: !!providerRefreshToken,
-              });
-            } catch {
-              // Ignore parse errors
-            }
-          }
-        }
+        const providerToken = data.session?.provider_token;
+        const providerRefreshToken = data.session?.provider_refresh_token;
 
         if (!providerToken) {
-          console.log("[TokenCapture] No provider token found, skipping");
-          return;
-        }
-
-        if (!session?.user?.id) {
-          console.log("[TokenCapture] No user ID, cannot store token");
+          console.error("[TokenCapture] No provider_token in session after exchange!");
+          toast({ title: "Connection Failed", description: "Could not retrieve Google token after login.", variant: "destructive" });
           return;
         }
 
         console.log("[TokenCapture] Calling store-google-tokens edge function...");
-
-        const STORE_TIMEOUT_MS = 10_000;
-        const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> =>
-          Promise.race([
-            promise,
-            new Promise<T>((_, reject) => window.setTimeout(() => reject(new Error(`TIMEOUT:${label}`)), ms)),
-          ]);
-
-        let invokeResult: { data: any; error: any };
-        try {
-          invokeResult = await withTimeout(
-            supabase.functions.invoke("store-google-tokens", {
-              body: {
-                provider: "google",
-                provider_token: providerToken,
-                provider_refresh_token: providerRefreshToken || null,
-                scopes: GOOGLE_WORKSPACE_SCOPES,
-              },
-            }),
-            STORE_TIMEOUT_MS,
-            "store_google_tokens"
-          );
-        } catch (err) {
-          console.error("[TokenCapture] store-google-tokens failed:", err);
-          return;
-        }
-
-        console.log("[TokenCapture] Edge function response:", invokeResult);
-
-        if (invokeResult.error) {
-          console.error("[TokenCapture] Edge function error:", invokeResult.error);
-          toast({
-            title: "Connection Issue",
-            description: invokeResult.error?.message || "Edge function error",
-            variant: "destructive",
-          });
-          return;
-        }
-
-        if (!invokeResult.data?.success) {
-          console.error("[TokenCapture] Token storage failed:", invokeResult.data?.error);
-          toast({
-            title: "Connection Issue",
-            description: invokeResult.data?.error || "Failed to store Google tokens",
-            variant: "destructive",
-          });
-          return;
-        }
-
-        tokenProcessedRef.current = true;
-        console.log("[TokenCapture] Token stored successfully!");
-
-        toast({
-          title: "Google Connected!",
-          description: `Successfully connected as ${invokeResult.data?.provider_email || session?.user?.email || "your account"}`,
+        const { data: storeData, error: storeError } = await supabase.functions.invoke("store-google-tokens", {
+          body: {
+            provider: "google",
+            provider_token: providerToken,
+            provider_refresh_token: providerRefreshToken || null,
+            scopes: GOOGLE_WORKSPACE_SCOPES,
+          },
         });
 
-        // Clear provider tokens from localStorage
-        try {
-          const latestAuthData = localStorage.getItem(SUPABASE_AUTH_KEY);
-          if (latestAuthData) {
-            const latestParsed = JSON.parse(latestAuthData);
-            delete latestParsed.provider_token;
-            delete latestParsed.provider_refresh_token;
-            localStorage.setItem(SUPABASE_AUTH_KEY, JSON.stringify(latestParsed));
-          }
-        } catch {
-          // Ignore cleanup errors
+        if (storeError || !storeData?.success) {
+          console.error("[TokenCapture] store-google-tokens error:", storeError || storeData?.error);
+          toast({ title: "Connection Issue", description: storeError?.message || storeData?.error || "Failed to store Google tokens", variant: "destructive" });
+          return;
         }
 
-        // Clean URL if it has hash from OAuth
-        if (window.location.hash) {
-          window.history.replaceState(null, "", window.location.pathname);
-        }
-
+        console.log("[TokenCapture] Token stored successfully!");
+        toast({ title: "Google Connected!", description: `Successfully connected as ${storeData.provider_email}` });
         await refreshIntegrations();
-      } catch (e) {
-        console.error("[TokenCapture] Unexpected error:", e);
       }
     };
 
     void captureToken();
-  }, [refreshIntegrations, toast, searchParams, setSearchParams]);
+  }, [searchParams, setSearchParams, refreshIntegrations, toast]);
 
   // Clear any stale disconnect-in-progress flag on page load
   useEffect(() => {
