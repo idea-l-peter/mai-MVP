@@ -15,14 +15,15 @@ import {
   Users,
   AlertCircle
 } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
-interface ContactFromApi {
+interface GooglePerson {
   resourceName: string;
-  name?: string;
-  emails?: string[];
-  phones?: string[];
-  organization?: string;
-  photoUrl?: string;
+  names?: Array<{ displayName?: string }>;
+  emailAddresses?: Array<{ value?: string }>;
+  phoneNumbers?: Array<{ value?: string }>;
+  organizations?: Array<{ name?: string }>;
+  photos?: Array<{ url?: string }>;
 }
 
 interface Contact {
@@ -35,6 +36,7 @@ interface Contact {
 }
 
 export function ContactsContent() {
+  const { toast } = useToast();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [filteredContacts, setFilteredContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,6 +44,35 @@ export function ContactsContent() {
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [isConnected, setIsConnected] = useState<boolean | null>(null);
+
+  // Get a valid Google token from the edge function
+  const getValidToken = async (): Promise<string | null> => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) {
+        return null;
+      }
+
+      const { data, error } = await supabase.functions.invoke('get-valid-token', {
+        body: { provider: 'google' }
+      });
+
+      if (error) {
+        console.error('[Contacts] Token fetch error:', error);
+        return null;
+      }
+
+      if (!data?.connected || !data?.access_token) {
+        console.error('[Contacts] Not connected or no token');
+        return null;
+      }
+
+      return data.access_token;
+    } catch (err) {
+      console.error('[Contacts] getValidToken error:', err);
+      return null;
+    }
+  };
 
   // Check Google connection status
   useEffect(() => {
@@ -56,12 +87,17 @@ export function ContactsContent() {
 
         const { data } = await supabase
           .from('user_integrations')
-          .select('provider')
+          .select('provider, scopes')
           .eq('user_id', user.id)
           .eq('provider', 'google')
           .maybeSingle();
 
-        setIsConnected(!!data);
+        // Check if connected and has contacts scope
+        const hasContactsScope = data?.scopes?.some((s: string) => 
+          s.includes('contacts') || s.includes('people')
+        );
+        
+        setIsConnected(!!data && hasContactsScope);
       } catch (err) {
         console.error('[Contacts] Connection check error:', err);
         setIsConnected(false);
@@ -79,46 +115,70 @@ export function ContactsContent() {
 
     try {
       setError(null);
-      console.log('[Contacts] Fetching contacts...');
       
-      const { data, error: fetchError } = await supabase.functions.invoke('google-contacts', {
-        body: { 
-          action: 'get_contacts',
-          params: { page_size: 200 }
+      // Get valid Google token
+      const accessToken = await getValidToken();
+      
+      if (!accessToken) {
+        throw new Error('Unable to get Google access token. Please reconnect Google Workspace.');
+      }
+
+      // Fetch contacts directly from Google People API
+      const response = await fetch(
+        'https://people.googleapis.com/v1/people/me/connections?personFields=names,emailAddresses,phoneNumbers,organizations,photos&pageSize=200',
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Accept': 'application/json'
+          }
         }
-      });
+      );
 
-      if (fetchError) {
-        console.error('[Contacts] Fetch error:', fetchError);
-        throw fetchError;
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Google authentication expired. Please reconnect your account.');
+        }
+        const errorText = await response.text();
+        console.error('[Contacts] API error:', response.status, errorText);
+        throw new Error(`Failed to fetch contacts: ${response.status}`);
       }
 
-      if (!data?.success) {
-        throw new Error(data?.error || 'Failed to fetch contacts');
-      }
+      const data = await response.json();
+      const connections: GooglePerson[] = data.connections || [];
 
-      // Map API response to component interface
-      const apiContacts: ContactFromApi[] = data.data?.contacts || [];
-      const mappedContacts: Contact[] = apiContacts.map((c) => ({
-        resourceName: c.resourceName,
-        name: c.name,
-        email: c.emails?.[0],
-        phone: c.phones?.[0],
-        company: c.organization,
-        photoUrl: c.photoUrl,
+      // Map Google API response to component interface
+      const mappedContacts: Contact[] = connections.map((person) => ({
+        resourceName: person.resourceName,
+        name: person.names?.[0]?.displayName,
+        email: person.emailAddresses?.[0]?.value,
+        phone: person.phoneNumbers?.[0]?.value,
+        company: person.organizations?.[0]?.name,
+        photoUrl: person.photos?.[0]?.url,
       }));
 
-      console.log('[Contacts] Fetched', mappedContacts.length, 'contacts');
+      // Sort by name
+      mappedContacts.sort((a, b) => {
+        const nameA = a.name?.toLowerCase() || '';
+        const nameB = b.name?.toLowerCase() || '';
+        return nameA.localeCompare(nameB);
+      });
+
       setContacts(mappedContacts);
       setFilteredContacts(mappedContacts);
     } catch (err) {
       console.error('[Contacts] Error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load contacts');
+      const message = err instanceof Error ? err.message : 'Failed to load contacts';
+      setError(message);
+      toast({
+        title: 'Failed to load contacts',
+        description: message,
+        variant: 'destructive',
+      });
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [isConnected]);
+  }, [isConnected, toast]);
 
   useEffect(() => {
     if (isConnected !== null) {
@@ -155,9 +215,9 @@ export function ContactsContent() {
         <div className="bg-muted/50 rounded-full p-4 mb-4">
           <Users className="h-8 w-8 text-muted-foreground" />
         </div>
-        <h3 className="text-lg font-semibold text-foreground mb-2">Connect Google Account</h3>
+        <h3 className="text-lg font-semibold text-foreground mb-2">Connect Google Contacts</h3>
         <p className="text-muted-foreground text-center max-w-md mb-4">
-          Connect your Google account to view and manage your contacts. 
+          Connect your Google account with Contacts permission to view and manage your contacts. 
           Go to Integrations to connect your Google Workspace.
         </p>
         <Button variant="outline" onClick={() => window.location.href = '/integrations'}>
