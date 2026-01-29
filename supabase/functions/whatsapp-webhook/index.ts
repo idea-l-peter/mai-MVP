@@ -43,31 +43,7 @@ async function verifyWebhookSignature(
   }
 }
 
-// Send a quick "thinking" message to the user (professional, no emojis)
-async function sendThinkingMessage(phoneNumber: string): Promise<void> {
-  try {
-    const WHATSAPP_ACCESS_TOKEN = Deno.env.get('WHATSAPP_ACCESS_TOKEN');
-    if (!WHATSAPP_ACCESS_TOKEN) return;
-
-    const whatsappUrl = 'https://graph.facebook.com/v22.0/959289807270027/messages';
-    
-    await fetch(whatsappUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        messaging_product: 'whatsapp',
-        to: phoneNumber,
-        type: 'text',
-        text: { body: 'Processing your request...' }
-      })
-    });
-  } catch (error) {
-    console.error('[WhatsApp Webhook] Failed to send thinking message:', error);
-  }
-}
+// [REMOVED in v5.0] sendThinkingMessage - no longer sending "Processing..." noise
 
 // Fetch recent conversation history for context
 async function fetchConversationHistory(
@@ -298,10 +274,7 @@ async function processWebhookAsync(payload: any): Promise<void> {
         const conversationHistory = await fetchConversationHistory(supabase, phoneNumber, 5);
         console.log(`[WhatsApp Webhook] Fetched ${conversationHistory.length} messages for context`);
         
-        // Send "thinking" message immediately for user feedback
-        sendThinkingMessage(phoneNumber);
-        
-        // Call AI assistant with conversation context
+        // Call AI assistant with conversation context (no "thinking" message - v5.0 clean UX)
         const aiResponse = await callAIAssistant(content, userId, conversationHistory);
         
         // Send the AI response back via WhatsApp
