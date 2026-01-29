@@ -177,7 +177,15 @@ serve(async (req) => {
       console.log("[AI Assistant] Auth header present but not a Bearer token");
     }
 
+    console.log(`[AI Assistant] === REQUEST START ===`);
     console.log(`[AI Assistant] User ID: ${userId || "anonymous"}, email: ${userEmail || "none"}`);
+    
+    // Log user ID explicitly for debugging handshake issues
+    if (userId) {
+      console.log(`[AI Assistant] Received request for User: ${userId}`);
+    } else {
+      console.log(`[AI Assistant] WARNING: No user ID - tools will NOT work`);
+    }
 
     const body = await req.json();
     const { messages: inputMessages, temperature, max_tokens, stream, provider } = body;
