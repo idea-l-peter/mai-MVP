@@ -18,14 +18,14 @@ const SUPABASE_AUTH_KEY = 'sb-vqunxhjgpdgpzkjescvb-auth-token';
 const TOKEN_CAPTURED_KEY = 'google_provider_token_captured';
 const CODE_PROCESSED_KEY = 'google_oauth_code_processed';
 
-// Full Google Workspace scopes
+// All-in-One Google Workspace scopes (readonly for initial connection)
 const GOOGLE_WORKSPACE_SCOPES = [
-  "https://www.googleapis.com/auth/calendar",
-  "https://www.googleapis.com/auth/gmail.modify",
-  "https://www.googleapis.com/auth/contacts",
+  "openid",
+  "email",
+  "profile",
+  "https://www.googleapis.com/auth/calendar.readonly",
+  "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/contacts.readonly",
-  "https://www.googleapis.com/auth/userinfo.email",
-  "https://www.googleapis.com/auth/userinfo.profile",
 ];
 
 // ============================================================

@@ -73,8 +73,21 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
     return () => clearInterval(interval);
   }, []);
 
-  const initiateOAuth = useCallback(async (provider: string, scopes: string[]) => {
+  // Default scopes for full Google Workspace access
+  const DEFAULT_GOOGLE_SCOPES = [
+    'openid',
+    'email',
+    'profile',
+    'https://www.googleapis.com/auth/calendar.readonly',
+    'https://www.googleapis.com/auth/gmail.readonly',
+    'https://www.googleapis.com/auth/contacts.readonly',
+  ];
+
+  const initiateOAuth = useCallback(async (provider: string, scopes?: string[]) => {
     setIsConnecting(true);
+
+    // Use provided scopes or fall back to defaults for all-in-one access
+    const finalScopes = scopes && scopes.length > 0 ? scopes : DEFAULT_GOOGLE_SCOPES;
 
     try {
       try {
@@ -83,15 +96,16 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
         // ignore
       }
 
-      // CRITICAL: Always use prompt: 'consent' and access_type: 'offline'
+      // Use 'select_account' for a friendlier UX while still getting all permissions
+      // Combined with access_type: 'offline' to get refresh token on first auth
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: `${window.location.origin}/integrations`,
-          scopes: scopes.join(' '),
+          scopes: finalScopes.join(' '),
           queryParams: {
             access_type: 'offline',
-            prompt: 'consent',
+            prompt: 'select_account',
             include_granted_scopes: 'true',
           },
         },

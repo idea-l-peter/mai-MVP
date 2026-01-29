@@ -36,21 +36,20 @@ interface GoogleWorkspaceCardProps {
   onUpdatePermissions: () => void;
 }
 
-// Required scopes for each feature
+// Required scopes for each feature - matching readonly scopes
 const REQUIRED_SCOPES = {
   calendar: [
-    "https://www.googleapis.com/auth/calendar",
     "https://www.googleapis.com/auth/calendar.readonly",
-    "https://www.googleapis.com/auth/calendar.events",
+    "https://www.googleapis.com/auth/calendar",
   ],
   gmail: [
-    "https://www.googleapis.com/auth/gmail.modify",
     "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.modify",
     "https://www.googleapis.com/auth/gmail.send",
   ],
   contacts: [
-    "https://www.googleapis.com/auth/contacts",
     "https://www.googleapis.com/auth/contacts.readonly",
+    "https://www.googleapis.com/auth/contacts",
   ],
 };
 
