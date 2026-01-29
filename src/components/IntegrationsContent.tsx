@@ -8,7 +8,6 @@ import { useGoogleIntegration } from "@/hooks/useGoogleIntegration";
 import { useMondayIntegration } from "@/hooks/useMondayIntegration";
 import { useIntegrationStatus } from "@/hooks/useIntegrationStatus";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
 import { DASHBOARD_QUERY_KEY, fetchDashboardData } from "@/hooks/useDashboardData";
 import mondayLogo from "@/assets/monday-logo.svg";
 
@@ -84,18 +83,8 @@ export function IntegrationsContent() {
     disconnect: disconnectMonday,
   } = useMondayIntegration();
 
+  // NOTE: Auth state listener is centralized in App.tsx (AuthStateListener)
   // NOTE: Google OAuth code handling is consolidated in useGoogleTokenCapture.ts
-
-  // Listen for Auth State Changes - invalidate React Query cache
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
-        invalidateIntegrations();
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [invalidateIntegrations]);
 
   // Clear any stale disconnect-in-progress flag on page load
   useEffect(() => {
@@ -105,16 +94,6 @@ export function IntegrationsContent() {
       // ignore
     }
   }, []);
-
-  // Listen for the custom event when Google tokens are stored
-  useEffect(() => {
-    const handleGoogleConnected = () => {
-      invalidateIntegrations();
-    };
-
-    window.addEventListener('google-integration-connected', handleGoogleConnected);
-    return () => window.removeEventListener('google-integration-connected', handleGoogleConnected);
-  }, [invalidateIntegrations]);
 
   // Handle legacy URL params (no need to manually refresh - React Query handles it)
   useEffect(() => {

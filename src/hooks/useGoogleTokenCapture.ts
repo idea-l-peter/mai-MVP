@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 
@@ -7,7 +7,11 @@ import { toast } from '@/hooks/use-toast';
  * This MUST run at the app level (App.tsx) to catch the code/token before
  * other components try to process it.
  * 
- * This is the ONLY place that handles Google OAuth code exchange.
+ * This hook ONLY handles:
+ * 1. URL ?code= parameter capture and exchange
+ * 2. Provider token storage to database
+ * 
+ * Auth state management is handled by the centralized AuthStateListener in App.tsx.
  */
 
 const SUPABASE_AUTH_KEY = 'sb-vqunxhjgpdgpzkjescvb-auth-token';
@@ -25,7 +29,7 @@ const GOOGLE_WORKSPACE_SCOPES = [
 ];
 
 // ============================================================
-// STORE TOKENS FUNCTION - Defined at module level to avoid hoisting issues
+// STORE TOKENS FUNCTION - Defined at module level
 // ============================================================
 async function storeTokens(providerToken: string, providerRefreshToken: string | null): Promise<void> {
   // Check if we already captured this token recently (within 30 seconds)
@@ -93,7 +97,7 @@ async function storeTokens(providerToken: string, providerRefreshToken: string |
       description: `Successfully connected as ${response.data.provider_email}` 
     });
 
-    // Dispatch event so IntegrationsContent can refresh
+    // Dispatch event - AuthStateListener in App.tsx will handle query invalidation
     window.dispatchEvent(new CustomEvent('google-integration-connected'));
   } catch (e) {
     console.error('[GoogleTokenCapture] Unexpected error:', e);
@@ -113,88 +117,72 @@ export function useGoogleTokenCapture() {
     const urlParams = new URLSearchParams(window.location.search);
     const code = urlParams.get('code');
 
-    if (code) {
-      // IMMEDIATELY clean the URL before doing anything else
-      window.history.replaceState({}, '', window.location.pathname);
-      
-      // Check if we already processed this code
-      const processedCode = sessionStorage.getItem(CODE_PROCESSED_KEY);
-      if (processedCode === code) {
+    if (!code) {
+      // No code to process - session management is handled by AuthStateListener
+      return;
+    }
+
+    // IMMEDIATELY clean the URL before doing anything else
+    window.history.replaceState({}, '', window.location.pathname);
+    
+    // Check if we already processed this code
+    const processedCode = sessionStorage.getItem(CODE_PROCESSED_KEY);
+    if (processedCode === code) {
+      return;
+    }
+    
+    // Mark code as being processed
+    sessionStorage.setItem(CODE_PROCESSED_KEY, code);
+
+    // Process the code
+    const processCode = async () => {
+      if (captureInProgressRef.current) {
         return;
       }
-      
-      // Mark code as being processed
-      sessionStorage.setItem(CODE_PROCESSED_KEY, code);
+      captureInProgressRef.current = true;
 
-      // Process the code
-      const processCode = async () => {
-        if (captureInProgressRef.current) {
-          return;
-        }
-        captureInProgressRef.current = true;
+      try {
+        const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
-        try {
-          const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-
-          if (error) {
-            console.error('[GoogleTokenCapture] exchangeCodeForSession error:', error);
-            toast({ 
-              title: "Google connection failed", 
-              description: error.message, 
-              variant: "destructive" 
-            });
-            sessionStorage.removeItem(CODE_PROCESSED_KEY);
-            return;
-          }
-
-          const providerToken = data.session?.provider_token;
-          const providerRefreshToken = data.session?.provider_refresh_token;
-
-          if (!providerToken) {
-            console.error('[GoogleTokenCapture] No provider_token in session after exchange');
-            toast({ 
-              title: "Connection Failed", 
-              description: "Could not retrieve Google token after login.", 
-              variant: "destructive" 
-            });
-            return;
-          }
-
-          // Store tokens server-side
-          await storeTokens(providerToken, providerRefreshToken ?? null);
-        } catch (e) {
-          console.error('[GoogleTokenCapture] Unexpected error processing code:', e);
+        if (error) {
+          console.error('[GoogleTokenCapture] exchangeCodeForSession error:', error);
           toast({ 
-            title: "Connection failed", 
-            description: "An unexpected error occurred", 
+            title: "Google connection failed", 
+            description: error.message, 
             variant: "destructive" 
           });
           sessionStorage.removeItem(CODE_PROCESSED_KEY);
-        } finally {
-          captureInProgressRef.current = false;
+          return;
         }
-      };
 
-      void processCode();
-      return; // Don't set up other listeners if we're processing a code
-    }
+        const providerToken = data.session?.provider_token;
+        const providerRefreshToken = data.session?.provider_refresh_token;
 
-    // Set up auth state listener for token capture
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        // Capture provider_token when it appears in SIGNED_IN event
-        if (event === 'SIGNED_IN' && session?.provider_token && session.user?.id) {
-          if (!captureInProgressRef.current) {
-            captureInProgressRef.current = true;
-            await storeTokens(session.provider_token, session.provider_refresh_token ?? null);
-            captureInProgressRef.current = false;
-          }
+        if (!providerToken) {
+          console.error('[GoogleTokenCapture] No provider_token in session after exchange');
+          toast({ 
+            title: "Connection Failed", 
+            description: "Could not retrieve Google token after login.", 
+            variant: "destructive" 
+          });
+          return;
         }
+
+        // Store tokens server-side
+        await storeTokens(providerToken, providerRefreshToken ?? null);
+      } catch (e) {
+        console.error('[GoogleTokenCapture] Unexpected error processing code:', e);
+        toast({ 
+          title: "Connection failed", 
+          description: "An unexpected error occurred", 
+          variant: "destructive" 
+        });
+        sessionStorage.removeItem(CODE_PROCESSED_KEY);
+      } finally {
+        captureInProgressRef.current = false;
       }
-    );
-
-    return () => {
-      subscription.unsubscribe();
     };
+
+    void processCode();
   }, []);
 }
