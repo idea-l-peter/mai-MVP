@@ -115,6 +115,36 @@ async function sendWhatsAppReply(phoneNumber: string, message: string): Promise<
   }
 }
 
+// Sanitize AI response to remove any internal processing noise
+function sanitizeResponse(content: string): string {
+  // Remove any bracket-wrapped status messages the LLM might have generated
+  const patterns = [
+    /\[EXECUTING[^\]]*\]/gi,
+    /\[TOOL[^\]]*\]/gi,
+    /\[STATUS[^\]]*\]/gi,
+    /\[BRIEFING[^\]]*\]/gi,
+    /\[NEXT STEP[^\]]*\]/gi,
+    /\[ACTION[^\]]*\]/gi,
+    /\[PROCESSING[^\]]*\]/gi,
+    /\[CALLING[^\]]*\]/gi,
+    /\[SEARCHING[^\]]*\]/gi,
+    /\[FETCHING[^\]]*\]/gi,
+    /\[RETRIEVING[^\]]*\]/gi,
+    /\[QUERYING[^\]]*\]/gi,
+    /---+/g, // Remove divider lines
+  ];
+  
+  let cleaned = content;
+  for (const pattern of patterns) {
+    cleaned = cleaned.replace(pattern, '');
+  }
+  
+  // Clean up extra whitespace/newlines
+  cleaned = cleaned.replace(/\n{3,}/g, '\n\n').trim();
+  
+  return cleaned;
+}
+
 // Call the AI assistant and get a response with conversation context
 async function callAIAssistant(
   userMessage: string,
@@ -129,24 +159,25 @@ async function callAIAssistant(
         role: 'system',
         content: `You are MAI, an executive AI assistant responding via WhatsApp.
 
-COMMUNICATION STYLE:
-- Professional, concise, and executive-level tone
-- ABSOLUTELY NO EMOJIS in any response
-- Use clear, structured formatting suitable for mobile
+RESPONSE FORMAT - CRITICAL:
+- Respond in plain, natural text ONLY
+- STRICTLY FORBIDDEN: Square brackets [ ], pipe characters |, markers like STATUS:, BRIEFING:, NEXT STEP:
+- STRICTLY FORBIDDEN: Announcing tool calls (no "I will check...", "Let me look...", "Executing...", "Searching...")
+- Never describe what you are doing internally - just do it and report results
+- Professional, concise, executive-level tone
+- ABSOLUTELY NO EMOJIS
 - Keep responses brief but complete
 
 ANTI-HALLUCINATION RULES:
 - NEVER invent or hallucinate data
-- If a tool returns an error or no data, tell the user: "I was unable to retrieve your data at this moment."
-- STRICTLY FORBIDDEN: Using placeholder names like "John Doe", "Jane Smith", or any made-up data
+- If a tool returns an error or no data, say: "I was unable to retrieve that data due to a technical issue."
+- STRICTLY FORBIDDEN: Placeholder names like "John Doe" or made-up data
 - Only report what tools actually returned
 
-SECURITY TIER AWARENESS:
-The conversation history below includes previous messages. When reviewing:
-1. If the user's previous message asked for confirmation and the current message is a positive response (yes, ok, go ahead, yalla), execute the pending action immediately.
-2. For Tier 3 actions, if the user's current message matches the required keyword (delete, send, archive), execute the action.
-3. For Tier 5 read-only actions (get emails, check calendar, view contacts), execute immediately without confirmation.
-4. For casual greetings (hello, hi, how are you), respond directly without asking "Should I proceed?"
+EXECUTION RULES:
+- For Tier 5 read-only actions (get emails, check calendar, view contacts), execute immediately without any preamble
+- For confirmations (yes, ok, go ahead, yalla), execute the pending action
+- For greetings, respond naturally without asking "Should I proceed?"
 
 Current time: ${new Date().toISOString()}`
       },
@@ -187,7 +218,8 @@ Current time: ${new Date().toISOString()}`
       return "I was unable to complete that action. Please rephrase your request.";
     }
     
-    return result.content;
+    // Sanitize response to remove any internal processing noise
+    return sanitizeResponse(result.content);
   } catch (error) {
     console.error('[WhatsApp Webhook] AI assistant call failed:', error);
     return "An error occurred while processing your request. Please try again.";
