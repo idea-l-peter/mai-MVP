@@ -93,9 +93,9 @@ export function useGoogleTokenCapture() {
         });
 
         if (error) {
-          console.error('[GoogleTokenCapture] Edge function error:', error);
+          console.error('[GoogleTokenCapture] Failed to save token to DB:', error);
         } else if (data?.success) {
-          console.log('[GoogleTokenCapture] *** TOKEN STORED SUCCESSFULLY ***', {
+          console.log('[GoogleTokenCapture] *** TOKEN SAVED TO DATABASE SUCCESSFULLY ***', {
             email: data.provider_email,
           });
 
@@ -105,7 +105,7 @@ export function useGoogleTokenCapture() {
           // Dispatch event so IntegrationsContent can refresh
           window.dispatchEvent(new CustomEvent('google-integration-connected'));
         } else {
-          console.error('[GoogleTokenCapture] Edge function returned error:', data?.error);
+          console.error('[GoogleTokenCapture] Failed to save token to DB - edge function returned error:', data?.error);
         }
       } catch (e) {
         console.error('[GoogleTokenCapture] Unexpected error:', e);

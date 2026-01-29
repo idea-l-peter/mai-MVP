@@ -167,8 +167,12 @@ export function IntegrationsContent() {
         });
 
         if (storeError || !storeData?.success) {
-          console.error("[TokenCapture] store-google-tokens error:", storeError || storeData?.error);
-          toast({ title: "Connection Issue", description: storeError?.message || storeData?.error || "Failed to store Google tokens", variant: "destructive" });
+          console.error("[TokenCapture] Failed to save token to DB:", storeError || storeData?.error);
+          toast({ 
+            title: "Connection failed: could not save credentials", 
+            description: storeError?.message || storeData?.error || "Database error while storing Google tokens. Please try again.", 
+            variant: "destructive" 
+          });
           return;
         }
 
