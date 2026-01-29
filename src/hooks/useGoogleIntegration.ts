@@ -73,14 +73,14 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
     return () => clearInterval(interval);
   }, []);
 
-  // Default scopes for full Google Workspace access
+  // Default scopes for full Google Workspace access (read + write)
   const DEFAULT_GOOGLE_SCOPES = [
     'openid',
     'email',
     'profile',
-    'https://www.googleapis.com/auth/calendar.readonly',
-    'https://www.googleapis.com/auth/gmail.readonly',
-    'https://www.googleapis.com/auth/contacts.readonly',
+    'https://www.googleapis.com/auth/calendar',           // Full calendar access
+    'https://www.googleapis.com/auth/gmail.modify',       // Read, send, delete, manage labels
+    'https://www.googleapis.com/auth/contacts.readonly',  // Read contacts
   ];
 
   const initiateOAuth = useCallback(async (provider: string, scopes?: string[]) => {

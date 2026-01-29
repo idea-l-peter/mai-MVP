@@ -405,6 +405,23 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 {
   type: "function",
   function: {
+    name: "get_email_detail",
+    description: "Get full details of a specific email including the complete body text. Use this when the user asks to see the full content, body, or details of an email. First use get_emails to find the message ID, then use this to get the full body.",
+    parameters: {
+      type: "object",
+      properties: {
+        message_id: {
+          type: "string",
+          description: "The Gmail message ID obtained from get_emails",
+        },
+      },
+      required: ["message_id"],
+    },
+  },
+},
+{
+  type: "function",
+  function: {
     name: "send_email",
     description: "Send an email from the user's Gmail account. Use this when the user wants to compose, send, or email someone. The email will include the user's Gmail signature automatically.",
     parameters: {
@@ -2903,6 +2920,135 @@ async function getEmails(
   }
 }
 
+// ============= Get Email Detail (Full Body) =============
+
+interface EmailDetail {
+  id: string;
+  threadId: string;
+  from: string;
+  to: string;
+  cc?: string;
+  subject: string;
+  date: string;
+  body: string;
+  labels: string[];
+}
+
+interface GetEmailDetailResult {
+  success: boolean;
+  email?: EmailDetail;
+  error?: string;
+}
+
+async function getEmailDetail(
+  userId: string,
+  args: { message_id: string }
+): Promise<GetEmailDetailResult> {
+  console.log(`[Gmail Tool] Fetching full email detail for message: ${args.message_id}`);
+
+  const accessToken = await getValidToken(userId, "google");
+  if (!accessToken) {
+    return { 
+      success: false, 
+      error: "Google Workspace is not connected or your token has expired. Please go to Integrations and reconnect your Google account." 
+    };
+  }
+
+  try {
+    // Fetch full message with body
+    const msgUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages/${args.message_id}?format=full`;
+
+    const response = await fetch(msgUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[Gmail Tool] Get email detail error: ${response.status} - ${errorText}`);
+      
+      if (response.status === 404) {
+        return { success: false, error: "Email not found. It may have been deleted." };
+      }
+      if (response.status === 401) {
+        return { success: false, error: "Gmail token expired. Please reconnect Google in Integrations." };
+      }
+      return { success: false, error: `Failed to fetch email: ${response.status}` };
+    }
+
+    const msgData = await response.json();
+    const headers = msgData.payload?.headers || [];
+
+    const getHeader = (name: string): string => {
+      const h = headers.find((h: { name: string; value: string }) => 
+        h.name.toLowerCase() === name.toLowerCase()
+      );
+      return h?.value || "";
+    };
+
+    // Extract body from payload
+    let body = "";
+    
+    // Helper to decode base64url
+    const decodeBase64Url = (str: string): string => {
+      try {
+        const base64 = str.replace(/-/g, "+").replace(/_/g, "/");
+        const padded = base64.padEnd(base64.length + (4 - base64.length % 4) % 4, "=");
+        return atob(padded);
+      } catch {
+        return "[Unable to decode email body]";
+      }
+    };
+
+    // Try to get plain text body first, then HTML
+    const findBody = (part: { mimeType?: string; body?: { data?: string }; parts?: unknown[] }): string => {
+      if (part.mimeType === "text/plain" && part.body?.data) {
+        return decodeBase64Url(part.body.data);
+      }
+      if (part.parts) {
+        for (const subPart of part.parts) {
+          const result = findBody(subPart as typeof part);
+          if (result) return result;
+        }
+      }
+      // Fallback to HTML if no plain text
+      if (part.mimeType === "text/html" && part.body?.data) {
+        const html = decodeBase64Url(part.body.data);
+        // Strip HTML tags for readability
+        return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+      }
+      return "";
+    };
+
+    if (msgData.payload?.body?.data) {
+      body = decodeBase64Url(msgData.payload.body.data);
+    } else if (msgData.payload?.parts) {
+      body = findBody(msgData.payload);
+    }
+
+    if (!body) {
+      body = msgData.snippet || "[No body content available]";
+    }
+
+    const email: EmailDetail = {
+      id: msgData.id,
+      threadId: msgData.threadId,
+      from: getHeader("From"),
+      to: getHeader("To"),
+      cc: getHeader("Cc") || undefined,
+      subject: getHeader("Subject"),
+      date: getHeader("Date"),
+      body: body,
+      labels: msgData.labelIds || [],
+    };
+
+    console.log(`[Gmail Tool] Retrieved full email: ${email.subject?.substring(0, 50)}`);
+    return { success: true, email };
+  } catch (error) {
+    console.error(`[Gmail Tool] Get email detail error:`, error);
+    return { success: false, error: "Failed to fetch email details" };
+  }
+}
+
 interface SendEmailArgs {
   to: string;
   subject: string;
@@ -3923,6 +4069,10 @@ export async function executeTool(
       
       case "get_emails":
         result = await getEmails(userId, args);
+        break;
+      
+      case "get_email_detail":
+        result = await getEmailDetail(userId, args);
         break;
       
       case "send_email":

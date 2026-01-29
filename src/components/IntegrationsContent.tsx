@@ -13,15 +13,14 @@ import mondayLogo from "@/assets/monday-logo.svg";
 
 type IntegrationStatus = "connected" | "not_connected" | "pending";
 
-// All-in-One Google Workspace scopes - readonly for initial connection
-// These are the minimum scopes needed for MAI to read Calendar, Gmail, and Contacts
+// All-in-One Google Workspace scopes - read + write for full assistant functionality
 const GOOGLE_WORKSPACE_SCOPES = [
   "openid",
   "email",
   "profile",
-  "https://www.googleapis.com/auth/calendar.readonly",
-  "https://www.googleapis.com/auth/gmail.readonly",
-  "https://www.googleapis.com/auth/contacts.readonly",
+  "https://www.googleapis.com/auth/calendar",           // Full calendar access
+  "https://www.googleapis.com/auth/gmail.modify",       // Read, send, delete, manage labels
+  "https://www.googleapis.com/auth/contacts.readonly",  // Read contacts
 ];
 
 interface IntegrationConfig {
