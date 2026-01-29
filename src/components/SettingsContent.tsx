@@ -12,6 +12,7 @@ import { Loader2, RefreshCw, Shield, Smile } from "lucide-react";
 import { HolidayPreferencesCard } from "@/components/settings/HolidayPreferencesCard";
 import { ActionSecurityCard } from "@/components/settings/ActionSecurityCard";
 import { AppearanceCard } from "@/components/settings/AppearanceCard";
+import { WhatsAppConnectionCard } from "@/components/settings/WhatsAppConnectionCard";
 import type { SecurityTier } from "@/lib/security-tiers";
 
 const PHRASE_OPTIONS = [
@@ -244,6 +245,9 @@ export function SettingsContent() {
 
   return (
     <div className="space-y-6 max-w-4xl">
+      {/* WhatsApp Connection Card */}
+      <WhatsAppConnectionCard />
+
       {/* Appearance Card */}
       <AppearanceCard />
 

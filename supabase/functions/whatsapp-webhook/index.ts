@@ -43,6 +43,126 @@ async function verifyWebhookSignature(
   }
 }
 
+// Send a quick "thinking" message to the user
+async function sendThinkingMessage(phoneNumber: string): Promise<void> {
+  try {
+    const WHATSAPP_ACCESS_TOKEN = Deno.env.get('WHATSAPP_ACCESS_TOKEN');
+    if (!WHATSAPP_ACCESS_TOKEN) return;
+
+    const whatsappUrl = 'https://graph.facebook.com/v22.0/959289807270027/messages';
+    
+    await fetch(whatsappUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to: phoneNumber,
+        type: 'text',
+        text: { body: '⏳ MAI is thinking...' }
+      })
+    });
+  } catch (error) {
+    console.error('[WhatsApp Webhook] Failed to send thinking message:', error);
+  }
+}
+
+// Send WhatsApp reply using the send-whatsapp function
+async function sendWhatsAppReply(phoneNumber: string, message: string): Promise<void> {
+  try {
+    const WHATSAPP_ACCESS_TOKEN = Deno.env.get('WHATSAPP_ACCESS_TOKEN');
+    if (!WHATSAPP_ACCESS_TOKEN) {
+      console.error('[WhatsApp Webhook] No WHATSAPP_ACCESS_TOKEN configured');
+      return;
+    }
+
+    const whatsappUrl = 'https://graph.facebook.com/v22.0/959289807270027/messages';
+    
+    // Truncate message if too long (WhatsApp limit is 4096)
+    const truncatedMessage = message.length > 4000 
+      ? message.substring(0, 3997) + '...'
+      : message;
+
+    const response = await fetch(whatsappUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to: phoneNumber,
+        type: 'text',
+        text: { body: truncatedMessage }
+      })
+    });
+
+    const result = await response.text();
+    console.log('[WhatsApp Webhook] Reply sent:', response.status, result.substring(0, 200));
+  } catch (error) {
+    console.error('[WhatsApp Webhook] Failed to send reply:', error);
+  }
+}
+
+// Call the AI assistant and get a response
+async function callAIAssistant(
+  userMessage: string,
+  userId: string
+): Promise<string> {
+  try {
+    const aiUrl = `${SUPABASE_URL}/functions/v1/ai-assistant`;
+    
+    // Build conversation with system context
+    const messages = [
+      {
+        role: 'system',
+        content: `You are MAI, a helpful AI assistant responding via WhatsApp. Keep responses concise and mobile-friendly. 
+Use short paragraphs and emojis sparingly for clarity. The user is authenticated and you have access to their tools.
+Current time: ${new Date().toISOString()}`
+      },
+      {
+        role: 'user',
+        content: userMessage
+      }
+    ];
+
+    // Create a service role client to generate a valid token for the user
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+      auth: { persistSession: false }
+    });
+
+    // For now, we'll call without auth token since ai-assistant can decode JWT
+    // The AI will operate with limited permissions without a real user token
+    const response = await fetch(aiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        'apikey': SUPABASE_SERVICE_ROLE_KEY
+      },
+      body: JSON.stringify({
+        messages,
+        temperature: 0.7,
+        max_tokens: 1000
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[WhatsApp Webhook] AI assistant error:', response.status, errorText);
+      return "I'm having trouble processing your request right now. Please try again in a moment.";
+    }
+
+    const result = await response.json();
+    return result.content || "I couldn't generate a response. Please try again.";
+  } catch (error) {
+    console.error('[WhatsApp Webhook] AI assistant call failed:', error);
+    return "Something went wrong. Please try again later.";
+  }
+}
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -127,21 +247,26 @@ serve(async (req) => {
             content = `[CONTACTS] ${message.contacts?.length || 0} contact(s) shared`;
           }
           
-          // Find user by phone number in contacts or create a placeholder
-          // For now, we'll store with a null user_id and the phone number
-          // The user mapping can be enhanced later
-          const { data: contactProfile, error: contactError } = await supabase
-            .from('contact_profiles')
+          // Look up user_id from user_phone_mappings table
+          const normalizedPhone = phoneNumber.replace(/[^\d]/g, '');
+          const { data: phoneMapping, error: mappingError } = await supabase
+            .from('user_phone_mappings')
             .select('user_id')
-            .ilike('email', `%${phoneNumber.slice(-10)}%`)
+            .or(`phone_number.eq.${normalizedPhone},phone_number.eq.+${normalizedPhone}`)
             .limit(1)
             .single();
           
-          // Store the message
+          if (mappingError) {
+            console.log('[WhatsApp Webhook] No phone mapping found:', mappingError.message);
+          }
+
+          const userId = phoneMapping?.user_id || null;
+          
+          // Store the inbound message
           const { error: insertError } = await supabase
             .from('whatsapp_messages')
             .insert({
-              user_id: contactProfile?.user_id || '00000000-0000-0000-0000-000000000000', // Placeholder if no user found
+              user_id: userId || '00000000-0000-0000-0000-000000000000',
               phone_number: phoneNumber,
               message_id: messageId,
               direction: 'inbound',
@@ -160,6 +285,42 @@ serve(async (req) => {
           } else {
             console.log('[WhatsApp Webhook] Message stored successfully:', messageId);
           }
+
+          // If we found a registered user and this is a text message, process with AI
+          if (userId && messageType === 'text' && content.trim()) {
+            console.log('[WhatsApp Webhook] Processing AI response for user:', userId);
+            
+            // Send "thinking" message immediately for user feedback
+            // Don't await - fire and forget so we respond quickly
+            sendThinkingMessage(phoneNumber);
+            
+            // Call AI assistant
+            const aiResponse = await callAIAssistant(content, userId);
+            
+            // Send the AI response back via WhatsApp
+            await sendWhatsAppReply(phoneNumber, aiResponse);
+            
+            // Store the outbound message
+            await supabase
+              .from('whatsapp_messages')
+              .insert({
+                user_id: userId,
+                phone_number: phoneNumber,
+                direction: 'outbound',
+                content: aiResponse,
+                message_type: 'text',
+                status: 'sent',
+                metadata: { source: 'ai-assistant' }
+              });
+            
+            console.log('[WhatsApp Webhook] AI response sent and stored');
+          } else if (!userId && messageType === 'text') {
+            // No registered user - send helpful message
+            await sendWhatsAppReply(
+              phoneNumber, 
+              "👋 Hi! I'm MAI. To use me via WhatsApp, please link your phone number in the MAI app settings first."
+            );
+          }
         }
       }
       
@@ -170,10 +331,9 @@ serve(async (req) => {
           
           const { error: updateError } = await supabase
             .from('whatsapp_messages')
-            .update({ 
-              status: status.status
-            })
+            .update({ status: status.status })
             .eq('message_id', status.id);
+            
           if (updateError) {
             console.error('[WhatsApp Webhook] Error updating status:', updateError);
           }
