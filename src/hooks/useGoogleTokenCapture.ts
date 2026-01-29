@@ -1,38 +1,128 @@
 import { useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { toast } from '@/hooks/use-toast';
 
 /**
- * Global hook to capture Google OAuth provider_token immediately when it appears
- * in the auth session. This MUST run at the app level (App.tsx) to catch the token
- * before Supabase consumes it.
+ * Global hook to capture Google OAuth authorization code and provider_token.
+ * This MUST run at the app level (App.tsx) to catch the code/token before
+ * other components try to process it.
  * 
- * The provider_token is only available briefly after OAuth redirect in the
- * SIGNED_IN event. We capture it immediately and:
- * 1. Store it in localStorage for client-side access
- * 2. Send it to the edge function for encrypted server-side storage
+ * This is the ONLY place that handles Google OAuth code exchange.
  */
 
 const SUPABASE_AUTH_KEY = 'sb-vqunxhjgpdgpzkjescvb-auth-token';
 const TOKEN_CAPTURED_KEY = 'google_provider_token_captured';
+const CODE_PROCESSED_KEY = 'google_oauth_code_processed';
+
+// Full Google Workspace scopes
+const GOOGLE_WORKSPACE_SCOPES = [
+  "https://www.googleapis.com/auth/calendar",
+  "https://www.googleapis.com/auth/gmail.modify",
+  "https://www.googleapis.com/auth/contacts",
+  "https://www.googleapis.com/auth/contacts.readonly",
+  "https://www.googleapis.com/auth/userinfo.email",
+  "https://www.googleapis.com/auth/userinfo.profile",
+];
 
 export function useGoogleTokenCapture() {
   const captureInProgressRef = useRef(false);
 
   useEffect(() => {
-    console.log('[GoogleTokenCapture] Setting up auth state listener');
+    console.log('[GoogleTokenCapture] Hook initialized');
 
-    const captureAndStore = async (args: {
-      providerToken: string;
-      providerRefreshToken: string | null;
-      userId: string;
-      source: string;
-    }) => {
-      // Prevent duplicate processing
-      if (captureInProgressRef.current) {
-        console.log('[GoogleTokenCapture] Capture already in progress, skipping');
+    // ============================================================
+    // STEP 1: Immediately check for OAuth code in URL and clean it
+    // ============================================================
+    const urlParams = new URLSearchParams(window.location.search);
+    const code = urlParams.get('code');
+    
+    console.log('==============================================');
+    console.log('[GoogleTokenCapture] PAGE LOADED - Checking for OAuth code...');
+    console.log('[GoogleTokenCapture] URL:', window.location.href);
+    console.log('[GoogleTokenCapture] Code found:', !!code, code?.substring(0, 20) + '...');
+    console.log('==============================================');
+
+    if (code) {
+      // Check if we already processed this code
+      const processedCode = sessionStorage.getItem(CODE_PROCESSED_KEY);
+      if (processedCode === code) {
+        console.log('[GoogleTokenCapture] Code already processed, skipping');
+        // Still clean the URL
+        window.history.replaceState({}, '', window.location.pathname);
         return;
       }
 
+      // IMMEDIATELY clean the URL before doing anything else
+      console.log('[GoogleTokenCapture] *** CLEANING URL IMMEDIATELY ***');
+      window.history.replaceState({}, '', window.location.pathname);
+      
+      // Mark code as being processed
+      sessionStorage.setItem(CODE_PROCESSED_KEY, code);
+
+      // Process the code
+      const processCode = async () => {
+        if (captureInProgressRef.current) {
+          console.log('[GoogleTokenCapture] Capture already in progress, skipping');
+          return;
+        }
+        captureInProgressRef.current = true;
+
+        try {
+          console.log('[GoogleTokenCapture] *** EXCHANGING CODE FOR SESSION ***');
+          const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+
+          if (error) {
+            console.error('[GoogleTokenCapture] exchangeCodeForSession error:', error);
+            toast({ 
+              title: "Google connection failed", 
+              description: error.message, 
+              variant: "destructive" 
+            });
+            sessionStorage.removeItem(CODE_PROCESSED_KEY);
+            return;
+          }
+
+          console.log('[GoogleTokenCapture] exchangeCodeForSession SUCCESS!');
+          console.log('[GoogleTokenCapture] Session user:', data.session?.user?.email);
+          console.log('[GoogleTokenCapture] Has provider_token:', !!data.session?.provider_token);
+          console.log('[GoogleTokenCapture] Provider token length:', data.session?.provider_token?.length);
+
+          const providerToken = data.session?.provider_token;
+          const providerRefreshToken = data.session?.provider_refresh_token;
+
+          if (!providerToken) {
+            console.error('[GoogleTokenCapture] No provider_token in session after exchange!');
+            toast({ 
+              title: "Connection Failed", 
+              description: "Could not retrieve Google token after login.", 
+              variant: "destructive" 
+            });
+            return;
+          }
+
+          // Store tokens server-side
+          await storeTokens(providerToken, providerRefreshToken);
+        } catch (e) {
+          console.error('[GoogleTokenCapture] Unexpected error processing code:', e);
+          toast({ 
+            title: "Connection failed", 
+            description: "An unexpected error occurred", 
+            variant: "destructive" 
+          });
+          sessionStorage.removeItem(CODE_PROCESSED_KEY);
+        } finally {
+          captureInProgressRef.current = false;
+        }
+      };
+
+      void processCode();
+      return; // Don't set up other listeners if we're processing a code
+    }
+
+    // ============================================================
+    // STEP 2: Set up auth state listener for token capture
+    // ============================================================
+    const storeTokens = async (providerToken: string, providerRefreshToken: string | null) => {
       // Check if we already captured this token recently (within 30 seconds)
       const lastCaptured = sessionStorage.getItem(TOKEN_CAPTURED_KEY);
       if (lastCaptured) {
@@ -43,74 +133,98 @@ export function useGoogleTokenCapture() {
         }
       }
 
-      captureInProgressRef.current = true;
-      console.log('[GoogleTokenCapture] *** CAPTURING PROVIDER TOKEN ***', {
-        source: args.source,
-        providerTokenLength: args.providerToken.length,
-        hasRefreshToken: !!args.providerRefreshToken,
-      });
+      console.log('[GoogleTokenCapture] *** STORING TOKENS ***');
+      console.log('[GoogleTokenCapture] Token length:', providerToken.length);
+      console.log('[GoogleTokenCapture] Has refresh token:', !!providerRefreshToken);
 
       try {
-        // Step 1: Immediately persist to localStorage for client-side access
+        // Persist to localStorage for client-side access
         try {
           const authData = localStorage.getItem(SUPABASE_AUTH_KEY);
           if (authData) {
             const parsed = JSON.parse(authData);
-            console.log('[GoogleTokenCapture] localStorage auth token snapshot', {
-              has_provider_token: !!parsed?.provider_token,
-              has_provider_refresh_token: !!parsed?.provider_refresh_token,
-              keys: parsed ? Object.keys(parsed) : [],
-            });
-
-            // Ensure the token is in localStorage
             if (!parsed.provider_token) {
-              parsed.provider_token = args.providerToken;
-              if (args.providerRefreshToken) {
-                parsed.provider_refresh_token = args.providerRefreshToken;
+              parsed.provider_token = providerToken;
+              if (providerRefreshToken) {
+                parsed.provider_refresh_token = providerRefreshToken;
               }
               localStorage.setItem(SUPABASE_AUTH_KEY, JSON.stringify(parsed));
               console.log('[GoogleTokenCapture] Token persisted to localStorage');
             }
-          } else {
-            console.log('[GoogleTokenCapture] No localStorage auth key found:', SUPABASE_AUTH_KEY);
           }
         } catch (e) {
           console.error('[GoogleTokenCapture] Failed to persist to localStorage:', e);
         }
 
-        // Step 2: Store tokens server-side via edge function
-        // Note: We don't know what scopes were granted client-side. The edge function
-        // should determine this from the token or leave scopes as null/empty.
+        // Store tokens server-side via edge function
         console.log('[GoogleTokenCapture] Calling store-google-tokens edge function...');
 
-        const { data, error } = await supabase.functions.invoke('store-google-tokens', {
+        const response = await supabase.functions.invoke('store-google-tokens', {
           body: {
             provider: 'google',
-            provider_token: args.providerToken,
-            provider_refresh_token: args.providerRefreshToken,
-            // Don't hardcode scopes - let the edge function handle it or leave null
+            provider_token: providerToken,
+            provider_refresh_token: providerRefreshToken,
+            scopes: GOOGLE_WORKSPACE_SCOPES,
           },
         });
 
-        if (error) {
-          console.error('[GoogleTokenCapture] Failed to save token to DB:', error);
-        } else if (data?.success) {
-          console.log('[GoogleTokenCapture] *** TOKEN SAVED TO DATABASE SUCCESSFULLY ***', {
-            email: data.provider_email,
+        // Detailed error logging
+        console.log('[GoogleTokenCapture] Edge function response:', {
+          hasData: !!response.data,
+          hasError: !!response.error,
+          success: response.data?.success,
+          errorMessage: response.error?.message,
+          errorDetails: response.error,
+          dataError: response.data?.error,
+        });
+
+        if (response.error) {
+          console.error('[GoogleTokenCapture] *** EDGE FUNCTION ERROR ***');
+          console.error('[GoogleTokenCapture] Error status:', (response.error as { status?: number }).status);
+          console.error('[GoogleTokenCapture] Error message:', response.error.message);
+          console.error('[GoogleTokenCapture] Full error:', JSON.stringify(response.error, null, 2));
+          toast({ 
+            title: "Connection failed: could not save credentials", 
+            description: response.error.message || "Database error while storing Google tokens.", 
+            variant: "destructive" 
           });
-
-          // Mark as captured
-          sessionStorage.setItem(TOKEN_CAPTURED_KEY, Date.now().toString());
-
-          // Dispatch event so IntegrationsContent can refresh
-          window.dispatchEvent(new CustomEvent('google-integration-connected'));
-        } else {
-          console.error('[GoogleTokenCapture] Failed to save token to DB - edge function returned error:', data?.error);
+          return;
         }
+
+        if (!response.data?.success) {
+          console.error('[GoogleTokenCapture] *** EDGE FUNCTION RETURNED FAILURE ***');
+          console.error('[GoogleTokenCapture] Response data:', JSON.stringify(response.data, null, 2));
+          toast({ 
+            title: "Connection failed: could not save credentials", 
+            description: response.data?.error || "Unknown error while storing tokens.", 
+            variant: "destructive" 
+          });
+          return;
+        }
+
+        console.log('==============================================');
+        console.log('[GoogleTokenCapture] *** TOKEN SAVED TO DATABASE SUCCESSFULLY ***');
+        console.log('[GoogleTokenCapture] Provider email:', response.data.provider_email);
+        console.log('==============================================');
+
+        // Mark as captured
+        sessionStorage.setItem(TOKEN_CAPTURED_KEY, Date.now().toString());
+
+        toast({ 
+          title: "Google Connected!", 
+          description: `Successfully connected as ${response.data.provider_email}` 
+        });
+
+        // Dispatch event so IntegrationsContent can refresh
+        window.dispatchEvent(new CustomEvent('google-integration-connected'));
       } catch (e) {
-        console.error('[GoogleTokenCapture] Unexpected error:', e);
-      } finally {
-        captureInProgressRef.current = false;
+        console.error('[GoogleTokenCapture] *** UNEXPECTED ERROR ***');
+        console.error('[GoogleTokenCapture] Error:', e);
+        toast({ 
+          title: "Connection failed", 
+          description: "An unexpected error occurred while saving credentials.", 
+          variant: "destructive" 
+        });
       }
     };
 
@@ -123,70 +237,16 @@ export function useGoogleTokenCapture() {
           hasRefreshToken: !!session?.provider_refresh_token,
         });
 
-        // The provider_token is only present for OAuth sign-ins (and may not always
-        // be present even if the user is signed in). We capture when we see it.
+        // Capture provider_token when it appears in SIGNED_IN event
         if (event === 'SIGNED_IN' && session?.provider_token && session.user?.id) {
-          await captureAndStore({
-            providerToken: session.provider_token,
-            providerRefreshToken: session.provider_refresh_token ?? null,
-            userId: session.user.id,
-            source: 'onAuthStateChange:SIGNED_IN',
-          });
+          if (!captureInProgressRef.current) {
+            captureInProgressRef.current = true;
+            await storeTokens(session.provider_token, session.provider_refresh_token ?? null);
+            captureInProgressRef.current = false;
+          }
         }
       }
     );
-
-    // Fallback: on initial load, the SIGNED_IN event may have already happened.
-    // Attempt to capture from the hydrated session or localStorage.
-    (async () => {
-      try {
-        const { data, error } = await supabase.auth.getSession();
-        console.log('[GoogleTokenCapture] Initial getSession()', {
-          hasSession: !!data?.session,
-          hasProviderToken: !!data?.session?.provider_token,
-          providerTokenLength: data?.session?.provider_token?.length,
-          error: error?.message,
-        });
-
-        const session = data?.session;
-        if (session?.provider_token && session.user?.id) {
-          await captureAndStore({
-            providerToken: session.provider_token,
-            providerRefreshToken: session.provider_refresh_token ?? null,
-            userId: session.user.id,
-            source: 'getSession()',
-          });
-          return;
-        }
-
-        // last resort: parse localStorage directly (some environments hydrate later)
-        const raw = localStorage.getItem(SUPABASE_AUTH_KEY);
-        if (!raw) {
-          console.log('[GoogleTokenCapture] No localStorage auth token found during fallback');
-          return;
-        }
-
-        const parsed = JSON.parse(raw);
-        console.log('[GoogleTokenCapture] Fallback localStorage parse', {
-          has_provider_token: !!parsed?.provider_token,
-          provider_token_length: parsed?.provider_token?.length,
-          has_provider_refresh_token: !!parsed?.provider_refresh_token,
-          keys: parsed ? Object.keys(parsed) : [],
-        });
-
-        // We still need a user id to store server-side; if session is missing, we can't.
-        if (parsed?.provider_token && session?.user?.id) {
-          await captureAndStore({
-            providerToken: parsed.provider_token,
-            providerRefreshToken: parsed.provider_refresh_token ?? null,
-            userId: session.user.id,
-            source: 'localStorage+session.user',
-          });
-        }
-      } catch (e) {
-        console.error('[GoogleTokenCapture] Initial capture fallback failed:', e);
-      }
-    })();
 
     return () => {
       console.log('[GoogleTokenCapture] Cleaning up auth listener');
