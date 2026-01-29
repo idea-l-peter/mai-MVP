@@ -47,6 +47,24 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
             console.error('[GoogleOAuth] Token refresh failed:', error);
           } else {
             console.log('[GoogleOAuth] Token refreshed successfully');
+            
+            // After refresh, store the new tokens to the database
+            if (session.provider_token) {
+              console.log('[GoogleOAuth] Storing refreshed token to database...');
+              const { data, error: storeError } = await supabase.functions.invoke('store-google-tokens', {
+                body: {
+                  provider: 'google',
+                  provider_token: session.provider_token,
+                  provider_refresh_token: session.provider_refresh_token,
+                },
+              });
+              
+              if (storeError) {
+                console.error('[GoogleOAuth] Failed to store refreshed token:', storeError);
+              } else if (data?.success) {
+                console.log('[GoogleOAuth] Refreshed token stored successfully');
+              }
+            }
           }
         }
       } catch (err) {
@@ -130,6 +148,7 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
     setIsDisconnecting(true);
     
     try {
+      console.log('[GoogleOAuth] Disconnecting provider:', provider);
       const { data, error } = await supabase.functions.invoke('disconnect-integration', {
         body: { provider },
       });
@@ -137,6 +156,7 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
       if (error) throw error;
       if (data.error) throw new Error(data.error);
 
+      console.log('[GoogleOAuth] Disconnected successfully');
       toast({
         title: 'Disconnected',
         description: `Successfully disconnected from ${provider}`,
@@ -144,7 +164,7 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
 
       return true;
     } catch (error) {
-      console.error('Disconnect error:', error);
+      console.error('[GoogleOAuth] Disconnect error:', error);
       toast({
         title: 'Disconnect failed',
         description: error instanceof Error ? error.message : 'Failed to disconnect',
@@ -160,35 +180,48 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
+        console.log('[GoogleOAuth] getValidToken: User not authenticated');
         throw new Error('User not authenticated');
       }
 
+      console.log('[GoogleOAuth] Fetching valid token for provider:', provider);
       const { data, error } = await supabase.functions.invoke('get-valid-token', {
         body: { provider },
       });
 
       if (error) throw error;
       if (!data.connected) {
-        console.log('Integration not connected:', data.error);
+        console.log('[GoogleOAuth] Integration not connected:', data.error);
         return null;
       }
 
       if (data.refreshed) {
-        console.log('Token was automatically refreshed');
+        console.log('[GoogleOAuth] Token was automatically refreshed');
       }
 
+      console.log('[GoogleOAuth] Token retrieved successfully');
       return data.access_token;
     } catch (error) {
-      console.error('Get valid token error:', error);
+      console.error('[GoogleOAuth] Get valid token error:', error);
       return null;
     }
   }, []);
 
+  /**
+   * Check if user has a valid integration in the database.
+   * This queries user_integrations table to check if tokens exist.
+   */
   const checkConnection = useCallback(async (provider: string): Promise<Integration | null> => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return null;
+      if (!user) {
+        console.log('[GoogleOAuth] checkConnection: No user logged in');
+        return null;
+      }
 
+      console.log('[GoogleOAuth] Checking database for provider:', provider, 'user:', user.id.slice(0, 8));
+
+      // Query user_integrations table for this provider
       const { data, error } = await supabase
         .from('user_integrations')
         .select('provider, provider_email, token_expires_at, scopes')
@@ -196,15 +229,47 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
         .eq('provider', provider)
         .maybeSingle();
 
-      if (error) throw error;
-      if (!data) return null;
+      if (error) {
+        console.error('[GoogleOAuth] Database query error:', error);
+        throw error;
+      }
+
+      if (!data) {
+        console.log('[GoogleOAuth] No integration found in database for provider:', provider);
+        return null;
+      }
+
+      console.log('[GoogleOAuth] Integration found in database:', {
+        provider: data.provider,
+        email: data.provider_email,
+        hasScopes: !!data.scopes?.length,
+      });
+
+      // Also verify that encrypted tokens exist
+      const { data: tokenData, error: tokenError } = await supabase
+        .from('encrypted_integration_tokens')
+        .select('token_type')
+        .eq('user_id', user.id)
+        .eq('provider', provider);
+
+      if (tokenError) {
+        console.error('[GoogleOAuth] Token check error:', tokenError);
+      } else {
+        const tokenTypes = tokenData?.map(t => t.token_type) || [];
+        console.log('[GoogleOAuth] Token types found:', tokenTypes);
+        
+        if (!tokenTypes.includes('access_token')) {
+          console.log('[GoogleOAuth] No access_token found - integration incomplete');
+          return null;
+        }
+      }
 
       return {
         ...data,
         connected: true,
       };
     } catch (error) {
-      console.error('Check connection error:', error);
+      console.error('[GoogleOAuth] Check connection error:', error);
       return null;
     }
   }, []);

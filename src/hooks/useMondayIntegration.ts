@@ -91,11 +91,21 @@ export function useMondayIntegration() {
     }
   };
 
+  /**
+   * Check if user has a valid Monday.com integration in the database.
+   * Queries both user_integrations and encrypted_integration_tokens to verify connection.
+   */
   const checkConnection = async (): Promise<{ connected: boolean; provider_email?: string } | null> => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return null;
+      if (!user) {
+        console.log('[MondayOAuth] checkConnection: No user logged in');
+        return null;
+      }
 
+      console.log('[MondayOAuth] Checking database for user:', user.id.slice(0, 8));
+
+      // Query user_integrations table for monday provider
       const { data, error } = await supabase
         .from("user_integrations")
         .select("provider_email")
@@ -104,13 +114,40 @@ export function useMondayIntegration() {
         .maybeSingle();
 
       if (error) {
-        console.error("Error checking Monday connection:", error);
+        console.error("[MondayOAuth] Database query error:", error);
         return null;
       }
 
-      return data ? { connected: true, provider_email: data.provider_email || undefined } : { connected: false };
+      if (!data) {
+        console.log('[MondayOAuth] No integration found in database');
+        return { connected: false };
+      }
+
+      console.log('[MondayOAuth] Integration found in database:', { email: data.provider_email });
+
+      // Also verify that encrypted tokens exist
+      const { data: tokenData, error: tokenError } = await supabase
+        .from('encrypted_integration_tokens')
+        .select('token_type')
+        .eq('user_id', user.id)
+        .eq('provider', 'monday');
+
+      if (tokenError) {
+        console.error('[MondayOAuth] Token check error:', tokenError);
+      } else {
+        const tokenTypes = tokenData?.map(t => t.token_type) || [];
+        console.log('[MondayOAuth] Token types found:', tokenTypes);
+        
+        if (!tokenTypes.includes('access_token')) {
+          console.log('[MondayOAuth] No access_token found - integration incomplete');
+          return { connected: false };
+        }
+      }
+
+      console.log('[MondayOAuth] Token captured successfully - connection verified');
+      return { connected: true, provider_email: data.provider_email || undefined };
     } catch (error) {
-      console.error("Error checking Monday connection:", error);
+      console.error("[MondayOAuth] Error checking connection:", error);
       return null;
     }
   };
