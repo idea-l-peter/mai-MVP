@@ -18,33 +18,31 @@ export function WhatsAppIntegrationCard() {
 
   useEffect(() => {
     let isMounted = true;
-    
-    const checkWhatsAppStatus = async () => {
-      try {
-        // Prevent infinite "Checking..." if getSession hangs.
-        const result = await Promise.race([
-          supabase.auth.getSession(),
-          new Promise<never>((_, reject) =>
-            window.setTimeout(() => reject(new Error("session_timeout")), 4000)
-          ),
-        ]);
+    setIsChecking(true);
 
-        const session = (result as { data?: { session: unknown } })?.data?.session;
-        if (isMounted) setIsConnected(!!session);
+    const checkStatus = async () => {
+      try {
+        // A user must be logged in to use WhatsApp.
+        const { data, error } = await supabase.auth.getSession();
+        if (isMounted) {
+          if (error || !data.session) {
+            setIsConnected(false);
+          } else {
+            setIsConnected(true);
+          }
+          setIsChecking(false);
+        }
       } catch {
-        // If this check fails, don't block the UI forever.
-        // Show as not connected (user can still verify via sending on /whatsapp).
-        if (isMounted) setIsConnected(false);
-      } finally {
-        if (isMounted) setIsChecking(false);
+        if (isMounted) {
+          setIsConnected(false);
+          setIsChecking(false);
+        }
       }
     };
-    
-    checkWhatsAppStatus();
 
-    return () => {
-      isMounted = false;
-    };
+    void checkStatus();
+
+    return () => { isMounted = false; };
   }, []);
 
   return (
