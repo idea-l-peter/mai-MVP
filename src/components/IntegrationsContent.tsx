@@ -1,10 +1,11 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { IntegrationCard } from "./IntegrationCard";
 import { GoogleWorkspaceCard } from "./GoogleWorkspaceCard";
 import { WhatsAppIntegrationCard } from "./WhatsAppIntegrationCard";
 import { useGoogleIntegration } from "@/hooks/useGoogleIntegration";
 import { useMondayIntegration } from "@/hooks/useMondayIntegration";
+import { useIntegrationStatus } from "@/hooks/useIntegrationStatus";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import mondayLogo from "@/assets/monday-logo.svg";
@@ -44,87 +45,36 @@ const OTHER_INTEGRATION_CONFIGS: IntegrationConfig[] = [
   },
 ];
 
-interface IntegrationState {
-  status: IntegrationStatus;
-  providerEmail?: string;
-  scopes?: string[];
-}
-
 export function IntegrationsContent() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [googleState, setGoogleState] = useState<IntegrationState>({ status: "not_connected" });
-  const [integrationStates, setIntegrationStates] = useState<Record<string, IntegrationState>>({});
-  const [isLoading, setIsLoading] = useState(false);
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
   const [isMondayConnecting, setIsMondayConnecting] = useState(false);
   const { toast } = useToast();
 
   const DISCONNECT_STORAGE_KEY = "disconnect_in_progress_provider";
 
+  // Use React Query for parallel fetching with 5-min staleTime
+  const { 
+    google: googleStatus, 
+    monday: mondayStatus, 
+    isLoading, 
+    invalidate: invalidateIntegrations 
+  } = useIntegrationStatus();
+
   const {
     isConnecting: isGoogleConnecting,
     initiateOAuth: initiateGoogleOAuth,
     disconnect: disconnectGoogle,
-    checkConnection: checkGoogleConnection,
   } = useGoogleIntegration();
 
   const {
     initiateOAuth: initiateMondayOAuth,
     disconnect: disconnectMonday,
-    checkConnection: checkMondayConnection,
   } = useMondayIntegration();
 
-  // Check connection status for all integrations from database
-  const refreshIntegrations = useCallback(async () => {
-    console.log("[Integrations] Refreshing integration status from database...");
-    setIsLoading(true);
-    try {
-      // Check Google Workspace connection
-      const googleIntegration = await checkGoogleConnection("google");
-      if (googleIntegration?.connected) {
-        console.log("[Integrations] Google is connected:", googleIntegration.provider_email);
-        setGoogleState({
-          status: "connected",
-          providerEmail: googleIntegration.provider_email || undefined,
-          scopes: (googleIntegration as { scopes?: string[] }).scopes || [],
-        });
-      } else {
-        console.log("[Integrations] Google is NOT connected");
-        setGoogleState({ status: "not_connected" });
-      }
-
-      // Check other integrations
-      const states: Record<string, IntegrationState> = {};
-      for (const config of OTHER_INTEGRATION_CONFIGS) {
-        if (config.provider === "monday") {
-          const integration = await checkMondayConnection();
-          if (integration?.connected) {
-            console.log("[Integrations] Monday.com is connected:", integration.provider_email);
-            states[config.id] = {
-              status: "connected",
-              providerEmail: integration.provider_email || undefined,
-            };
-          } else {
-            console.log("[Integrations] Monday.com is NOT connected");
-            states[config.id] = { status: "not_connected" };
-          }
-        } else {
-          states[config.id] = { status: config.defaultStatus };
-        }
-      }
-
-      setIntegrationStates(states);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [checkGoogleConnection, checkMondayConnection]);
-
   // NOTE: Google OAuth code handling is consolidated in useGoogleTokenCapture.ts
-  // This component only listens for the 'google-integration-connected' event
 
-  // ============================================================
-  // BUG FIX #3: Listen for Auth State Changes
-  // ============================================================
+  // Listen for Auth State Changes - invalidate React Query cache
   useEffect(() => {
     console.log("[Integrations] Setting up auth state listener...");
     
@@ -132,15 +82,13 @@ export function IntegrationsContent() {
       console.log("[Integrations] Auth state changed:", event, "User:", session?.user?.email);
       
       if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
-        console.log("[Integrations] User signed in or token refreshed - refreshing integrations...");
-        refreshIntegrations();
+        console.log("[Integrations] User signed in or token refreshed - invalidating cache...");
+        invalidateIntegrations();
       }
     });
 
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, [refreshIntegrations]);
+    return () => subscription.unsubscribe();
+  }, [invalidateIntegrations]);
 
   // Clear any stale disconnect-in-progress flag on page load
   useEffect(() => {
@@ -154,17 +102,15 @@ export function IntegrationsContent() {
   // Listen for the custom event when Google tokens are stored
   useEffect(() => {
     const handleGoogleConnected = () => {
-      console.log("[Integrations] Received google-integration-connected event");
-      refreshIntegrations();
+      console.log("[Integrations] Received google-integration-connected event - invalidating cache");
+      invalidateIntegrations();
     };
 
     window.addEventListener('google-integration-connected', handleGoogleConnected);
-    return () => {
-      window.removeEventListener('google-integration-connected', handleGoogleConnected);
-    };
-  }, [refreshIntegrations]);
+    return () => window.removeEventListener('google-integration-connected', handleGoogleConnected);
+  }, [invalidateIntegrations]);
 
-  // On mount, check for legacy URL params and refresh integrations
+  // Handle legacy URL params (no need to manually refresh - React Query handles it)
   useEffect(() => {
     const connected = searchParams.get("connected");
     const email = searchParams.get("email");
@@ -188,10 +134,7 @@ export function IntegrationsContent() {
       });
       setSearchParams({}, { replace: true });
     }
-
-    // Always refresh integrations from database on mount
-    refreshIntegrations();
-  }, []);
+  }, [searchParams, setSearchParams, toast]);
 
   const handleGoogleConnect = async () => {
     await initiateGoogleOAuth("google", GOOGLE_WORKSPACE_SCOPES);
@@ -217,7 +160,7 @@ export function IntegrationsContent() {
     try {
       const success = await disconnectGoogle("google");
       if (success) {
-        setGoogleState({ status: "not_connected" });
+        invalidateIntegrations();
       }
     } finally {
       window.clearTimeout(failSafe);
@@ -272,10 +215,7 @@ export function IntegrationsContent() {
         success = await disconnectMonday();
       }
       if (success) {
-        setIntegrationStates((prev) => ({
-          ...prev,
-          [integrationId]: { status: "not_connected" },
-        }));
+        invalidateIntegrations();
       }
     } finally {
       window.clearTimeout(failSafe);
@@ -288,24 +228,29 @@ export function IntegrationsContent() {
     }
   };
 
+  // Derive status from React Query data
   const getStatus = (integrationId: string): IntegrationStatus => {
-    return integrationStates[integrationId]?.status || 
-           OTHER_INTEGRATION_CONFIGS.find((c) => c.id === integrationId)?.defaultStatus || 
-           "not_connected";
+    if (integrationId === "monday") {
+      return mondayStatus.connected ? "connected" : "not_connected";
+    }
+    return "not_connected";
   };
 
   const getProviderEmail = (integrationId: string): string | undefined => {
-    return integrationStates[integrationId]?.providerEmail;
+    if (integrationId === "monday") {
+      return mondayStatus.providerEmail;
+    }
+    return undefined;
   };
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
       {/* Google Workspace Card - Primary integration */}
       <GoogleWorkspaceCard
-        isConnected={googleState.status === "connected"}
-        connectedEmail={googleState.providerEmail}
-        grantedScopes={googleState.scopes}
-        isLoading={isGoogleConnecting}
+        isConnected={googleStatus.connected}
+        connectedEmail={googleStatus.providerEmail}
+        grantedScopes={googleStatus.scopes}
+        isLoading={isGoogleConnecting || isLoading}
         isDisconnecting={disconnectingId === "google"}
         onConnect={handleGoogleConnect}
         onDisconnect={handleGoogleDisconnect}
