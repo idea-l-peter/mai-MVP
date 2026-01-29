@@ -26,29 +26,51 @@ export function useMondayIntegration() {
         // ignore
       }
 
+      console.log('[MondayOAuth] Getting current user...');
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         throw new Error("You must be logged in to connect Monday.com");
       }
+      console.log('[MondayOAuth] User found:', user.id.slice(0, 8) + '...');
 
       const appRedirectUri = `${window.location.origin}/integrations`;
+      console.log('[MondayOAuth] App redirect URI:', appRedirectUri);
 
-      const { data, error } = await supabase.functions.invoke("monday-oauth", {
+      // Wrap the edge function call in a timeout
+      console.log('[MondayOAuth] Calling monday-oauth edge function with 10s timeout...');
+      const timeoutMs = 10000;
+      
+      const invokePromise = supabase.functions.invoke("monday-oauth", {
         body: {
-          user_id: user.id,
           app_redirect_uri: appRedirectUri,
         },
       });
 
-      if (error) throw error;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          reject(new Error('Connection timed out. Please check if Edge Functions are deployed.'));
+        }, timeoutMs);
+      });
+
+      const { data, error } = await Promise.race([invokePromise, timeoutPromise]);
+
+      if (error) {
+        console.error('[MondayOAuth] Edge function error:', error);
+        throw error;
+      }
+
+      console.log('[MondayOAuth] Edge function response:', data);
 
       if (data?.oauth_url) {
+        console.log('[MondayOAuth] Redirecting to Monday.com OAuth...');
         window.location.href = data.oauth_url;
       } else {
-        throw new Error("No OAuth URL returned");
+        throw new Error("No OAuth URL returned from edge function");
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to start OAuth";
+      console.error('[MondayOAuth] OAuth initiation failed:', message);
+      
       // Clear in-progress flag on error
       try {
         sessionStorage.removeItem(OAUTH_STORAGE_KEY);

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { IntegrationCard } from "./IntegrationCard";
 import { GoogleWorkspaceCard } from "./GoogleWorkspaceCard";
@@ -58,9 +58,6 @@ export function IntegrationsContent() {
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
   const [isMondayConnecting, setIsMondayConnecting] = useState(false);
   const { toast } = useToast();
-  
-  // Ref to prevent double processing of OAuth code
-  const codeProcessedRef = useRef(false);
 
   const DISCONNECT_STORAGE_KEY = "disconnect_in_progress_provider";
 
@@ -122,107 +119,8 @@ export function IntegrationsContent() {
     }
   }, [checkGoogleConnection, checkMondayConnection]);
 
-  // ============================================================
-  // BUG FIX #1: Detect and consume OAuth ?code= parameter on mount
-  // ============================================================
-  useEffect(() => {
-    // Get code from current URL (check both searchParams and window.location)
-    const codeFromSearchParams = searchParams.get("code");
-    const urlParams = new URLSearchParams(window.location.search);
-    const codeFromWindow = urlParams.get("code");
-    const code = codeFromSearchParams || codeFromWindow;
-    
-    // LOUD CONSOLE LOG as requested
-    console.log("==============================================");
-    console.log("[Integrations] PAGE LOADED - Checking for OAuth code...");
-    console.log("[Integrations] URL:", window.location.href);
-    console.log("[Integrations] Code from searchParams:", codeFromSearchParams);
-    console.log("[Integrations] Code from window.location:", codeFromWindow);
-    console.log("[Integrations] Final code value:", code);
-    console.log("==============================================");
-
-    if (!code) {
-      console.log("[Integrations] No code parameter found - skipping token capture");
-      return;
-    }
-
-    if (codeProcessedRef.current) {
-      console.log("[Integrations] Code already processed - skipping");
-      return;
-    }
-
-    // Mark as processed immediately to prevent double processing
-    codeProcessedRef.current = true;
-    console.log("[Integrations] *** PROCESSING OAUTH CODE ***");
-
-    const captureToken = async () => {
-      try {
-        console.log("[TokenCapture] Exchanging code for session...");
-        const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-
-        if (error) {
-          console.error("[TokenCapture] exchangeCodeForSession error:", error);
-          toast({ title: "Google connection failed", description: error.message, variant: "destructive" });
-          codeProcessedRef.current = false; // Allow retry
-          return;
-        }
-
-        console.log("[TokenCapture] exchangeCodeForSession SUCCESS!");
-        console.log("[TokenCapture] Session user:", data.session?.user?.email);
-        console.log("[TokenCapture] Has provider_token:", !!data.session?.provider_token);
-        console.log("[TokenCapture] Has provider_refresh_token:", !!data.session?.provider_refresh_token);
-
-        // Clean the URL immediately
-        const cleanUrl = window.location.pathname;
-        window.history.replaceState({}, "", cleanUrl);
-        setSearchParams({}, { replace: true });
-        console.log("[TokenCapture] URL cleaned to:", cleanUrl);
-
-        const providerToken = data.session?.provider_token;
-        const providerRefreshToken = data.session?.provider_refresh_token;
-
-        if (!providerToken) {
-          console.error("[TokenCapture] No provider_token in session after exchange!");
-          toast({ title: "Connection Failed", description: "Could not retrieve Google token after login.", variant: "destructive" });
-          return;
-        }
-
-        console.log("[TokenCapture] Calling store-google-tokens edge function...");
-        const { data: storeData, error: storeError } = await supabase.functions.invoke("store-google-tokens", {
-          body: {
-            provider: "google",
-            provider_token: providerToken,
-            provider_refresh_token: providerRefreshToken || null,
-            scopes: GOOGLE_WORKSPACE_SCOPES,
-          },
-        });
-
-        if (storeError || !storeData?.success) {
-          console.error("[TokenCapture] Failed to save token to DB:", storeError || storeData?.error);
-          toast({ 
-            title: "Connection failed: could not save credentials", 
-            description: storeError?.message || storeData?.error || "Database error while storing Google tokens. Please try again.", 
-            variant: "destructive" 
-          });
-          return;
-        }
-
-        console.log("==============================================");
-        console.log("[TokenCapture] TOKEN SAVED TO DATABASE SUCCESSFULLY!");
-        console.log("[TokenCapture] Provider email:", storeData.provider_email);
-        console.log("==============================================");
-        
-        toast({ title: "Google Connected!", description: `Successfully connected as ${storeData.provider_email}` });
-        await refreshIntegrations();
-      } catch (err) {
-        console.error("[TokenCapture] Unexpected error:", err);
-        toast({ title: "Connection failed", description: "An unexpected error occurred", variant: "destructive" });
-        codeProcessedRef.current = false; // Allow retry
-      }
-    };
-
-    void captureToken();
-  }, []); // Empty deps - only run once on mount
+  // NOTE: Google OAuth code handling is consolidated in useGoogleTokenCapture.ts
+  // This component only listens for the 'google-integration-connected' event
 
   // ============================================================
   // BUG FIX #3: Listen for Auth State Changes
