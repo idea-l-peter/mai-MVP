@@ -296,6 +296,27 @@ export type Database = {
         }
         Relationships: []
       }
+      user_phone_mappings: {
+        Row: {
+          created_at: string
+          id: string
+          phone_number: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          phone_number: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          phone_number?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_preferences: {
         Row: {
           action_security_overrides: Json | null
