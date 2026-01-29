@@ -8,7 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Input } from "@/components/ui/input";
 import { useUserPreferences } from "@/hooks/useUserPreferences";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, RefreshCw, Shield, Smile } from "lucide-react";
+import { Loader2, RefreshCw, Shield, Smile, User } from "lucide-react";
 import { HolidayPreferencesCard } from "@/components/settings/HolidayPreferencesCard";
 import { ActionSecurityCard } from "@/components/settings/ActionSecurityCard";
 import { AppearanceCard } from "@/components/settings/AppearanceCard";
@@ -104,6 +104,7 @@ export function SettingsContent() {
   const { preferences, isLoading, updatePreferences } = useUserPreferences();
   const { toast } = useToast();
   
+  const [displayName, setDisplayName] = useState("");
   const [emojiEnabled, setEmojiEnabled] = useState(true);
   const [isCustomMode, setIsCustomMode] = useState(false);
   const [phraseColor, setPhraseColor] = useState<string>("");
@@ -119,6 +120,7 @@ export function SettingsContent() {
   // Sync local state with fetched preferences
   useEffect(() => {
     if (preferences) {
+      setDisplayName(preferences.display_name || "");
       setEmojiEnabled(preferences.emoji_confirmations_enabled);
       setObservedHolidays(preferences.observed_holidays || []);
       setActionSecurityOverrides(preferences.action_security_overrides || {});
@@ -161,6 +163,7 @@ export function SettingsContent() {
     const overridesChanged = JSON.stringify(actionSecurityOverrides) !== JSON.stringify(savedOverrides);
     
     const changed = 
+      displayName !== (preferences.display_name || "") ||
       emojiEnabled !== preferences.emoji_confirmations_enabled ||
       currentColor !== (preferences.security_phrase_color || "") ||
       currentObject !== (preferences.security_phrase_object || "") ||
@@ -168,7 +171,7 @@ export function SettingsContent() {
       holidaysChanged ||
       overridesChanged;
     setHasChanges(changed);
-  }, [emojiEnabled, phraseColor, phraseObject, phraseEmoji, customWord1, customWord2, isCustomMode, observedHolidays, actionSecurityOverrides, preferences]);
+  }, [displayName, emojiEnabled, phraseColor, phraseObject, phraseEmoji, customWord1, customWord2, isCustomMode, observedHolidays, actionSecurityOverrides, preferences]);
 
   // Auto-fill emoji when color+object is selected in preset mode
   useEffect(() => {
@@ -202,6 +205,7 @@ export function SettingsContent() {
     const objectToSave = isCustomMode ? customWord2 : phraseObject;
     
     const success = await updatePreferences({
+      display_name: displayName.trim() || null,
       emoji_confirmations_enabled: emojiEnabled,
       security_phrase_color: colorToSave || null,
       security_phrase_object: objectToSave || null,
@@ -245,6 +249,34 @@ export function SettingsContent() {
 
   return (
     <div className="space-y-6 max-w-4xl">
+      {/* Display Name Card */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <User className="h-5 w-5 text-primary" />
+            <CardTitle>Your Name</CardTitle>
+          </div>
+          <CardDescription>
+            What should mai call you?
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="display-name">Preferred name</Label>
+            <Input
+              id="display-name"
+              placeholder="Enter your name"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              maxLength={50}
+            />
+            <p className="text-sm text-muted-foreground">
+              mai will greet you as "{displayName.trim() || "there"}"
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* WhatsApp Connection Card */}
       <WhatsAppConnectionCard />
 
