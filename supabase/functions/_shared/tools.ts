@@ -385,13 +385,13 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   type: "function",
   function: {
     name: "get_emails",
-    description: "Get emails from the user's Gmail inbox. Use this when the user asks about their emails, inbox, or messages.",
+    description: "Get emails from the user's Gmail inbox. Use this when the user asks about their emails, inbox, or messages. The query parameter is OPTIONAL - pass an empty string '' to get all recent emails. Do NOT pass null.",
     parameters: {
       type: "object",
       properties: {
         query: {
           type: "string",
-          description: "Gmail search query (e.g., 'is:unread', 'from:john@example.com', 'subject:invoice'). Defaults to recent emails if not specified.",
+          description: "Gmail search query. OPTIONAL - use empty string '' for all recent emails. Examples: 'is:unread', 'from:john@example.com', 'subject:invoice'. Default: '' (recent emails).",
         },
         max_results: {
           type: "number",
@@ -406,13 +406,13 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   type: "function",
   function: {
     name: "get_email_detail",
-    description: "Get full details of a specific email including the complete body text. Use this when the user asks to see the full content, body, or details of an email. First use get_emails to find the message ID, then use this to get the full body.",
+    description: "Get the FULL email content including complete body text. ALWAYS use this when user asks for 'full text', 'body', 'details', or 'complete content' of an email. You have message IDs from get_emails - use them here to fetch full content.",
     parameters: {
       type: "object",
       properties: {
         message_id: {
           type: "string",
-          description: "The Gmail message ID obtained from get_emails",
+          description: "The Gmail message ID from get_emails results",
         },
       },
       required: ["message_id"],
@@ -423,34 +423,29 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   type: "function",
   function: {
     name: "send_email",
-    description: "Send an email from the user's Gmail account. Use this when the user wants to compose, send, or email someone. The email will include the user's Gmail signature automatically.",
+    description: "Send an email from the user's Gmail account. IMPORTANT: Before calling this tool, you MUST have collected all three required pieces from the user: recipient (to), subject, and body. If any are missing, ASK the user first. Do NOT call this tool until you have all information AND the user's authorization phrase.",
     parameters: {
       type: "object",
       properties: {
         to: {
           type: "string",
-          description: "Recipient email address",
+          description: "Recipient email address (REQUIRED)",
         },
         subject: {
           type: "string",
-          description: "Email subject line",
+          description: "Email subject line (REQUIRED)",
         },
         body: {
           type: "string",
-          description: "Email body content (plain text)",
+          description: "Email body content in plain text (REQUIRED)",
         },
         cc: {
           type: "string",
-          description: "CC recipients (comma-separated)",
+          description: "CC recipients (comma-separated, optional)",
         },
         bcc: {
           type: "string",
-          description: "BCC recipients (comma-separated)",
-        },
-        attachments: {
-          type: "array",
-          items: { type: "string" },
-          description: "File paths or URLs to attach (not yet implemented)",
+          description: "BCC recipients (comma-separated, optional)",
         },
       },
       required: ["to", "subject", "body"],
