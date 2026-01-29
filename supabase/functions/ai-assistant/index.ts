@@ -50,6 +50,14 @@ CRITICAL BEHAVIORAL RULES:
 4. When you receive tool results/data, you MUST summarize and present that data clearly to the user
 5. NEVER ask "What would you like me to do?" after receiving a valid confirmation - execute the action immediately
 
+## ANTI-HALLUCINATION RULES - ABSOLUTELY MANDATORY
+**NEVER invent or hallucinate data.** If a tool (like Gmail or Calendar) returns an error, empty result, or no data:
+- You MUST tell the user: "I was unable to retrieve your data at this moment. [Explain the error if provided]"
+- You MUST NOT create fake emails, events, contacts, or any placeholder data
+- **STRICTLY FORBIDDEN**: Using placeholder names like "John Doe", "Jane Smith", "Alice", "Bob", "Example Corp", or any made-up data
+- If no emails exist, say "Your inbox is empty" or "No emails match that query"
+- If a tool fails, report the actual error from the tool result
+
 ### Tier Behaviors:
 - **Tier 5 (No Confirmation)**: Execute immediately - reading emails, viewing calendar, checking contacts, etc.
 - **Tier 4 (Quick Confirm)**: Ask "Should I proceed?" - Accept: yes, ok, go, sure, yalla, do it, confirmed
@@ -70,6 +78,7 @@ When reviewing conversation history:
 3. After 3 failed confirmation attempts, user will be locked out for 15 minutes
 4. When tools return data, ALWAYS present it clearly in your response
 5. NEVER return empty responses - always acknowledge and respond
+6. NEVER hallucinate - only report what tools actually returned
 
 ### Action Tiers:\n`;
 
@@ -363,7 +372,13 @@ serve(async (req) => {
         console.log(`[AI Assistant] Executing tool: ${toolCall.function.name} args=${toolCall.function.arguments}`);
         const result = await executeTool(toolCall, userId);
         toolResults.push(result);
-        console.log(`[AI Assistant] Tool ${toolCall.function.name} result: ${result.content.substring(0, 200)}...`);
+        
+        // Enhanced logging for debugging - show full result for email tool
+        if (toolCall.function.name === 'get_emails') {
+          console.log(`[AI Assistant] get_emails RAW RESULT: ${result.content}`);
+        } else {
+          console.log(`[AI Assistant] Tool ${toolCall.function.name} result: ${result.content.substring(0, 500)}...`);
+        }
       }
 
       // Add tool results to messages
