@@ -43,7 +43,7 @@ async function verifyWebhookSignature(
   }
 }
 
-// Send a quick "thinking" message to the user
+// Send a quick "thinking" message to the user (professional, no emojis)
 async function sendThinkingMessage(phoneNumber: string): Promise<void> {
   try {
     const WHATSAPP_ACCESS_TOKEN = Deno.env.get('WHATSAPP_ACCESS_TOKEN');
@@ -61,11 +61,45 @@ async function sendThinkingMessage(phoneNumber: string): Promise<void> {
         messaging_product: 'whatsapp',
         to: phoneNumber,
         type: 'text',
-        text: { body: '⏳ MAI is thinking...' }
+        text: { body: 'Processing your request...' }
       })
     });
   } catch (error) {
     console.error('[WhatsApp Webhook] Failed to send thinking message:', error);
+  }
+}
+
+// Fetch recent conversation history for context
+async function fetchConversationHistory(
+  supabase: any,
+  phoneNumber: string,
+  limit: number = 5
+): Promise<Array<{ role: 'user' | 'assistant'; content: string }>> {
+  try {
+    const { data: messages, error } = await supabase
+      .from('whatsapp_messages')
+      .select('direction, content, created_at')
+      .eq('phone_number', phoneNumber)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (error || !messages) {
+      console.error('[WhatsApp Webhook] Failed to fetch history:', error);
+      return [];
+    }
+
+    // Reverse to get chronological order and map to LLM format
+    const typedMessages = messages as Array<{ direction: string; content: string | null; created_at: string }>;
+    return typedMessages
+      .reverse()
+      .filter(m => m.content && m.content.trim())
+      .map(m => ({
+        role: m.direction === 'inbound' ? 'user' as const : 'assistant' as const,
+        content: m.content as string
+      }));
+  } catch (error) {
+    console.error('[WhatsApp Webhook] Error fetching history:', error);
+    return [];
   }
 }
 
@@ -106,35 +140,51 @@ async function sendWhatsAppReply(phoneNumber: string, message: string): Promise<
   }
 }
 
-// Call the AI assistant and get a response
+// Call the AI assistant and get a response with conversation context
 async function callAIAssistant(
   userMessage: string,
-  userId: string
+  userId: string,
+  conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>
 ): Promise<string> {
   try {
     const aiUrl = `${SUPABASE_URL}/functions/v1/ai-assistant`;
     
-    // Build conversation with system context
+    // Build conversation with system context and history
     const messages = [
       {
         role: 'system',
-        content: `You are MAI, a helpful AI assistant responding via WhatsApp. Keep responses concise and mobile-friendly. 
-Use short paragraphs and emojis sparingly for clarity. The user is authenticated and you have access to their tools.
+        content: `You are MAI, an executive AI assistant responding via WhatsApp.
+
+COMMUNICATION STYLE:
+- Professional, concise, and executive-level tone
+- ABSOLUTELY NO EMOJIS in any response
+- Use clear, structured formatting suitable for mobile
+- Keep responses brief but complete
+
+SECURITY TIER AWARENESS:
+The conversation history below includes previous messages. When reviewing:
+1. If the user's previous message asked for confirmation (e.g., "Should I proceed?") and the current message contains a positive response like "yes", "ok", "go ahead", "yalla", or a security keyword, you should execute the pending action immediately.
+2. For Tier 3 actions, if the user's current message matches the required keyword (e.g., "delete", "send", "archive"), execute the action.
+3. For Tier 5 read-only actions (get emails, check calendar, view contacts), execute immediately without confirmation.
+4. For casual greetings (hello, hi, how are you), respond directly without asking "Should I proceed?"
+
+IMPORTANT:
+- When tools return data (emails, calendar events, etc.), you MUST summarize and present that data clearly in your response
+- Never return an empty or failed response when you have tool results
+- If a tool returns an error, explain the issue professionally
+
 Current time: ${new Date().toISOString()}`
       },
+      // Include conversation history for context
+      ...conversationHistory,
       {
         role: 'user',
         content: userMessage
       }
     ];
 
-    // Create a service role client to generate a valid token for the user
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-      auth: { persistSession: false }
-    });
+    console.log(`[WhatsApp Webhook] Calling AI with ${messages.length} messages (${conversationHistory.length} history)`);
 
-    // For now, we'll call without auth token since ai-assistant can decode JWT
-    // The AI will operate with limited permissions without a real user token
     const response = await fetch(aiUrl, {
       method: 'POST',
       headers: {
@@ -144,22 +194,30 @@ Current time: ${new Date().toISOString()}`
       },
       body: JSON.stringify({
         messages,
-        temperature: 0.7,
-        max_tokens: 1000
+        temperature: 0.5, // Lower for more consistent professional responses
+        max_tokens: 1500,
+        user_id: userId // Pass user ID for tool execution
       })
     });
 
     if (!response.ok) {
       const errorText = await response.text();
       console.error('[WhatsApp Webhook] AI assistant error:', response.status, errorText);
-      return "I'm having trouble processing your request right now. Please try again in a moment.";
+      return "I was unable to process your request at this time. Please try again shortly.";
     }
 
     const result = await response.json();
-    return result.content || "I couldn't generate a response. Please try again.";
+    
+    // Ensure we have a valid response
+    if (!result.content || result.content.trim() === '') {
+      console.error('[WhatsApp Webhook] Empty AI response:', result);
+      return "I was unable to complete that action. Please rephrase your request.";
+    }
+    
+    return result.content;
   } catch (error) {
     console.error('[WhatsApp Webhook] AI assistant call failed:', error);
-    return "Something went wrong. Please try again later.";
+    return "An error occurred while processing your request. Please try again.";
   }
 }
 
@@ -290,12 +348,16 @@ serve(async (req) => {
           if (userId && messageType === 'text' && content.trim()) {
             console.log('[WhatsApp Webhook] Processing AI response for user:', userId);
             
+            // Fetch conversation history for context (last 5 messages)
+            const conversationHistory = await fetchConversationHistory(supabase, phoneNumber, 5);
+            console.log(`[WhatsApp Webhook] Fetched ${conversationHistory.length} messages for context`);
+            
             // Send "thinking" message immediately for user feedback
             // Don't await - fire and forget so we respond quickly
             sendThinkingMessage(phoneNumber);
             
-            // Call AI assistant
-            const aiResponse = await callAIAssistant(content, userId);
+            // Call AI assistant with conversation context
+            const aiResponse = await callAIAssistant(content, userId, conversationHistory);
             
             // Send the AI response back via WhatsApp
             await sendWhatsAppReply(phoneNumber, aiResponse);
