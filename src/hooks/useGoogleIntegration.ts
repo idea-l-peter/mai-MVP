@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -35,14 +35,36 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
     }
   }, []);
 
+  // Token refresh logic - runs on mount and every 45 minutes
+  useEffect(() => {
+    const refreshGoogleToken = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.provider_refresh_token) {
+          console.log('[GoogleOAuth] Checking token freshness...');
+          const { error } = await supabase.auth.refreshSession();
+          if (error) {
+            console.error('[GoogleOAuth] Token refresh failed:', error);
+          } else {
+            console.log('[GoogleOAuth] Token refreshed successfully');
+          }
+        }
+      } catch (err) {
+        console.error('[GoogleOAuth] Token refresh error:', err);
+      }
+    };
+
+    // Refresh on mount
+    refreshGoogleToken();
+    
+    // Set up interval for every 45 minutes (tokens expire after 1 hour)
+    const interval = setInterval(refreshGoogleToken, 45 * 60 * 1000);
+    
+    return () => clearInterval(interval);
+  }, []);
+
   const initiateOAuth = useCallback(async (provider: string, scopes: string[]) => {
-    // IMPORTANT: This is an *integration* OAuth flow (offline access + broad scopes).
-    // We must NOT use supabase.auth.signInWithOAuth() here (that's for *logging in*).
-    // Instead, we call our google-oauth edge function which:
-    // 1) validates the current user JWT
-    // 2) returns a Google consent URL
-    // 3) Google redirects to google-oauth-callback which stores tokens server-side
-    console.log('[GoogleIntegration] initiateOAuth', { provider, scopesCount: scopes.length });
+    console.log('[GoogleOAuth] Starting connection...');
     setIsConnecting(true);
 
     try {
@@ -52,30 +74,47 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
         // ignore
       }
 
-      const { data, error } = await supabase.functions.invoke('google-oauth', {
-        body: {
-          provider,
-          scopes,
-          app_redirect_uri: `${window.location.origin}/integrations`,
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/integrations`,
+          scopes: scopes.join(' '),
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
         },
       });
 
       if (error) {
-        throw error;
+        console.error('[GoogleOAuth] Error:', error);
+        toast({
+          title: 'Connection Failed',
+          description: 'Failed to connect to Google: ' + error.message,
+          variant: 'destructive',
+        });
+        setIsConnecting(false);
+        return;
       }
 
-      const oauthUrl = (data as { oauth_url?: string })?.oauth_url;
-      if (!oauthUrl) {
-        throw new Error('Google OAuth did not return a redirect URL');
+      // Explicitly redirect if URL is returned (fixes the stuck "Connecting..." issue)
+      if (data?.url) {
+        console.log('[GoogleOAuth] Redirecting to:', data.url);
+        window.location.href = data.url;
+      } else {
+        console.error('[GoogleOAuth] No redirect URL returned');
+        toast({
+          title: 'Connection Failed',
+          description: 'Failed to get Google authorization URL',
+          variant: 'destructive',
+        });
+        setIsConnecting(false);
       }
-
-      // Browser navigation to Google consent screen
-      window.location.assign(oauthUrl);
     } catch (err) {
-      console.error('[GoogleIntegration] Failed to start OAuth', err);
+      console.error('[GoogleOAuth] Unexpected error:', err);
       toast({
-        title: 'OAuth Error',
-        description: err instanceof Error ? err.message : 'Failed to start OAuth flow',
+        title: 'Connection Failed',
+        description: 'An unexpected error occurred',
         variant: 'destructive',
       });
       setIsConnecting(false);
