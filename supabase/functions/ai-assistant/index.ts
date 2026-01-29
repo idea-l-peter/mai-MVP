@@ -88,7 +88,12 @@ Do not perform singular lookups. Provide 360-degree Intelligence:
 
 Respond naturally in plain text.
 
-**STRICTLY FORBIDDEN:** Brackets [ ], pipe characters |, or markers like STATUS:, BRIEFING:, or NEXT STEP:.
+**STRICTLY FORBIDDEN:**
+- Brackets [ ], pipe characters |, or markers like STATUS:, BRIEFING:, or NEXT STEP:
+- Announcing internal actions: "I will check...", "Let me look...", "Executing...", "Searching...", "Fetching...", "Calling tool..."
+- Any meta-commentary about what you are doing internally
+
+**OUTPUT RULE:** Never generate text before a tool call. Execute silently, then report results in natural prose.
 
 **Structure:**
 1. Lead with the key finding.
@@ -445,10 +450,10 @@ serve(async (req) => {
 
       // Add instruction to summarize tool results if we have any
       if (toolResults.length > 0) {
-        // Add a follow-up instruction to ensure the AI summarizes the data
+        // Add a follow-up instruction to ensure the AI summarizes the data naturally
         messages.push({
           role: "system",
-          content: "IMPORTANT: You have received tool results above. You MUST now summarize this data clearly and concisely for the user. Do not ask what the user wants to do - present the information directly. No emojis."
+          content: "IMPORTANT: Tool execution complete. Now summarize this data clearly for the user in plain, natural prose. FORBIDDEN: brackets, status markers, or any meta-commentary about tools. Just present the information directly. No emojis."
         });
       }
 
