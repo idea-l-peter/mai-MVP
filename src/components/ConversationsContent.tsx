@@ -9,6 +9,7 @@ import maiLogo from "@/assets/mai-logo.png";
 import { QuickActionChips } from "@/components/chat/QuickActionChips";
 import { VoiceChat } from "@/components/voice/VoiceChat";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useToast } from "@/hooks/use-toast";
 import type { Session } from "@supabase/supabase-js";
 
 // Version for debugging PWA cache issues
@@ -19,6 +20,7 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
+  sending?: boolean; // For optimistic UI - shows opacity while sending
 }
 
 type SessionStatus = 'checking' | 'valid' | 'expired' | 'none';
@@ -353,6 +355,7 @@ export function ConversationsContent() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isMobile = useIsMobile();
+  const { toast } = useToast();
 
   // Log version and session state on mount for debugging
   useEffect(() => {
@@ -615,6 +618,9 @@ export function ConversationsContent() {
   }, [hasCheckedFollowups, messages.length, currentSession]);
 
   const sendMessage = async () => {
+    // Declare userMessageId at function scope for access in catch block
+    let userMessageId: string | null = null;
+    
     console.log("STEP 1: Starting sendMessage", {
       version: COMPONENT_VERSION,
       sessionStatus,
@@ -684,12 +690,14 @@ export function ConversationsContent() {
         return;
       }
 
-      // UI update (user bubble + thinking indicator)
+      // OPTIMISTIC UI: Add user message immediately with 'sending' flag
+      userMessageId = safeUUID();
       const userMessage: Message = {
-        id: safeUUID(),
+        id: userMessageId,
         role: "user",
         content: trimmedInput,
         timestamp: new Date(),
+        sending: true, // Shows with reduced opacity
       };
 
       setMessages((prev) => [...prev, userMessage]);
@@ -735,6 +743,13 @@ export function ConversationsContent() {
       if (error) throw error;
       if (!data) throw new Error("No response from assistant");
 
+      // SUCCESS: Remove sending flag from user message
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === userMessageId ? { ...m, sending: false } : m
+        )
+      );
+
       const assistantContent =
         (data as { content?: string; error?: string }).content ||
         (data as { content?: string; error?: string }).error ||
@@ -753,15 +768,14 @@ export function ConversationsContent() {
       const errorMessage = err instanceof Error ? err.message : String(err);
       console.error("[sendMessage] Error:", err);
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: safeUUID(),
-          role: "assistant",
-          content: `Hit a snag. ${errorMessage}`,
-          timestamp: new Date(),
-        },
-      ]);
+      // FAILURE: Remove the optimistic user message and show error toast
+      setMessages((prev) => prev.filter((m) => m.id !== userMessageId));
+      
+      toast({
+        title: "Message failed",
+        description: errorMessage,
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
       console.log("[sendMessage] Complete");
@@ -846,6 +860,8 @@ export function ConversationsContent() {
                   )}
                   <div
                     className={`max-w-[80%] rounded-2xl px-3 py-2 md:px-4 md:py-2.5 break-words transition-all ${
+                      msg.sending ? "opacity-70" : ""
+                    } ${
                       msg.role === "user"
                         ? "bg-primary text-primary-foreground rounded-br-md mr-1 md:mr-2"
                         : "bg-muted rounded-bl-md"
