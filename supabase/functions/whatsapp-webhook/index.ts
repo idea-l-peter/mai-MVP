@@ -149,7 +149,8 @@ function sanitizeResponse(content: string): string {
 async function callAIAssistant(
   userMessage: string,
   userId: string,
-  conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>
+  conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>,
+  firstName: string
 ): Promise<string> {
   try {
     const aiUrl = `${SUPABASE_URL}/functions/v1/ai-assistant`;
@@ -157,7 +158,7 @@ async function callAIAssistant(
     const messages = [
       {
         role: 'system',
-        content: `You are MAI, an executive AI assistant responding via WhatsApp.
+        content: `You are mai, a sophisticated personal assistant responding via WhatsApp to ${firstName}.
 
 RESPONSE FORMAT - CRITICAL:
 - Respond in plain, natural text ONLY
@@ -170,7 +171,7 @@ RESPONSE FORMAT - CRITICAL:
 
 ANTI-HALLUCINATION RULES:
 - NEVER invent or hallucinate data
-- If a tool returns an error or no data, say: "I was unable to retrieve that data due to a technical issue."
+- If a tool returns an error or no data, say: "Sorry ${firstName}, I hit a snag. Could you try again?"
 - STRICTLY FORBIDDEN: Placeholder names like "John Doe" or made-up data
 - Only report what tools actually returned
 
@@ -178,6 +179,7 @@ EXECUTION RULES:
 - For Tier 5 read-only actions (get emails, check calendar, view contacts), execute immediately without any preamble
 - For confirmations (yes, ok, go ahead, yalla), execute the pending action
 - For greetings, respond naturally without asking "Should I proceed?"
+- For Tiers 2-4: Say "I'm ready to do that, ${firstName}. Shall I proceed?"
 
 Current time: ${new Date().toISOString()}`
       },
@@ -304,12 +306,24 @@ async function processWebhookAsync(payload: any): Promise<void> {
         if (userId && messageType === 'text' && content.trim()) {
           console.log('[WhatsApp Webhook] Processing AI response for user:', userId);
           
+          // Fetch user's display_name for personalized responses
+          const { data: userPrefs } = await supabase
+            .from('user_preferences')
+            .select('display_name')
+            .eq('user_id', userId)
+            .single();
+          
+          const firstName = userPrefs?.display_name || 'there';
+          
+          // Send acknowledgement with personalized name
+          await sendWhatsAppReply(phoneNumber, `Checking that for you now, ${firstName}.`);
+          
           // Fetch conversation history for context (last 5 messages)
           const conversationHistory = await fetchConversationHistory(supabase, phoneNumber, 5);
           console.log(`[WhatsApp Webhook] Fetched ${conversationHistory.length} messages for context`);
           
-          // Call AI assistant with conversation context (no "thinking" message - v5.0 clean UX)
-          const aiResponse = await callAIAssistant(content, userId, conversationHistory);
+          // Call AI assistant with conversation context and personalized name
+          const aiResponse = await callAIAssistant(content, userId, conversationHistory, firstName);
           
           // Send the AI response back via WhatsApp
           await sendWhatsAppReply(phoneNumber, aiResponse);
