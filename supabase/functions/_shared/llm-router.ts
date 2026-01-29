@@ -44,6 +44,7 @@ interface ProviderConfig {
   apiKeyEnv: string;
   supportsTemperature: boolean;
   supportsTools: boolean;
+  defaultTemperature?: number;
 }
 
 const PROVIDER_CONFIGS: Record<Provider, ProviderConfig> = {
@@ -51,10 +52,11 @@ const PROVIDER_CONFIGS: Record<Provider, ProviderConfig> = {
     name: "groq",
     baseUrl: "https://api.groq.com/openai/v1",
     model: "openai/gpt-oss-120b", // OpenAI-compatible 120B parameter model on Groq
-    timeout: 30000, // Increased timeout
+    timeout: 30000,
     apiKeyEnv: "GROQ_API_KEY",
     supportsTemperature: true,
     supportsTools: true,
+    defaultTemperature: 0.2, // Precision mode for Chief of Staff v4.0
   },
   openai: {
     name: "openai",
@@ -107,8 +109,12 @@ async function callOpenAICompatible(
       stream: false,
     };
 
-    if (config.supportsTemperature && request.temperature !== undefined) {
-      body.temperature = request.temperature;
+    // Apply temperature: use request temperature, fall back to provider default, then omit
+    if (config.supportsTemperature) {
+      const temp = request.temperature ?? config.defaultTemperature;
+      if (temp !== undefined) {
+        body.temperature = temp;
+      }
     }
 
     // Add tools if provided and provider supports them
