@@ -43,21 +43,33 @@ function generateSecurityTierPrompt(
 ): string {
   let prompt = `## SECURITY TIER SYSTEM - MANDATORY
 
-Before executing ANY action, you MUST check its security tier and request the appropriate confirmation. This is non-negotiable.
+CRITICAL BEHAVIORAL RULES:
+1. NEVER use emojis in any response - maintain professional executive tone
+2. For GREETINGS (hello, hi, how are you, etc.) - respond directly and naturally, do NOT ask "Should I proceed?"
+3. For Tier 5 read-only actions (viewing emails, calendar, contacts) - execute IMMEDIATELY without confirmation
+4. When you receive tool results/data, you MUST summarize and present that data clearly to the user
+5. NEVER ask "What would you like me to do?" after receiving a valid confirmation - execute the action immediately
 
 ### Tier Behaviors:
-- **Tier 1 (Critical)**: Say "This requires 2FA verification. A code has been sent to your email. Please enter the 6-digit code to proceed."
-- **Tier 2 (High Security)**: Say "${securityPhraseSet ? 'Please confirm with your security phrase to proceed.' : 'Security phrase not set. Please set one in Settings first.'}"${emojiEnabled ? ' (user can also reply with their security emoji)' : ''}
-- **Tier 3 (Confirm Action)**: Say "To [action], please reply with '[keyword]'${emojiEnabled ? " or [emoji]" : ''}" - ONLY accept exact match
-- **Tier 4 (Quick Confirm)**: Say "Should I proceed?" - Accept: yes, ok, go, sure, yalla, do it, confirmed, 👍, ✅
-- **Tier 5 (No Confirmation)**: Execute immediately without asking
-- **BLOCKED**: Say "This action is blocked for security reasons and cannot be performed."
+- **Tier 5 (No Confirmation)**: Execute immediately - reading emails, viewing calendar, checking contacts, etc.
+- **Tier 4 (Quick Confirm)**: Ask "Should I proceed?" - Accept: yes, ok, go, sure, yalla, do it, confirmed
+- **Tier 3 (Confirm Action)**: Say "To [action], please reply with '[keyword]'" - ONLY accept exact keyword match (delete, send, archive, etc.)
+- **Tier 2 (High Security)**: ${securityPhraseSet ? 'Require the security phrase.' : 'Security phrase not set - advise user to set one in Settings.'}
+- **Tier 1 (Critical)**: Require 2FA verification code sent to email
+- **BLOCKED**: Explain this action cannot be performed for security reasons
+
+### CONTEXT-AWARE CONFIRMATION:
+When reviewing conversation history:
+- If the PREVIOUS message asked for confirmation and the CURRENT message is a positive response (yes, ok, go ahead, yalla) → EXECUTE the pending action immediately
+- If the CURRENT message contains the exact keyword for a Tier 3 action (e.g., user says "delete") → EXECUTE the action
+- Do NOT re-ask for confirmation if the user already provided it
 
 ### CRITICAL RULES:
 1. NEVER reveal the user's security phrase
-2. NEVER skip or downgrade tier requirements
-3. After 3 failed confirmation attempts, the user will be locked out for 15 minutes
-4. Always wait for valid confirmation before executing tier 1-4 actions
+2. NEVER skip or downgrade tier requirements (except Tier 5 which has none)
+3. After 3 failed confirmation attempts, user will be locked out for 15 minutes
+4. When tools return data, ALWAYS present it clearly in your response
+5. NEVER return empty responses - always acknowledge and respond
 
 ### Action Tiers:\n`;
 
@@ -87,7 +99,7 @@ Before executing ANY action, you MUST check its security tier and request the ap
       const actionName = action.id.split('.')[1].replace(/_/g, ' ');
       let confirmInfo = '';
       if (action.tier === 3 && action.keyword) {
-        confirmInfo = ` → confirm: "${action.keyword}"${emojiEnabled && action.emoji ? ` or ${action.emoji}` : ''}`;
+        confirmInfo = ` → confirm with keyword: "${action.keyword}"`;
       }
       prompt += `- ${actionName}: ${tierLabel}${confirmInfo}\n`;
     }
@@ -360,6 +372,15 @@ serve(async (req) => {
           role: "tool",
           content: result.content,
           tool_call_id: result.tool_call_id,
+        });
+      }
+
+      // Add instruction to summarize tool results if we have any
+      if (toolResults.length > 0) {
+        // Add a follow-up instruction to ensure the AI summarizes the data
+        messages.push({
+          role: "system",
+          content: "IMPORTANT: You have received tool results above. You MUST now summarize this data clearly and concisely for the user. Do not ask what the user wants to do - present the information directly. No emojis."
         });
       }
 
