@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useSearchParams, useLocation } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { IntegrationCard } from "./IntegrationCard";
 import { GoogleWorkspaceCard } from "./GoogleWorkspaceCard";
 import { WhatsAppIntegrationCard } from "./WhatsAppIntegrationCard";
@@ -20,9 +20,6 @@ const GOOGLE_WORKSPACE_SCOPES = [
   "https://www.googleapis.com/auth/userinfo.email",
   "https://www.googleapis.com/auth/userinfo.profile",
 ];
-
-// Storage key for localStorage
-const SUPABASE_AUTH_KEY = 'sb-vqunxhjgpdgpzkjescvb-auth-token';
 
 interface IntegrationConfig {
   id: string;
@@ -55,15 +52,15 @@ interface IntegrationState {
 
 export function IntegrationsContent() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const location = useLocation();
   const [googleState, setGoogleState] = useState<IntegrationState>({ status: "not_connected" });
   const [integrationStates, setIntegrationStates] = useState<Record<string, IntegrationState>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
+  const [isMondayConnecting, setIsMondayConnecting] = useState(false);
   const { toast } = useToast();
   
-  // Ref to prevent double processing
-  const tokenProcessedRef = useRef(false);
+  // Ref to prevent double processing of OAuth code
+  const codeProcessedRef = useRef(false);
 
   const DISCONNECT_STORAGE_KEY = "disconnect_in_progress_provider";
 
@@ -82,17 +79,20 @@ export function IntegrationsContent() {
 
   // Check connection status for all integrations from database
   const refreshIntegrations = useCallback(async () => {
+    console.log("[Integrations] Refreshing integration status from database...");
     setIsLoading(true);
     try {
       // Check Google Workspace connection
       const googleIntegration = await checkGoogleConnection("google");
       if (googleIntegration?.connected) {
+        console.log("[Integrations] Google is connected:", googleIntegration.provider_email);
         setGoogleState({
           status: "connected",
           providerEmail: googleIntegration.provider_email || undefined,
           scopes: (googleIntegration as { scopes?: string[] }).scopes || [],
         });
       } else {
+        console.log("[Integrations] Google is NOT connected");
         setGoogleState({ status: "not_connected" });
       }
 
@@ -102,11 +102,13 @@ export function IntegrationsContent() {
         if (config.provider === "monday") {
           const integration = await checkMondayConnection();
           if (integration?.connected) {
+            console.log("[Integrations] Monday.com is connected:", integration.provider_email);
             states[config.id] = {
               status: "connected",
               providerEmail: integration.provider_email || undefined,
             };
           } else {
+            console.log("[Integrations] Monday.com is NOT connected");
             states[config.id] = { status: "not_connected" };
           }
         } else {
@@ -120,32 +122,61 @@ export function IntegrationsContent() {
     }
   }, [checkGoogleConnection, checkMondayConnection]);
 
-  // Token capture on mount - store provider_token after OAuth redirect
+  // ============================================================
+  // BUG FIX #1: Detect and consume OAuth ?code= parameter on mount
+  // ============================================================
   useEffect(() => {
-    if (tokenProcessedRef.current) return;
+    // Get code from current URL (check both searchParams and window.location)
+    const codeFromSearchParams = searchParams.get("code");
+    const urlParams = new URLSearchParams(window.location.search);
+    const codeFromWindow = urlParams.get("code");
+    const code = codeFromSearchParams || codeFromWindow;
+    
+    // LOUD CONSOLE LOG as requested
+    console.log("==============================================");
+    console.log("[Integrations] PAGE LOADED - Checking for OAuth code...");
+    console.log("[Integrations] URL:", window.location.href);
+    console.log("[Integrations] Code from searchParams:", codeFromSearchParams);
+    console.log("[Integrations] Code from window.location:", codeFromWindow);
+    console.log("[Integrations] Final code value:", code);
+    console.log("==============================================");
+
+    if (!code) {
+      console.log("[Integrations] No code parameter found - skipping token capture");
+      return;
+    }
+
+    if (codeProcessedRef.current) {
+      console.log("[Integrations] Code already processed - skipping");
+      return;
+    }
+
+    // Mark as processed immediately to prevent double processing
+    codeProcessedRef.current = true;
+    console.log("[Integrations] *** PROCESSING OAUTH CODE ***");
 
     const captureToken = async () => {
-      console.log("[TokenCapture] Starting token capture check...");
-
-      const codeFromQuery = searchParams.get("code");
-      if (codeFromQuery) {
-        tokenProcessedRef.current = true; // Prevent re-running
-        console.log("[TokenCapture] Found ?code= in URL. Exchanging for session...");
-        const { data, error } = await supabase.auth.exchangeCodeForSession(codeFromQuery);
+      try {
+        console.log("[TokenCapture] Exchanging code for session...");
+        const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
         if (error) {
           console.error("[TokenCapture] exchangeCodeForSession error:", error);
           toast({ title: "Google connection failed", description: error.message, variant: "destructive" });
+          codeProcessedRef.current = false; // Allow retry
           return;
         }
 
-        console.log("[TokenCapture] exchangeCodeForSession OK. Session:", data.session);
+        console.log("[TokenCapture] exchangeCodeForSession SUCCESS!");
+        console.log("[TokenCapture] Session user:", data.session?.user?.email);
+        console.log("[TokenCapture] Has provider_token:", !!data.session?.provider_token);
+        console.log("[TokenCapture] Has provider_refresh_token:", !!data.session?.provider_refresh_token);
 
-        // Clean the URL
-        const nextParams = new URLSearchParams(searchParams);
-        nextParams.delete("code");
-        nextParams.delete("state");
-        setSearchParams(nextParams, { replace: true });
+        // Clean the URL immediately
+        const cleanUrl = window.location.pathname;
+        window.history.replaceState({}, "", cleanUrl);
+        setSearchParams({}, { replace: true });
+        console.log("[TokenCapture] URL cleaned to:", cleanUrl);
 
         const providerToken = data.session?.provider_token;
         const providerRefreshToken = data.session?.provider_refresh_token;
@@ -176,14 +207,42 @@ export function IntegrationsContent() {
           return;
         }
 
-        console.log("[TokenCapture] Token stored successfully!");
+        console.log("==============================================");
+        console.log("[TokenCapture] TOKEN SAVED TO DATABASE SUCCESSFULLY!");
+        console.log("[TokenCapture] Provider email:", storeData.provider_email);
+        console.log("==============================================");
+        
         toast({ title: "Google Connected!", description: `Successfully connected as ${storeData.provider_email}` });
         await refreshIntegrations();
+      } catch (err) {
+        console.error("[TokenCapture] Unexpected error:", err);
+        toast({ title: "Connection failed", description: "An unexpected error occurred", variant: "destructive" });
+        codeProcessedRef.current = false; // Allow retry
       }
     };
 
     void captureToken();
-  }, [searchParams, setSearchParams, refreshIntegrations, toast]);
+  }, []); // Empty deps - only run once on mount
+
+  // ============================================================
+  // BUG FIX #3: Listen for Auth State Changes
+  // ============================================================
+  useEffect(() => {
+    console.log("[Integrations] Setting up auth state listener...");
+    
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log("[Integrations] Auth state changed:", event, "User:", session?.user?.email);
+      
+      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+        console.log("[Integrations] User signed in or token refreshed - refreshing integrations...");
+        refreshIntegrations();
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [refreshIntegrations]);
 
   // Clear any stale disconnect-in-progress flag on page load
   useEffect(() => {
@@ -197,6 +256,7 @@ export function IntegrationsContent() {
   // Listen for the custom event when Google tokens are stored
   useEffect(() => {
     const handleGoogleConnected = () => {
+      console.log("[Integrations] Received google-integration-connected event");
       refreshIntegrations();
     };
 
@@ -213,25 +273,27 @@ export function IntegrationsContent() {
     const error = searchParams.get("error");
 
     if (connected) {
+      console.log("[Integrations] Legacy connected param found:", connected, email);
       toast({
         title: "Connected!",
         description: `Successfully connected to ${connected}${email ? ` as ${email}` : ""}`,
       });
-      setSearchParams({});
+      setSearchParams({}, { replace: true });
     }
 
     if (error) {
+      console.log("[Integrations] Error param found:", error);
       toast({
         title: "Connection failed",
         description: error,
         variant: "destructive",
       });
-      setSearchParams({});
+      setSearchParams({}, { replace: true });
     }
 
-    // Always refresh integrations from database
+    // Always refresh integrations from database on mount
     refreshIntegrations();
-  }, [searchParams, setSearchParams, refreshIntegrations, toast]);
+  }, []);
 
   const handleGoogleConnect = async () => {
     await initiateGoogleOAuth("google", GOOGLE_WORKSPACE_SCOPES);
@@ -270,10 +332,23 @@ export function IntegrationsContent() {
     }
   };
 
-  const handleConnect = (integrationId: string) => {
+  // ============================================================
+  // BUG FIX #2: Monday.com connect handler with loading state
+  // ============================================================
+  const handleConnect = async (integrationId: string) => {
+    console.log("[Integrations] handleConnect called for:", integrationId);
     const config = OTHER_INTEGRATION_CONFIGS.find((c) => c.id === integrationId);
+    
     if (config?.provider === "monday") {
-      initiateMondayOAuth();
+      console.log("[Integrations] Initiating Monday.com OAuth...");
+      setIsMondayConnecting(true);
+      try {
+        await initiateMondayOAuth();
+      } catch (err) {
+        console.error("[Integrations] Monday OAuth error:", err);
+        setIsMondayConnecting(false);
+      }
+      // Note: Don't reset connecting state here - page will redirect
     }
   };
 
@@ -352,7 +427,8 @@ export function IntegrationsContent() {
           status={getStatus(integration.id)}
           showConnectButton={integration.showConnectButton}
           connectedEmail={getProviderEmail(integration.id)}
-          isLoading={disconnectingId === integration.id}
+          isLoading={disconnectingId === integration.id || (integration.provider === "monday" && isMondayConnecting)}
+          isConnecting={integration.provider === "monday" && isMondayConnecting}
           onConnect={() => handleConnect(integration.id)}
           onDisconnect={() => handleDisconnect(integration.id)}
         />
