@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 
@@ -24,6 +24,115 @@ const GOOGLE_WORKSPACE_SCOPES = [
   "https://www.googleapis.com/auth/userinfo.profile",
 ];
 
+// ============================================================
+// STORE TOKENS FUNCTION - Defined at module level to avoid hoisting issues
+// ============================================================
+async function storeTokens(providerToken: string, providerRefreshToken: string | null): Promise<void> {
+  // Check if we already captured this token recently (within 30 seconds)
+  const lastCaptured = sessionStorage.getItem(TOKEN_CAPTURED_KEY);
+  if (lastCaptured) {
+    const elapsed = Date.now() - parseInt(lastCaptured, 10);
+    if (elapsed < 30000) {
+      console.log('[GoogleTokenCapture] Token recently captured, skipping');
+      return;
+    }
+  }
+
+  console.log('[GoogleTokenCapture] *** STORING TOKENS ***');
+  console.log('[GoogleTokenCapture] Token length:', providerToken.length);
+  console.log('[GoogleTokenCapture] Has refresh token:', !!providerRefreshToken);
+
+  try {
+    // Persist to localStorage for client-side access
+    try {
+      const authData = localStorage.getItem(SUPABASE_AUTH_KEY);
+      if (authData) {
+        const parsed = JSON.parse(authData);
+        if (!parsed.provider_token) {
+          parsed.provider_token = providerToken;
+          if (providerRefreshToken) {
+            parsed.provider_refresh_token = providerRefreshToken;
+          }
+          localStorage.setItem(SUPABASE_AUTH_KEY, JSON.stringify(parsed));
+          console.log('[GoogleTokenCapture] Token persisted to localStorage');
+        }
+      }
+    } catch (e) {
+      console.error('[GoogleTokenCapture] Failed to persist to localStorage:', e);
+    }
+
+    // Store tokens server-side via edge function
+    console.log('[GoogleTokenCapture] Calling store-google-tokens edge function...');
+
+    const response = await supabase.functions.invoke('store-google-tokens', {
+      body: {
+        provider: 'google',
+        provider_token: providerToken,
+        provider_refresh_token: providerRefreshToken,
+        scopes: GOOGLE_WORKSPACE_SCOPES,
+      },
+    });
+
+    // Detailed error logging
+    console.log('[GoogleTokenCapture] Edge function response:', {
+      hasData: !!response.data,
+      hasError: !!response.error,
+      success: response.data?.success,
+      errorMessage: response.error?.message,
+      errorDetails: response.error,
+      dataError: response.data?.error,
+    });
+
+    if (response.error) {
+      console.error('[GoogleTokenCapture] *** EDGE FUNCTION ERROR ***');
+      console.error('[GoogleTokenCapture] Error status:', (response.error as { status?: number }).status);
+      console.error('[GoogleTokenCapture] Error message:', response.error.message);
+      console.error('[GoogleTokenCapture] Full error:', JSON.stringify(response.error, null, 2));
+      toast({ 
+        title: "Connection failed: could not save credentials", 
+        description: response.error.message || "Database error while storing Google tokens.", 
+        variant: "destructive" 
+      });
+      return;
+    }
+
+    if (!response.data?.success) {
+      console.error('[GoogleTokenCapture] *** EDGE FUNCTION RETURNED FAILURE ***');
+      console.error('[GoogleTokenCapture] Response data:', JSON.stringify(response.data, null, 2));
+      toast({ 
+        title: "Connection failed: could not save credentials", 
+        description: response.data?.error || "Unknown error while storing tokens.", 
+        variant: "destructive" 
+      });
+      return;
+    }
+
+    console.log('==============================================');
+    console.log('[GoogleTokenCapture] *** TOKEN SAVED TO DATABASE SUCCESSFULLY ***');
+    console.log('[GoogleTokenCapture] Provider email:', response.data.provider_email);
+    console.log('==============================================');
+
+    // Mark as captured
+    sessionStorage.setItem(TOKEN_CAPTURED_KEY, Date.now().toString());
+
+    toast({ 
+      title: "Google Connected!", 
+      description: `Successfully connected as ${response.data.provider_email}` 
+    });
+
+    // Dispatch event so IntegrationsContent can refresh
+    window.dispatchEvent(new CustomEvent('google-integration-connected'));
+  } catch (e) {
+    console.error('[GoogleTokenCapture] *** UNEXPECTED ERROR ***');
+    console.error('[GoogleTokenCapture] Error:', e);
+    toast({ 
+      title: "Connection failed", 
+      description: "An unexpected error occurred while saving credentials.", 
+      variant: "destructive" 
+    });
+  }
+}
+
 export function useGoogleTokenCapture() {
   const captureInProgressRef = useRef(false);
 
@@ -43,18 +152,16 @@ export function useGoogleTokenCapture() {
     console.log('==============================================');
 
     if (code) {
+      // IMMEDIATELY clean the URL before doing anything else
+      console.log('[GoogleTokenCapture] *** CLEANING URL IMMEDIATELY ***');
+      window.history.replaceState({}, '', window.location.pathname);
+      
       // Check if we already processed this code
       const processedCode = sessionStorage.getItem(CODE_PROCESSED_KEY);
       if (processedCode === code) {
         console.log('[GoogleTokenCapture] Code already processed, skipping');
-        // Still clean the URL
-        window.history.replaceState({}, '', window.location.pathname);
         return;
       }
-
-      // IMMEDIATELY clean the URL before doing anything else
-      console.log('[GoogleTokenCapture] *** CLEANING URL IMMEDIATELY ***');
-      window.history.replaceState({}, '', window.location.pathname);
       
       // Mark code as being processed
       sessionStorage.setItem(CODE_PROCESSED_KEY, code);
@@ -100,8 +207,8 @@ export function useGoogleTokenCapture() {
             return;
           }
 
-          // Store tokens server-side
-          await storeTokens(providerToken, providerRefreshToken);
+          // Store tokens server-side (function is now defined at module level)
+          await storeTokens(providerToken, providerRefreshToken ?? null);
         } catch (e) {
           console.error('[GoogleTokenCapture] Unexpected error processing code:', e);
           toast({ 
@@ -122,112 +229,6 @@ export function useGoogleTokenCapture() {
     // ============================================================
     // STEP 2: Set up auth state listener for token capture
     // ============================================================
-    const storeTokens = async (providerToken: string, providerRefreshToken: string | null) => {
-      // Check if we already captured this token recently (within 30 seconds)
-      const lastCaptured = sessionStorage.getItem(TOKEN_CAPTURED_KEY);
-      if (lastCaptured) {
-        const elapsed = Date.now() - parseInt(lastCaptured, 10);
-        if (elapsed < 30000) {
-          console.log('[GoogleTokenCapture] Token recently captured, skipping');
-          return;
-        }
-      }
-
-      console.log('[GoogleTokenCapture] *** STORING TOKENS ***');
-      console.log('[GoogleTokenCapture] Token length:', providerToken.length);
-      console.log('[GoogleTokenCapture] Has refresh token:', !!providerRefreshToken);
-
-      try {
-        // Persist to localStorage for client-side access
-        try {
-          const authData = localStorage.getItem(SUPABASE_AUTH_KEY);
-          if (authData) {
-            const parsed = JSON.parse(authData);
-            if (!parsed.provider_token) {
-              parsed.provider_token = providerToken;
-              if (providerRefreshToken) {
-                parsed.provider_refresh_token = providerRefreshToken;
-              }
-              localStorage.setItem(SUPABASE_AUTH_KEY, JSON.stringify(parsed));
-              console.log('[GoogleTokenCapture] Token persisted to localStorage');
-            }
-          }
-        } catch (e) {
-          console.error('[GoogleTokenCapture] Failed to persist to localStorage:', e);
-        }
-
-        // Store tokens server-side via edge function
-        console.log('[GoogleTokenCapture] Calling store-google-tokens edge function...');
-
-        const response = await supabase.functions.invoke('store-google-tokens', {
-          body: {
-            provider: 'google',
-            provider_token: providerToken,
-            provider_refresh_token: providerRefreshToken,
-            scopes: GOOGLE_WORKSPACE_SCOPES,
-          },
-        });
-
-        // Detailed error logging
-        console.log('[GoogleTokenCapture] Edge function response:', {
-          hasData: !!response.data,
-          hasError: !!response.error,
-          success: response.data?.success,
-          errorMessage: response.error?.message,
-          errorDetails: response.error,
-          dataError: response.data?.error,
-        });
-
-        if (response.error) {
-          console.error('[GoogleTokenCapture] *** EDGE FUNCTION ERROR ***');
-          console.error('[GoogleTokenCapture] Error status:', (response.error as { status?: number }).status);
-          console.error('[GoogleTokenCapture] Error message:', response.error.message);
-          console.error('[GoogleTokenCapture] Full error:', JSON.stringify(response.error, null, 2));
-          toast({ 
-            title: "Connection failed: could not save credentials", 
-            description: response.error.message || "Database error while storing Google tokens.", 
-            variant: "destructive" 
-          });
-          return;
-        }
-
-        if (!response.data?.success) {
-          console.error('[GoogleTokenCapture] *** EDGE FUNCTION RETURNED FAILURE ***');
-          console.error('[GoogleTokenCapture] Response data:', JSON.stringify(response.data, null, 2));
-          toast({ 
-            title: "Connection failed: could not save credentials", 
-            description: response.data?.error || "Unknown error while storing tokens.", 
-            variant: "destructive" 
-          });
-          return;
-        }
-
-        console.log('==============================================');
-        console.log('[GoogleTokenCapture] *** TOKEN SAVED TO DATABASE SUCCESSFULLY ***');
-        console.log('[GoogleTokenCapture] Provider email:', response.data.provider_email);
-        console.log('==============================================');
-
-        // Mark as captured
-        sessionStorage.setItem(TOKEN_CAPTURED_KEY, Date.now().toString());
-
-        toast({ 
-          title: "Google Connected!", 
-          description: `Successfully connected as ${response.data.provider_email}` 
-        });
-
-        // Dispatch event so IntegrationsContent can refresh
-        window.dispatchEvent(new CustomEvent('google-integration-connected'));
-      } catch (e) {
-        console.error('[GoogleTokenCapture] *** UNEXPECTED ERROR ***');
-        console.error('[GoogleTokenCapture] Error:', e);
-        toast({ 
-          title: "Connection failed", 
-          description: "An unexpected error occurred while saving credentials.", 
-          variant: "destructive" 
-        });
-      }
-    };
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log('[GoogleTokenCapture] Auth event:', event, {

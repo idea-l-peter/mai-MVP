@@ -82,7 +82,8 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
   }, []);
 
   const initiateOAuth = useCallback(async (provider: string, scopes: string[]) => {
-    console.log('[GoogleOAuth] Starting connection...');
+    console.log('[GoogleOAuth] Starting connection with scopes:', scopes);
+    console.log('[GoogleOAuth] Forcing consent prompt for permission update...');
     setIsConnecting(true);
 
     try {
@@ -92,6 +93,8 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
         // ignore
       }
 
+      // CRITICAL: Always use prompt: 'consent' and access_type: 'offline'
+      // This forces Google to show the checkbox screen for scope selection
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -100,6 +103,7 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
           queryParams: {
             access_type: 'offline',
             prompt: 'consent',
+            include_granted_scopes: 'true',
           },
         },
       });
@@ -210,6 +214,7 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
   /**
    * Check if user has a valid integration in the database.
    * This queries user_integrations table to check if tokens exist.
+   * IMPORTANT: This reads the 'scopes' column to verify which permissions are granted.
    */
   const checkConnection = useCallback(async (provider: string): Promise<Integration | null> => {
     try {
@@ -221,7 +226,7 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
 
       console.log('[GoogleOAuth] Checking database for provider:', provider, 'user:', user.id.slice(0, 8));
 
-      // Query user_integrations table for this provider
+      // Query user_integrations table for this provider - EXPLICITLY SELECT scopes
       const { data, error } = await supabase
         .from('user_integrations')
         .select('provider, provider_email, token_expires_at, scopes')
@@ -239,10 +244,12 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
         return null;
       }
 
+      // Log scopes explicitly for debugging
       console.log('[GoogleOAuth] Integration found in database:', {
         provider: data.provider,
         email: data.provider_email,
-        hasScopes: !!data.scopes?.length,
+        scopes: data.scopes,
+        scopeCount: data.scopes?.length || 0,
       });
 
       // Also verify that encrypted tokens exist
