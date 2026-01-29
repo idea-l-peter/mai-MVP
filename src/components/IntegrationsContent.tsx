@@ -58,7 +58,6 @@ export function IntegrationsContent() {
 
   // PREFETCH: Load dashboard data in the background when Integrations page mounts
   useEffect(() => {
-    console.log("[Integrations] Prefetching dashboard data...");
     queryClient.prefetchQuery({
       queryKey: DASHBOARD_QUERY_KEY,
       queryFn: fetchDashboardData,
@@ -89,13 +88,8 @@ export function IntegrationsContent() {
 
   // Listen for Auth State Changes - invalidate React Query cache
   useEffect(() => {
-    console.log("[Integrations] Setting up auth state listener...");
-    
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log("[Integrations] Auth state changed:", event, "User:", session?.user?.email);
-      
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
-        console.log("[Integrations] User signed in or token refreshed - invalidating cache...");
         invalidateIntegrations();
       }
     });
@@ -115,7 +109,6 @@ export function IntegrationsContent() {
   // Listen for the custom event when Google tokens are stored
   useEffect(() => {
     const handleGoogleConnected = () => {
-      console.log("[Integrations] Received google-integration-connected event - invalidating cache");
       invalidateIntegrations();
     };
 
@@ -130,7 +123,6 @@ export function IntegrationsContent() {
     const error = searchParams.get("error");
 
     if (connected) {
-      console.log("[Integrations] Legacy connected param found:", connected, email);
       toast({
         title: "Connected!",
         description: `Successfully connected to ${connected}${email ? ` as ${email}` : ""}`,
@@ -139,7 +131,6 @@ export function IntegrationsContent() {
     }
 
     if (error) {
-      console.log("[Integrations] Error param found:", error);
       toast({
         title: "Connection failed",
         description: error,
@@ -187,14 +178,12 @@ export function IntegrationsContent() {
   };
 
   // ============================================================
-  // BUG FIX #2: Monday.com connect handler with loading state
+  // Monday.com connect handler with loading state
   // ============================================================
   const handleConnect = async (integrationId: string) => {
-    console.log("[Integrations] handleConnect called for:", integrationId);
     const config = OTHER_INTEGRATION_CONFIGS.find((c) => c.id === integrationId);
     
     if (config?.provider === "monday") {
-      console.log("[Integrations] Initiating Monday.com OAuth...");
       setIsMondayConnecting(true);
       try {
         await initiateMondayOAuth();
@@ -202,7 +191,6 @@ export function IntegrationsContent() {
         console.error("[Integrations] Monday OAuth error:", err);
         setIsMondayConnecting(false);
       }
-      // Note: Don't reset connecting state here - page will redirect
     }
   };
 

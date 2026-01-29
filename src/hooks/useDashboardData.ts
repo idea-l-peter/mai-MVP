@@ -84,9 +84,6 @@ const STALE_TIME = 2 * 60 * 1000;
 
 // Fetch function for dashboard data
 async function fetchDashboardData(): Promise<DashboardData> {
-  console.log('[Dashboard] Starting data fetch...');
-  const startTime = Date.now();
-
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   
   if (authError) {
@@ -95,18 +92,12 @@ async function fetchDashboardData(): Promise<DashboardData> {
   }
   
   if (!user) {
-    console.log('[Dashboard] No authenticated user');
     throw new Error('Not authenticated');
   }
-
-  console.log('[Dashboard] Fetching data for authenticated user');
 
   const { data: response, error: fetchError } = await supabase.functions.invoke('dashboard-data', {
     body: {},
   });
-
-  const elapsed = Date.now() - startTime;
-  console.log('[Dashboard] Response received in', elapsed, 'ms');
 
   if (fetchError) {
     console.error('[Dashboard] Fetch error:', fetchError);
@@ -118,21 +109,11 @@ async function fetchDashboardData(): Promise<DashboardData> {
     throw new Error(response?.error || 'Failed to fetch dashboard data');
   }
 
-  console.log('[Dashboard] Data loaded successfully:', {
-    gmail: response.data.gmail?.connected,
-    calendar: response.data.calendar?.connected,
-    monday: response.data.monday?.connected,
-    followups: response.data.contacts?.followupsDue?.length,
-    elapsed: elapsed + 'ms',
-  });
-
   return response.data;
 }
 
 // Fetch function for a specific section
 async function fetchDashboardSection(section: DashboardSection): Promise<Partial<DashboardData>> {
-  console.log(`[Dashboard] Fetching section: ${section}`);
-
   const { data: response, error: fetchError } = await supabase.functions.invoke('dashboard-data', {
     body: { section },
   });
@@ -146,7 +127,6 @@ async function fetchDashboardSection(section: DashboardSection): Promise<Partial
     throw new Error(response?.error || `Failed to fetch ${section}`);
   }
 
-  console.log(`[Dashboard] ${section} fetched successfully`);
   return response.data;
 }
 

@@ -33,14 +33,9 @@ async function storeTokens(providerToken: string, providerRefreshToken: string |
   if (lastCaptured) {
     const elapsed = Date.now() - parseInt(lastCaptured, 10);
     if (elapsed < 30000) {
-      console.log('[GoogleTokenCapture] Token recently captured, skipping');
       return;
     }
   }
-
-  console.log('[GoogleTokenCapture] *** STORING TOKENS ***');
-  console.log('[GoogleTokenCapture] Token length:', providerToken.length);
-  console.log('[GoogleTokenCapture] Has refresh token:', !!providerRefreshToken);
 
   try {
     // Persist to localStorage for client-side access
@@ -54,7 +49,6 @@ async function storeTokens(providerToken: string, providerRefreshToken: string |
             parsed.provider_refresh_token = providerRefreshToken;
           }
           localStorage.setItem(SUPABASE_AUTH_KEY, JSON.stringify(parsed));
-          console.log('[GoogleTokenCapture] Token persisted to localStorage');
         }
       }
     } catch (e) {
@@ -62,8 +56,6 @@ async function storeTokens(providerToken: string, providerRefreshToken: string |
     }
 
     // Store tokens server-side via edge function
-    console.log('[GoogleTokenCapture] Calling store-google-tokens edge function...');
-
     const response = await supabase.functions.invoke('store-google-tokens', {
       body: {
         provider: 'google',
@@ -73,21 +65,8 @@ async function storeTokens(providerToken: string, providerRefreshToken: string |
       },
     });
 
-    // Detailed error logging
-    console.log('[GoogleTokenCapture] Edge function response:', {
-      hasData: !!response.data,
-      hasError: !!response.error,
-      success: response.data?.success,
-      errorMessage: response.error?.message,
-      errorDetails: response.error,
-      dataError: response.data?.error,
-    });
-
     if (response.error) {
-      console.error('[GoogleTokenCapture] *** EDGE FUNCTION ERROR ***');
-      console.error('[GoogleTokenCapture] Error status:', (response.error as { status?: number }).status);
-      console.error('[GoogleTokenCapture] Error message:', response.error.message);
-      console.error('[GoogleTokenCapture] Full error:', JSON.stringify(response.error, null, 2));
+      console.error('[GoogleTokenCapture] Edge function error:', response.error.message);
       toast({ 
         title: "Connection failed: could not save credentials", 
         description: response.error.message || "Database error while storing Google tokens.", 
@@ -97,8 +76,7 @@ async function storeTokens(providerToken: string, providerRefreshToken: string |
     }
 
     if (!response.data?.success) {
-      console.error('[GoogleTokenCapture] *** EDGE FUNCTION RETURNED FAILURE ***');
-      console.error('[GoogleTokenCapture] Response data:', JSON.stringify(response.data, null, 2));
+      console.error('[GoogleTokenCapture] Edge function returned failure:', response.data?.error);
       toast({ 
         title: "Connection failed: could not save credentials", 
         description: response.data?.error || "Unknown error while storing tokens.", 
@@ -106,11 +84,6 @@ async function storeTokens(providerToken: string, providerRefreshToken: string |
       });
       return;
     }
-
-    console.log('==============================================');
-    console.log('[GoogleTokenCapture] *** TOKEN SAVED TO DATABASE SUCCESSFULLY ***');
-    console.log('[GoogleTokenCapture] Provider email:', response.data.provider_email);
-    console.log('==============================================');
 
     // Mark as captured
     sessionStorage.setItem(TOKEN_CAPTURED_KEY, Date.now().toString());
@@ -123,8 +96,7 @@ async function storeTokens(providerToken: string, providerRefreshToken: string |
     // Dispatch event so IntegrationsContent can refresh
     window.dispatchEvent(new CustomEvent('google-integration-connected'));
   } catch (e) {
-    console.error('[GoogleTokenCapture] *** UNEXPECTED ERROR ***');
-    console.error('[GoogleTokenCapture] Error:', e);
+    console.error('[GoogleTokenCapture] Unexpected error:', e);
     toast({ 
       title: "Connection failed", 
       description: "An unexpected error occurred while saving credentials.", 
@@ -137,29 +109,17 @@ export function useGoogleTokenCapture() {
   const captureInProgressRef = useRef(false);
 
   useEffect(() => {
-    console.log('[GoogleTokenCapture] Hook initialized');
-
-    // ============================================================
-    // STEP 1: Immediately check for OAuth code in URL and clean it
-    // ============================================================
+    // Check for OAuth code in URL and clean it
     const urlParams = new URLSearchParams(window.location.search);
     const code = urlParams.get('code');
-    
-    console.log('==============================================');
-    console.log('[GoogleTokenCapture] PAGE LOADED - Checking for OAuth code...');
-    console.log('[GoogleTokenCapture] URL:', window.location.href);
-    console.log('[GoogleTokenCapture] Code found:', !!code, code?.substring(0, 20) + '...');
-    console.log('==============================================');
 
     if (code) {
       // IMMEDIATELY clean the URL before doing anything else
-      console.log('[GoogleTokenCapture] *** CLEANING URL IMMEDIATELY ***');
       window.history.replaceState({}, '', window.location.pathname);
       
       // Check if we already processed this code
       const processedCode = sessionStorage.getItem(CODE_PROCESSED_KEY);
       if (processedCode === code) {
-        console.log('[GoogleTokenCapture] Code already processed, skipping');
         return;
       }
       
@@ -169,13 +129,11 @@ export function useGoogleTokenCapture() {
       // Process the code
       const processCode = async () => {
         if (captureInProgressRef.current) {
-          console.log('[GoogleTokenCapture] Capture already in progress, skipping');
           return;
         }
         captureInProgressRef.current = true;
 
         try {
-          console.log('[GoogleTokenCapture] *** EXCHANGING CODE FOR SESSION ***');
           const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
           if (error) {
@@ -189,16 +147,11 @@ export function useGoogleTokenCapture() {
             return;
           }
 
-          console.log('[GoogleTokenCapture] exchangeCodeForSession SUCCESS!');
-          console.log('[GoogleTokenCapture] Session user:', data.session?.user?.email);
-          console.log('[GoogleTokenCapture] Has provider_token:', !!data.session?.provider_token);
-          console.log('[GoogleTokenCapture] Provider token length:', data.session?.provider_token?.length);
-
           const providerToken = data.session?.provider_token;
           const providerRefreshToken = data.session?.provider_refresh_token;
 
           if (!providerToken) {
-            console.error('[GoogleTokenCapture] No provider_token in session after exchange!');
+            console.error('[GoogleTokenCapture] No provider_token in session after exchange');
             toast({ 
               title: "Connection Failed", 
               description: "Could not retrieve Google token after login.", 
@@ -207,7 +160,7 @@ export function useGoogleTokenCapture() {
             return;
           }
 
-          // Store tokens server-side (function is now defined at module level)
+          // Store tokens server-side
           await storeTokens(providerToken, providerRefreshToken ?? null);
         } catch (e) {
           console.error('[GoogleTokenCapture] Unexpected error processing code:', e);
@@ -226,18 +179,9 @@ export function useGoogleTokenCapture() {
       return; // Don't set up other listeners if we're processing a code
     }
 
-    // ============================================================
-    // STEP 2: Set up auth state listener for token capture
-    // ============================================================
+    // Set up auth state listener for token capture
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('[GoogleTokenCapture] Auth event:', event, {
-          hasSession: !!session,
-          hasProviderToken: !!session?.provider_token,
-          providerTokenLength: session?.provider_token?.length,
-          hasRefreshToken: !!session?.provider_refresh_token,
-        });
-
         // Capture provider_token when it appears in SIGNED_IN event
         if (event === 'SIGNED_IN' && session?.provider_token && session.user?.id) {
           if (!captureInProgressRef.current) {
@@ -250,7 +194,6 @@ export function useGoogleTokenCapture() {
     );
 
     return () => {
-      console.log('[GoogleTokenCapture] Cleaning up auth listener');
       subscription.unsubscribe();
     };
   }, []);
