@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -29,15 +29,14 @@ serve(async (req) => {
     }
 
     // Create auth client to validate JWT
+    // NOTE: getUser() is faster/more reliable than getClaims() in edge runtime.
     const supabaseAuth = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       global: { headers: { Authorization: authHeader } },
-      auth: { persistSession: false }
+      auth: { persistSession: false },
     });
 
-    const token = authHeader.replace('Bearer ', '');
-    const { data: claimsData, error: authError } = await supabaseAuth.auth.getClaims(token);
-    
-    if (authError || !claimsData?.claims) {
+    const { data: userData, error: authError } = await supabaseAuth.auth.getUser();
+    if (authError || !userData?.user?.id) {
       console.error('[GoogleOAuth] Auth error:', authError);
       return new Response(
         JSON.stringify({ error: 'Unauthorized: Invalid or expired token' }),
@@ -45,8 +44,8 @@ serve(async (req) => {
       );
     }
 
-    // Use authenticated user's ID from JWT - ignore any user_id from request body
-    const user_id = claimsData.claims.sub as string;
+    // Use authenticated user's ID - ignore any user_id from request body
+    const user_id = userData.user.id;
     console.log('[GoogleOAuth] Authenticated user:', user_id);
     
     const { scopes, app_redirect_uri, provider } = await req.json();
