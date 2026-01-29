@@ -235,7 +235,16 @@ serve(async (req) => {
     }
 
     const body = await req.json();
-    const { messages: inputMessages, temperature, max_tokens, stream, provider } = body;
+    const { messages: inputMessages, temperature, max_tokens, stream, provider, user_id: bodyUserId } = body;
+    
+    // CRITICAL FIX: Accept user_id from request body (for WhatsApp webhook calls with service role key)
+    // If we didn't get a userId from JWT but one is provided in the body, use it
+    if (!userId && bodyUserId && typeof bodyUserId === 'string') {
+      userId = bodyUserId;
+      console.log(`[AI Assistant] Using user_id from request body: ${userId}`);
+    }
+    
+    console.log(`[AI Assistant] Final user_id for tools: ${userId || 'NONE - tools disabled'}, tools_will_work=${!!userId}`);
 
     // Validate required fields
     if (!inputMessages || !Array.isArray(inputMessages) || inputMessages.length === 0) {
