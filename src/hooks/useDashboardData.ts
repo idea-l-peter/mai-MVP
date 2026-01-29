@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
 interface Email {
@@ -76,192 +76,125 @@ export interface LoadingState {
   contacts: boolean;
 }
 
-// Cache configuration
-const CACHE_KEY = 'mai_dashboard_cache';
-const CACHE_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes
+// Query key for dashboard data
+export const DASHBOARD_QUERY_KEY = ['dashboard-data'];
 
-interface CachedData {
-  data: DashboardData;
-  timestamp: number;
+// 2 minutes staleTime - won't refetch if data is fresh
+const STALE_TIME = 2 * 60 * 1000;
+
+// Fetch function for dashboard data
+async function fetchDashboardData(): Promise<DashboardData> {
+  console.log('[Dashboard] Starting data fetch...');
+  const startTime = Date.now();
+
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  
+  if (authError) {
+    console.error('[Dashboard] Auth error:', authError);
+    throw new Error('Authentication error');
+  }
+  
+  if (!user) {
+    console.log('[Dashboard] No authenticated user');
+    throw new Error('Not authenticated');
+  }
+
+  console.log('[Dashboard] Fetching data for authenticated user');
+
+  const { data: response, error: fetchError } = await supabase.functions.invoke('dashboard-data', {
+    body: {},
+  });
+
+  const elapsed = Date.now() - startTime;
+  console.log('[Dashboard] Response received in', elapsed, 'ms');
+
+  if (fetchError) {
+    console.error('[Dashboard] Fetch error:', fetchError);
+    throw fetchError;
+  }
+
+  if (!response?.success) {
+    console.error('[Dashboard] API error:', response?.error);
+    throw new Error(response?.error || 'Failed to fetch dashboard data');
+  }
+
+  console.log('[Dashboard] Data loaded successfully:', {
+    gmail: response.data.gmail?.connected,
+    calendar: response.data.calendar?.connected,
+    monday: response.data.monday?.connected,
+    followups: response.data.contacts?.followupsDue?.length,
+    elapsed: elapsed + 'ms',
+  });
+
+  return response.data;
 }
 
-function getCachedData(): DashboardData | null {
-  try {
-    const cached = localStorage.getItem(CACHE_KEY);
-    if (!cached) return null;
-    
-    const parsed: CachedData = JSON.parse(cached);
-    const now = Date.now();
-    
-    // Check if cache is still valid
-    if (now - parsed.timestamp < CACHE_EXPIRY_MS) {
-      console.log('[Dashboard] Using cached data, age:', Math.round((now - parsed.timestamp) / 1000), 'seconds');
-      return parsed.data;
-    }
-    
-    console.log('[Dashboard] Cache expired');
-    return null;
-  } catch {
-    return null;
-  }
-}
+// Fetch function for a specific section
+async function fetchDashboardSection(section: DashboardSection): Promise<Partial<DashboardData>> {
+  console.log(`[Dashboard] Fetching section: ${section}`);
 
-function setCachedData(data: DashboardData): void {
-  try {
-    const cacheEntry: CachedData = {
-      data,
-      timestamp: Date.now(),
-    };
-    localStorage.setItem(CACHE_KEY, JSON.stringify(cacheEntry));
-  } catch (e) {
-    console.warn('[Dashboard] Failed to cache data:', e);
+  const { data: response, error: fetchError } = await supabase.functions.invoke('dashboard-data', {
+    body: { section },
+  });
+
+  if (fetchError) {
+    console.error(`[Dashboard] ${section} fetch error:`, fetchError);
+    throw fetchError;
   }
+
+  if (!response?.success) {
+    throw new Error(response?.error || `Failed to fetch ${section}`);
+  }
+
+  console.log(`[Dashboard] ${section} fetched successfully`);
+  return response.data;
 }
 
 export function useDashboardData() {
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [loading, setLoading] = useState<LoadingState>({
-    full: true,
+  const queryClient = useQueryClient();
+
+  const query = useQuery({
+    queryKey: DASHBOARD_QUERY_KEY,
+    queryFn: fetchDashboardData,
+    staleTime: STALE_TIME,
+    gcTime: STALE_TIME * 2,
+    refetchOnWindowFocus: false,
+  });
+
+  // Refresh a specific section and merge into cache
+  const refreshSection = async (section: DashboardSection) => {
+    try {
+      const sectionData = await fetchDashboardSection(section);
+      
+      // Merge section data into existing cache
+      queryClient.setQueryData<DashboardData>(DASHBOARD_QUERY_KEY, (old) => {
+        if (!old) return old;
+        return { ...old, ...sectionData };
+      });
+    } catch (err) {
+      console.error(`[Dashboard] ${section} refresh error:`, err);
+    }
+  };
+
+  // Build loading state object for backwards compatibility
+  const loading: LoadingState = {
+    full: query.isLoading,
     gmail: false,
     calendar: false,
     monday: false,
     contacts: false,
-  });
-  const [error, setError] = useState<string | null>(null);
-  const fetchInProgress = useRef(false);
-
-  const fetchData = useCallback(async (skipCache = false) => {
-    // Prevent duplicate fetches
-    if (fetchInProgress.current) {
-      console.log('[Dashboard] Fetch already in progress, skipping');
-      return;
-    }
-
-    // Try to use cached data first (only on initial load, not manual refresh)
-    if (!skipCache) {
-      const cached = getCachedData();
-      if (cached) {
-        setData(cached);
-        setLoading(prev => ({ ...prev, full: false }));
-        // Still refresh in background after a short delay
-        setTimeout(() => fetchData(true), 100);
-        return;
-      }
-    }
-
-    fetchInProgress.current = true;
-    setLoading(prev => ({ ...prev, full: true }));
-    setError(null);
-
-    const startTime = Date.now();
-    console.log('[Dashboard] Starting data fetch...');
-
-    try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-      
-      if (authError) {
-        console.error('[Dashboard] Auth error:', authError);
-        setError('Authentication error');
-        setLoading(prev => ({ ...prev, full: false }));
-        fetchInProgress.current = false;
-        return;
-      }
-      
-      if (!user) {
-        console.log('[Dashboard] No authenticated user');
-        setError('Not authenticated');
-        setLoading(prev => ({ ...prev, full: false }));
-        fetchInProgress.current = false;
-        return;
-      }
-
-      console.log('[Dashboard] Fetching data for authenticated user');
-
-      const { data: response, error: fetchError } = await supabase.functions.invoke('dashboard-data', {
-        body: {},
-      });
-
-      const elapsed = Date.now() - startTime;
-      console.log('[Dashboard] Response received in', elapsed, 'ms');
-
-      if (fetchError) {
-        console.error('[Dashboard] Fetch error:', fetchError);
-        throw fetchError;
-      }
-
-      if (!response?.success) {
-        console.error('[Dashboard] API error:', response?.error);
-        throw new Error(response?.error || 'Failed to fetch dashboard data');
-      }
-
-      console.log('[Dashboard] Data loaded successfully:', {
-        gmail: response.data.gmail?.connected,
-        calendar: response.data.calendar?.connected,
-        monday: response.data.monday?.connected,
-        followups: response.data.contacts?.followupsDue?.length,
-        elapsed: elapsed + 'ms',
-      });
-
-      setData(response.data);
-      setCachedData(response.data);
-    } catch (err) {
-      console.error('[Dashboard] Error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
-    } finally {
-      setLoading(prev => ({ ...prev, full: false }));
-      fetchInProgress.current = false;
-    }
-  }, []);
-
-  const refreshSection = useCallback(async (section: DashboardSection) => {
-    setLoading(prev => ({ ...prev, [section]: true }));
-
-    try {
-      const { data: response, error: fetchError } = await supabase.functions.invoke('dashboard-data', {
-        body: { section },
-      });
-
-      if (fetchError) {
-        console.error(`[Dashboard] ${section} refresh error:`, fetchError);
-        throw fetchError;
-      }
-
-      if (!response?.success) {
-        throw new Error(response?.error || `Failed to refresh ${section}`);
-      }
-
-      console.log(`[Dashboard] ${section} refreshed successfully`);
-
-      // Merge partial data into existing state and update cache
-      setData(prev => {
-        const newData = prev ? { ...prev, ...response.data } : response.data;
-        setCachedData(newData);
-        return newData;
-      });
-    } catch (err) {
-      console.error(`[Dashboard] ${section} refresh error:`, err);
-      // Don't set global error for section refresh failures
-    } finally {
-      setLoading(prev => ({ ...prev, [section]: false }));
-    }
-  }, []);
-
-  // Clear cache utility
-  const clearCache = useCallback(() => {
-    localStorage.removeItem(CACHE_KEY);
-    console.log('[Dashboard] Cache cleared');
-  }, []);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  };
 
   return { 
-    data, 
+    data: query.data ?? null, 
     loading, 
-    error, 
-    refresh: () => fetchData(true), // Force skip cache on manual refresh
+    error: query.error ? (query.error instanceof Error ? query.error.message : 'Failed to load') : null,
+    refresh: () => query.refetch(),
     refreshSection,
-    clearCache,
+    clearCache: () => queryClient.removeQueries({ queryKey: DASHBOARD_QUERY_KEY }),
+    isFetching: query.isFetching,
   };
 }
+
+// Export the fetch function for prefetching
+export { fetchDashboardData };

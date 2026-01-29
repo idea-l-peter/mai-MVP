@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { IntegrationCard } from "./IntegrationCard";
 import { GoogleWorkspaceCard } from "./GoogleWorkspaceCard";
 import { WhatsAppIntegrationCard } from "./WhatsAppIntegrationCard";
@@ -8,6 +9,7 @@ import { useMondayIntegration } from "@/hooks/useMondayIntegration";
 import { useIntegrationStatus } from "@/hooks/useIntegrationStatus";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { DASHBOARD_QUERY_KEY, fetchDashboardData } from "@/hooks/useDashboardData";
 import mondayLogo from "@/assets/monday-logo.svg";
 
 type IntegrationStatus = "connected" | "not_connected" | "pending";
@@ -50,8 +52,19 @@ export function IntegrationsContent() {
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
   const [isMondayConnecting, setIsMondayConnecting] = useState(false);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const DISCONNECT_STORAGE_KEY = "disconnect_in_progress_provider";
+
+  // PREFETCH: Load dashboard data in the background when Integrations page mounts
+  useEffect(() => {
+    console.log("[Integrations] Prefetching dashboard data...");
+    queryClient.prefetchQuery({
+      queryKey: DASHBOARD_QUERY_KEY,
+      queryFn: fetchDashboardData,
+      staleTime: 2 * 60 * 1000, // 2 minutes
+    });
+  }, [queryClient]);
 
   // Use React Query for parallel fetching with 5-min staleTime
   const { 
