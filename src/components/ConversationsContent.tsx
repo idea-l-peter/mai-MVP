@@ -357,13 +357,9 @@ export function ConversationsContent() {
   const isMobile = useIsMobile();
   const { toast } = useToast();
 
-  // Log version and session state on mount for debugging
+  // Version tracking (silent in production)
   useEffect(() => {
-    console.log(`[ConversationsContent] ${COMPONENT_VERSION} loaded`);
-    console.log(`[ConversationsContent] Initial sessionStatus: ${initialState.status}`);
-    console.log(`[ConversationsContent] Initial hasSession: ${!!initialState.session}`);
-    console.log(`[ConversationsContent] Current sessionStatus state: ${sessionStatus}`);
-    console.log(`[ConversationsContent] Current hasSession state: ${!!currentSession}`);
+    // Debug logs removed for production
   }, []);
 
   // Resolve auth on mount using the same pattern as Dashboard.tsx:
@@ -395,10 +391,10 @@ export function ConversationsContent() {
       }
     };
 
-    console.log("[Session] Setting up auth state listener");
+    // Auth state listener setup
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log("[Session] Auth state changed:", { event, hasSession: !!session });
+      // Auth state change handled silently
       if (!isMounted) return;
 
       if (session) {
@@ -460,21 +456,17 @@ export function ConversationsContent() {
 
     return () => {
       isMounted = false;
-      console.log("[Session] Cleaning up auth listener");
       subscription.unsubscribe();
     };
   }, []);
 
   // Handle session refresh
   const handleRefreshSession = async () => {
-    console.log("[Session] Refreshing session...");
     setIsRefreshingSession(true);
     try {
       const { data, error } = await supabase.auth.refreshSession();
-      console.log("[Session] Refresh result:", { hasSession: !!data?.session, error: error?.message });
       
       if (error || !data.session) {
-        console.log("[Session] Refresh failed, redirecting to auth");
         navigate('/auth');
       } else {
         setCurrentSession(data.session);
@@ -621,35 +613,20 @@ export function ConversationsContent() {
     // Declare userMessageId at function scope for access in catch block
     let userMessageId: string | null = null;
     
-    console.log("STEP 1: Starting sendMessage", {
-      version: COMPONENT_VERSION,
-      sessionStatus,
-      hasSession: !!currentSession,
-      isLoading,
-      inputLength: input?.length ?? 0,
-    });
-
     try {
       const trimmedInput = input.trim();
 
       if (!trimmedInput) {
-        console.log("[sendMessage] Early return - empty input");
         return;
       }
 
       if (isLoading) {
-        console.log("[sendMessage] Early return - already loading");
         return;
       }
 
       // Use pre-checked session status instead of calling getSession()
-      console.log("[sendMessage] Session gate", {
-        sessionStatus,
-        hasSession: !!currentSession,
-      });
 
       if (sessionStatus === "checking") {
-        console.log("[sendMessage] Early return - session still checking");
         setMessages((prev) => [
           ...prev,
           {
@@ -663,7 +640,6 @@ export function ConversationsContent() {
       }
 
       if (sessionStatus === "none") {
-        console.log("[sendMessage] Early return - no session");
         setMessages((prev) => [
           ...prev,
           {
@@ -677,7 +653,6 @@ export function ConversationsContent() {
       }
 
       if (sessionStatus === "expired" || !currentSession) {
-        console.log("[sendMessage] Early return - expired session or missing currentSession");
         setMessages((prev) => [
           ...prev,
           {
@@ -716,12 +691,6 @@ export function ConversationsContent() {
 
       const accessToken = currentSession.access_token;
 
-      console.log("STEP 2: Before fetch", {
-        apiMessagesCount: apiMessages.length,
-        hasAccessToken: !!accessToken,
-        accessTokenLength: accessToken?.length ?? 0,
-      });
-
       const invokeStart = Date.now();
       const { data, error } = await supabase.functions.invoke("ai-assistant", {
         body: {
@@ -733,12 +702,7 @@ export function ConversationsContent() {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
 
-      console.log("STEP 3: After fetch", {
-        elapsedMs: Date.now() - invokeStart,
-        hasData: !!data,
-        hasError: !!error,
-        error: error ? { name: error.name, message: error.message } : null,
-      });
+      // Response received
 
       if (error) throw error;
       if (!data) throw new Error("No response from assistant");
@@ -778,7 +742,6 @@ export function ConversationsContent() {
       });
     } finally {
       setIsLoading(false);
-      console.log("[sendMessage] Complete");
     }
   };
 

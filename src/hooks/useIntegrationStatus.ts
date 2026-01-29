@@ -14,8 +14,6 @@ async function fetchGoogleStatus(): Promise<IntegrationStatus> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { connected: false };
 
-  console.log('[IntegrationStatus] Checking Google for user:', user.id.slice(0, 8));
-
   // Query user_integrations table
   const { data, error } = await supabase
     .from('user_integrations')
@@ -25,7 +23,6 @@ async function fetchGoogleStatus(): Promise<IntegrationStatus> {
     .maybeSingle();
 
   if (error || !data) {
-    console.log('[IntegrationStatus] Google not connected');
     return { connected: false };
   }
 
@@ -38,11 +35,9 @@ async function fetchGoogleStatus(): Promise<IntegrationStatus> {
 
   const tokenTypes = tokenData?.map(t => t.token_type) || [];
   if (!tokenTypes.includes('access_token')) {
-    console.log('[IntegrationStatus] Google missing access_token');
     return { connected: false };
   }
 
-  console.log('[IntegrationStatus] Google connected:', data.provider_email);
   return {
     connected: true,
     providerEmail: data.provider_email || undefined,
@@ -54,8 +49,6 @@ async function fetchMondayStatus(): Promise<IntegrationStatus> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { connected: false };
 
-  console.log('[IntegrationStatus] Checking Monday for user:', user.id.slice(0, 8));
-
   // Query user_integrations table
   const { data, error } = await supabase
     .from('user_integrations')
@@ -65,7 +58,6 @@ async function fetchMondayStatus(): Promise<IntegrationStatus> {
     .maybeSingle();
 
   if (error || !data) {
-    console.log('[IntegrationStatus] Monday not connected');
     return { connected: false };
   }
 
@@ -78,11 +70,9 @@ async function fetchMondayStatus(): Promise<IntegrationStatus> {
 
   const tokenTypes = tokenData?.map(t => t.token_type) || [];
   if (!tokenTypes.includes('access_token')) {
-    console.log('[IntegrationStatus] Monday missing access_token');
     return { connected: false };
   }
 
-  console.log('[IntegrationStatus] Monday connected:', data.provider_email);
   return {
     connected: true,
     providerEmail: data.provider_email || undefined,
@@ -91,15 +81,11 @@ async function fetchMondayStatus(): Promise<IntegrationStatus> {
 
 // Fetch ALL integrations in parallel
 async function fetchAllIntegrations() {
-  console.log('[IntegrationStatus] Fetching ALL integrations in parallel...');
-  const startTime = Date.now();
-
   const [google, monday] = await Promise.all([
     fetchGoogleStatus(),
     fetchMondayStatus(),
   ]);
 
-  console.log('[IntegrationStatus] All integrations fetched in', Date.now() - startTime, 'ms');
   return { google, monday };
 }
 
@@ -115,7 +101,6 @@ export function useIntegrationStatus() {
   });
 
   const invalidate = () => {
-    console.log('[IntegrationStatus] Invalidating cache...');
     queryClient.invalidateQueries({ queryKey: ['integrations-status'] });
   };
 

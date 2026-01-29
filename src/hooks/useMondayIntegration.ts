@@ -26,18 +26,14 @@ export function useMondayIntegration() {
         // ignore
       }
 
-      console.log('[MondayOAuth] Getting current user...');
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         throw new Error("You must be logged in to connect Monday.com");
       }
-      console.log('[MondayOAuth] User found:', user.id.slice(0, 8) + '...');
 
       const appRedirectUri = `${window.location.origin}/integrations`;
-      console.log('[MondayOAuth] App redirect URI:', appRedirectUri);
 
       // Wrap the edge function call in a timeout
-      console.log('[MondayOAuth] Calling monday-oauth edge function with 10s timeout...');
       const timeoutMs = 10000;
       
       const invokePromise = supabase.functions.invoke("monday-oauth", {
@@ -59,10 +55,7 @@ export function useMondayIntegration() {
         throw error;
       }
 
-      console.log('[MondayOAuth] Edge function response:', data);
-
       if (data?.oauth_url) {
-        console.log('[MondayOAuth] Redirecting to Monday.com OAuth...');
         window.location.href = data.oauth_url;
       } else {
         throw new Error("No OAuth URL returned from edge function");
@@ -115,17 +108,13 @@ export function useMondayIntegration() {
 
   /**
    * Check if user has a valid Monday.com integration in the database.
-   * Queries both user_integrations and encrypted_integration_tokens to verify connection.
    */
   const checkConnection = async (): Promise<{ connected: boolean; provider_email?: string } | null> => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        console.log('[MondayOAuth] checkConnection: No user logged in');
         return null;
       }
-
-      console.log('[MondayOAuth] Checking database for user:', user.id.slice(0, 8));
 
       // Query user_integrations table for monday provider
       const { data, error } = await supabase
@@ -141,11 +130,8 @@ export function useMondayIntegration() {
       }
 
       if (!data) {
-        console.log('[MondayOAuth] No integration found in database');
         return { connected: false };
       }
-
-      console.log('[MondayOAuth] Integration found in database:', { email: data.provider_email });
 
       // Also verify that encrypted tokens exist
       const { data: tokenData, error: tokenError } = await supabase
@@ -158,15 +144,11 @@ export function useMondayIntegration() {
         console.error('[MondayOAuth] Token check error:', tokenError);
       } else {
         const tokenTypes = tokenData?.map(t => t.token_type) || [];
-        console.log('[MondayOAuth] Token types found:', tokenTypes);
-        
         if (!tokenTypes.includes('access_token')) {
-          console.log('[MondayOAuth] No access_token found - integration incomplete');
           return { connected: false };
         }
       }
 
-      console.log('[MondayOAuth] Token captured successfully - connection verified');
       return { connected: true, provider_email: data.provider_email || undefined };
     } catch (error) {
       console.error("[MondayOAuth] Error checking connection:", error);
