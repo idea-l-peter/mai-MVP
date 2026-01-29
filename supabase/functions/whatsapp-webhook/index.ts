@@ -315,8 +315,21 @@ async function processWebhookAsync(payload: any): Promise<void> {
           
           const firstName = userPrefs?.display_name || 'there';
           
-          // Send acknowledgement with personalized name
-          await sendWhatsAppReply(phoneNumber, `Checking that for you now, ${firstName}.`);
+          // Check if message likely requires tool calls (data retrieval)
+          const lowerContent = content.toLowerCase().trim();
+          const toolTriggers = [
+            'email', 'emails', 'mail', 'inbox', 'message', 'messages',
+            'calendar', 'schedule', 'meeting', 'meetings', 'event', 'events', 'appointment',
+            'contact', 'contacts', 'task', 'tasks', 'monday', 'board',
+            'check', 'show', 'get', 'fetch', 'find', 'search', 'list', 'summarise', 'summarize',
+            'what', 'who', 'when', 'where', 'how many', 'any', 'latest', 'recent', 'today', 'tomorrow'
+          ];
+          const needsToolCall = toolTriggers.some(trigger => lowerContent.includes(trigger));
+          
+          // Only send acknowledgement for tool-based queries, not simple chat
+          if (needsToolCall) {
+            await sendWhatsAppReply(phoneNumber, `Checking that for you now, ${firstName}.`);
+          }
           
           // Fetch conversation history for context (last 5 messages)
           const conversationHistory = await fetchConversationHistory(supabase, phoneNumber, 5);
