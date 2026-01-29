@@ -5,6 +5,7 @@ import type { SecurityTier } from '@/lib/security-tiers';
 export interface UserPreferences {
   id: string;
   user_id: string;
+  display_name: string | null;
   emoji_confirmations_enabled: boolean;
   security_phrase_color: string | null;
   security_phrase_object: string | null;
@@ -16,6 +17,7 @@ export interface UserPreferences {
 }
 
 const DEFAULT_PREFERENCES: Omit<UserPreferences, 'id' | 'user_id'> = {
+  display_name: null,
   emoji_confirmations_enabled: true,
   security_phrase_color: null,
   security_phrase_object: null,

@@ -321,6 +321,7 @@ export type Database = {
         Row: {
           action_security_overrides: Json | null
           created_at: string
+          display_name: string | null
           emoji_confirmations_enabled: boolean
           failed_security_attempts: number | null
           id: string
@@ -335,6 +336,7 @@ export type Database = {
         Insert: {
           action_security_overrides?: Json | null
           created_at?: string
+          display_name?: string | null
           emoji_confirmations_enabled?: boolean
           failed_security_attempts?: number | null
           id?: string
@@ -349,6 +351,7 @@ export type Database = {
         Update: {
           action_security_overrides?: Json | null
           created_at?: string
+          display_name?: string | null
           emoji_confirmations_enabled?: boolean
           failed_security_attempts?: number | null
           id?: string
