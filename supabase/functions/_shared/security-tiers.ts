@@ -173,6 +173,7 @@ export function isValidTier3Response(
 }
 
 // Check if response is valid Tier 2 security phrase
+// Handles compound emojis with ZWJ (Zero-Width Joiner) via Unicode normalization
 export function isValidTier2Response(
   response: string,
   phraseColor: string | null,
@@ -182,17 +183,59 @@ export function isValidTier2Response(
 ): boolean {
   if (!phraseColor || !phraseObject) return false;
   
-  const normalized = response.toLowerCase().trim();
-  const expectedPhrase = `${phraseColor} ${phraseObject}`.toLowerCase();
+  // Normalize Unicode for compound emoji support (ZWJ sequences like 🐈‍⬛)
+  const normalizedResponse = response.trim().normalize('NFC');
+  const phraseText = `${phraseColor} ${phraseObject}`;
+  const phraseTextLower = phraseText.toLowerCase();
   
-  if (normalized === expectedPhrase || normalized.includes(expectedPhrase)) {
+  // Debug logging for emoji comparison
+  if (phraseEmoji) {
+    console.log('[Security] Response bytes:', [...normalizedResponse].map(c => c.codePointAt(0)));
+    console.log('[Security] Emoji bytes:', [...phraseEmoji.normalize('NFC')].map(c => c.codePointAt(0)));
+    console.log('[Security] Phrase text:', phraseTextLower);
+  }
+  
+  // Check 1: Text-only match (case-insensitive) - e.g., "black cat"
+  if (normalizedResponse.toLowerCase() === phraseTextLower) {
+    console.log('[Security] ✓ Text-only match');
     return true;
   }
   
-  if (emojiEnabled && phraseEmoji && response.includes(phraseEmoji)) {
+  // Check 2: Emoji-only match (if enabled)
+  if (emojiEnabled && phraseEmoji) {
+    const emojiNormalized = phraseEmoji.normalize('NFC');
+    if (normalizedResponse === emojiNormalized) {
+      console.log('[Security] ✓ Emoji-only match');
+      return true;
+    }
+  }
+  
+  // Check 3: Full phrase with emoji - e.g., "black cat 🐈‍⬛"
+  if (emojiEnabled && phraseEmoji) {
+    const emojiNormalized = phraseEmoji.normalize('NFC');
+    const fullPhrase = `${phraseTextLower} ${emojiNormalized}`;
+    const fullPhraseAlt = `${emojiNormalized} ${phraseTextLower}`; // emoji first
+    const respLower = normalizedResponse.toLowerCase();
+    
+    if (respLower === fullPhrase || respLower === fullPhraseAlt) {
+      console.log('[Security] ✓ Full phrase match');
+      return true;
+    }
+    
+    // Check if response contains the emoji (handles partial matches)
+    if (normalizedResponse.includes(emojiNormalized) && respLower.includes(phraseTextLower)) {
+      console.log('[Security] ✓ Contains both text and emoji');
+      return true;
+    }
+  }
+  
+  // Check 4: Loose text inclusion (fallback for partial input)
+  if (normalizedResponse.toLowerCase().includes(phraseTextLower)) {
+    console.log('[Security] ✓ Text inclusion match');
     return true;
   }
   
+  console.log('[Security] ✗ No match found');
   return false;
 }
 
