@@ -1600,6 +1600,8 @@ export interface ToolResult {
 // ============= Token Retrieval =============
 
 async function getValidToken(userId: string, provider: string): Promise<string | null> {
+  console.log(`[Tools] getValidToken: userId=${userId}, provider=${provider}`);
+  
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
       auth: { persistSession: false },
@@ -1613,10 +1615,18 @@ async function getValidToken(userId: string, provider: string): Promise<string |
       .eq("provider", provider)
       .maybeSingle();
 
-    if (fetchError || !integration) {
-      console.error(`[Tools] No ${provider} integration found for user`);
+    if (fetchError) {
+      console.error(`[Tools] Database error fetching ${provider} integration:`, fetchError.message);
       return null;
     }
+    
+    if (!integration) {
+      console.error(`[Tools] No ${provider} integration found for user ${userId}`);
+      return null;
+    }
+    
+    console.log(`[Tools] Found ${provider} integration for user, email: ${integration.provider_email}`);
+    console.log(`[Tools] Token expires at: ${integration.token_expires_at}`);
 
     // Check if token needs refresh
     const expiresAt = new Date(integration.token_expires_at).getTime();
@@ -2787,12 +2797,19 @@ async function getEmails(
   const query = args.query || "";
   const maxResults = args.max_results || 10;
 
-  console.log(`[Tools] get_emails: query="${query}", maxResults=${maxResults}`);
+  console.log(`[Gmail Tool] Fetching emails for user: ${userId}`);
+  console.log(`[Gmail Tool] Query: "${query}", MaxResults: ${maxResults}`);
 
   const accessToken = await getValidToken(userId, "google");
   if (!accessToken) {
-    return { success: false, error: "Google Workspace is not connected or token expired. Please connect from Integrations." };
+    console.error(`[Gmail Tool] No valid token for user ${userId} - Google not connected`);
+    return { 
+      success: false, 
+      error: "Google Workspace is not connected or your token has expired. Please go to Integrations and reconnect your Google account." 
+    };
   }
+  
+  console.log(`[Gmail Tool] Got access token for user ${userId}, fetching from Gmail API...`);
 
   try {
     // Step 1: Get list of message IDs
@@ -2808,8 +2825,32 @@ async function getEmails(
 
     if (!listResponse.ok) {
       const errorText = await listResponse.text();
-      console.error(`[Tools] Gmail list error: ${listResponse.status} - ${errorText}`);
-      return { success: false, error: "Failed to fetch emails" };
+      console.error(`[Gmail Tool] Gmail API error: ${listResponse.status} - ${errorText}`);
+      
+      // Parse specific error messages for transparency
+      let errorReason = "Failed to fetch emails from Gmail";
+      try {
+        const errorJson = JSON.parse(errorText);
+        if (errorJson.error?.message) {
+          errorReason = errorJson.error.message;
+        }
+        if (errorJson.error?.errors?.[0]?.reason) {
+          errorReason += ` (${errorJson.error.errors[0].reason})`;
+        }
+      } catch {
+        // Use raw error text if not JSON
+        if (errorText.length < 200) {
+          errorReason = errorText;
+        }
+      }
+      
+      if (listResponse.status === 401) {
+        return { success: false, error: "Gmail token expired. Please reconnect Google in Integrations." };
+      }
+      if (listResponse.status === 403) {
+        return { success: false, error: `Gmail access denied: ${errorReason}. Make sure Gmail permissions are granted in Integrations.` };
+      }
+      return { success: false, error: errorReason };
     }
 
     const listData = await listResponse.json();
