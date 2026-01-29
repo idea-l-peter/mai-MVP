@@ -37,20 +37,20 @@ serve(async (req) => {
       auth: { persistSession: false }
     });
 
-    const jwtToken = authHeader.replace('Bearer ', '');
-    const { data: claimsData, error: authError } = await supabaseAuth.auth.getClaims(jwtToken);
+    // Use getUser() for faster, more reliable authentication
+    const { data: userData, error: authError } = await supabaseAuth.auth.getUser();
 
-    if (authError || !claimsData?.claims) {
-      console.error('Auth error:', authError);
+    if (authError || !userData?.user?.id) {
+      console.error('Auth error:', authError?.message);
       return new Response(
         JSON.stringify({ error: 'Unauthorized: Invalid token' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
       );
     }
 
-    // Extract user_id from authenticated JWT claims
-    const user_id = claimsData.claims.sub as string;
-    console.log('Authenticated user:', user_id);
+    // Extract user_id from authenticated user
+    const user_id = userData.user.id;
+    console.log('Authenticated user:', user_id.slice(0, 8) + '...');
     
     const body = await req.json();
     console.log('Request body received:', JSON.stringify(body));
