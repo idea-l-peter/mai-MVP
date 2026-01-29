@@ -16,6 +16,7 @@ interface IntegrationCardProps {
   showConnectButton?: boolean;
   connectedEmail?: string;
   isLoading?: boolean;
+  isConnecting?: boolean;
 }
 
 export function IntegrationCard({
@@ -28,7 +29,16 @@ export function IntegrationCard({
   showConnectButton = true,
   connectedEmail,
   isLoading = false,
+  isConnecting = false,
 }: IntegrationCardProps) {
+  const handleConnectClick = () => {
+    console.log(`[IntegrationCard] Connect button clicked for: ${title}`);
+    if (onConnect) {
+      onConnect();
+    } else {
+      console.warn(`[IntegrationCard] No onConnect handler for: ${title}`);
+    }
+  };
   const getStatusBadge = () => {
     switch (status) {
       case "connected":
@@ -73,8 +83,19 @@ export function IntegrationCard({
       </CardHeader>
       <CardContent className="pt-0">
         {showConnectButton && status === "not_connected" && (
-          <Button onClick={onConnect} className="w-full">
-            {`Connect ${title}`}
+          <Button 
+            onClick={handleConnectClick} 
+            className="w-full"
+            disabled={isConnecting}
+          >
+            {isConnecting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Connecting...
+              </>
+            ) : (
+              `Connect ${title}`
+            )}
           </Button>
         )}
         {showConnectButton && status === "connected" && (
