@@ -50,7 +50,7 @@ const PROVIDER_CONFIGS: Record<Provider, ProviderConfig> = {
   groq: {
     name: "groq",
     baseUrl: "https://api.groq.com/openai/v1",
-    model: "llama-3.3-70b-versatile", // Fixed: was using invalid model name
+    model: "openai/gpt-oss-120b", // OpenAI-compatible 120B parameter model on Groq
     timeout: 30000, // Increased timeout
     apiKeyEnv: "GROQ_API_KEY",
     supportsTemperature: true,
