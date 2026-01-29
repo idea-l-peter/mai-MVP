@@ -36,8 +36,13 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
   }, []);
 
   const initiateOAuth = useCallback(async (provider: string, scopes: string[]) => {
-    console.log('[GoogleOAuth] initiateOAuth called with provider:', provider, 'scopes:', scopes);
-    
+    // IMPORTANT: This is an *integration* OAuth flow (offline access + broad scopes).
+    // We must NOT use supabase.auth.signInWithOAuth() here (that's for *logging in*).
+    // Instead, we call our google-oauth edge function which:
+    // 1) validates the current user JWT
+    // 2) returns a Google consent URL
+    // 3) Google redirects to google-oauth-callback which stores tokens server-side
+    console.log('[GoogleIntegration] initiateOAuth', { provider, scopesCount: scopes.length });
     setIsConnecting(true);
 
     try {
@@ -47,50 +52,38 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
         // ignore
       }
 
-      console.log('[GoogleOAuth] About to call signInWithOAuth');
-      
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/integrations`,
-          scopes: scopes.join(' '),
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          },
+      const { data, error } = await supabase.functions.invoke('google-oauth', {
+        body: {
+          provider,
+          scopes,
+          app_redirect_uri: `${window.location.origin}/integrations`,
         },
       });
-      
-      console.log('[GoogleOAuth] signInWithOAuth returned:', { data, error });
 
       if (error) {
-        console.error('[GoogleOAuth] OAuth error:', error);
-        toast({
-          title: 'OAuth Error',
-          description: error.message,
-          variant: 'destructive',
-        });
-        setIsConnecting(false);
-        try {
-          sessionStorage.removeItem(OAUTH_STORAGE_KEY);
-        } catch {
-          // ignore
-        }
+        throw error;
       }
-      // If successful, browser will redirect - no need to setIsConnecting(false)
+
+      const oauthUrl = (data as { oauth_url?: string })?.oauth_url;
+      if (!oauthUrl) {
+        throw new Error('Google OAuth did not return a redirect URL');
+      }
+
+      // Browser navigation to Google consent screen
+      window.location.assign(oauthUrl);
     } catch (err) {
-      console.error('[GoogleOAuth] Caught exception:', err);
+      console.error('[GoogleIntegration] Failed to start OAuth', err);
+      toast({
+        title: 'OAuth Error',
+        description: err instanceof Error ? err.message : 'Failed to start OAuth flow',
+        variant: 'destructive',
+      });
       setIsConnecting(false);
       try {
         sessionStorage.removeItem(OAUTH_STORAGE_KEY);
       } catch {
         // ignore
       }
-      toast({
-        title: 'OAuth Error',
-        description: err instanceof Error ? err.message : 'Failed to start OAuth flow',
-        variant: 'destructive',
-      });
     }
   }, [toast]);
 

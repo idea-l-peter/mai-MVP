@@ -22,14 +22,32 @@ export function WhatsAppIntegrationCard() {
 
     const checkStatus = async () => {
       try {
-        // A user must be logged in to use WhatsApp.
-        const { data, error } = await supabase.auth.getSession();
-        if (isMounted) {
-          if (error || !data.session) {
-            setIsConnected(false);
-          } else {
-            setIsConnected(true);
+        // Some environments can hang on getSession() (e.g., stalled network / blocked storage).
+        // Use a short timeout + fallback to localStorage presence to avoid infinite "Checking...".
+        const timeoutMs = 1500;
+        const timeout = new Promise<{ data: null; error: Error }>((resolve) =>
+          setTimeout(() => resolve({ data: null, error: new Error('timeout') }), timeoutMs)
+        );
+
+        const sessionPromise = supabase.auth.getSession().then(({ data, error }) => ({ data, error }));
+        const { data, error } = await Promise.race([sessionPromise, timeout]);
+
+        let connected = false;
+        if (!error && data?.session) {
+          connected = true;
+        } else {
+          // Fallback: if auth token exists, user is effectively logged in for UI purposes.
+          // (Prevents the card from getting stuck when getSession hangs.)
+          try {
+            const raw = localStorage.getItem('sb-vqunxhjgpdgpzkjescvb-auth-token');
+            connected = !!raw;
+          } catch {
+            connected = false;
           }
+        }
+
+        if (isMounted) {
+          setIsConnected(connected);
           setIsChecking(false);
         }
       } catch {

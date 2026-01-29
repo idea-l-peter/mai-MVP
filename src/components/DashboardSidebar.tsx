@@ -70,8 +70,16 @@ const [devToolsOpen, setDevToolsOpen] = useState(false);
 
   const handleLogout = async () => {
     console.log("[Logout] Starting sign out...");
+    toast({ title: "Signing out…", description: "Clearing your session" });
     try {
-      const { error } = await supabase.auth.signOut();
+      // Some browsers/extensions can cause signOut() to hang. Add a short fail-safe.
+      const timeoutMs = 2500;
+      const timeout = new Promise<{ error: Error }>((resolve) =>
+        setTimeout(() => resolve({ error: new Error("timeout") }), timeoutMs)
+      );
+
+      const signOutPromise = supabase.auth.signOut().then(({ error }) => ({ error }));
+      const { error } = await Promise.race([signOutPromise, timeout]);
       console.log("[Logout] signOut completed, error:", error);
       if (error) {
         toast({
@@ -79,10 +87,11 @@ const [devToolsOpen, setDevToolsOpen] = useState(false);
           description: "Failed to sign out",
           variant: "destructive",
         });
-      } else {
-        console.log("[Logout] Navigating to /auth");
-        navigate("/auth");
       }
+
+      // Always force navigation away from protected routes (even if Supabase signOut fails/hangs).
+      console.log("[Logout] Forcing navigation to /auth");
+      window.location.assign("/auth");
     } catch (err) {
       console.error("[Logout] Exception during signOut:", err);
       toast({
@@ -90,6 +99,9 @@ const [devToolsOpen, setDevToolsOpen] = useState(false);
         description: "Logout failed unexpectedly",
         variant: "destructive",
       });
+
+      // Still force redirect to reset UI.
+      window.location.assign("/auth");
     }
   };
 
