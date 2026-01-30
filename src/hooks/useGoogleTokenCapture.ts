@@ -142,18 +142,27 @@ export function useGoogleTokenCapture() {
       captureInProgressRef.current = true;
 
       try {
+        console.log('[GoogleTokenCapture] Exchanging code for session...');
         const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
         if (error) {
           console.error('[GoogleTokenCapture] exchangeCodeForSession error:', error);
+          // PKCE errors often happen when code_verifier is missing from storage
+          const isPKCEError = error.message?.includes('PKCE') || error.message?.includes('code_verifier');
           toast({ 
-            title: "Google connection failed", 
-            description: error.message, 
+            title: isPKCEError ? "Session expired" : "Google connection failed", 
+            description: isPKCEError 
+              ? "Please try signing in again. Your browser session may have been cleared." 
+              : error.message, 
             variant: "destructive" 
           });
           sessionStorage.removeItem(CODE_PROCESSED_KEY);
           return;
         }
+
+        console.log('[GoogleTokenCapture] Session exchange successful');
+        console.log('[GoogleTokenCapture] Has provider_token:', !!data.session?.provider_token);
+        console.log('[GoogleTokenCapture] Has provider_refresh_token:', !!data.session?.provider_refresh_token);
 
         const providerToken = data.session?.provider_token;
         const providerRefreshToken = data.session?.provider_refresh_token;
