@@ -156,13 +156,17 @@ const Auth = () => {
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true);
     try {
-      console.log('[Auth] Starting Google OAuth sign-in with basic scopes only');
+      console.log('[Auth] Starting Google OAuth sign-in with PKCE flow');
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: `${getAuthRedirectOrigin()}/dashboard`,
           scopes: GOOGLE_SIGN_IN_SCOPES.join(' '),
+          queryParams: {
+            access_type: 'offline',  // MANDATORY for Refresh Token
+            prompt: 'consent',       // Forces refresh token on every auth
+          },
         },
       });
       if (error) throw error;

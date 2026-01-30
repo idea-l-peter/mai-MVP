@@ -96,16 +96,16 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
         // ignore
       }
 
-      // Use 'select_account' for a friendlier UX while still getting all permissions
-      // Combined with access_type: 'offline' to get refresh token on first auth
+      // Use 'consent' to ALWAYS get refresh token - critical for long-lasting connections
+      // access_type: 'offline' is MANDATORY for refresh tokens
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: `${window.location.origin}/integrations`,
           scopes: finalScopes.join(' '),
           queryParams: {
-            access_type: 'offline',
-            prompt: 'select_account',
+            access_type: 'offline',   // MANDATORY for Refresh Token
+            prompt: 'consent',        // Forces refresh token on every auth
             include_granted_scopes: 'true',
           },
         },
